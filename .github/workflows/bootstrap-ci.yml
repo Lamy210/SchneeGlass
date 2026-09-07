@@ -15,19 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  package-and-guards:
-    name: Package Tests and Safety Guards
-    runs-on: macos-15
+  canonical:
+    name: Canonical / Xcode 26.6 / Safety Guards
+    runs-on: macos-26
     timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Toolchain
         run: |
           xcodebuild -version
           swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
@@ -37,6 +40,23 @@ jobs:
 
       - name: File safety guard
         run: bash Scripts/verify-file-safety.sh
+
+      - name: Swift package tests
+        run: swift test --package-path Packages/SchneeGlassKit
+
+  compatibility-macos-15:
+    name: Compatibility / macOS 15
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit

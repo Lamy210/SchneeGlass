@@ -64,6 +64,15 @@ let package = Package(
         .testTarget(
             name: "SchneeGlassApplicationTests",
             dependencies: ["SchneeGlassApplication"]
+        ),
+        .testTarget(
+            name: "SchneeGlassFileSystemAdapterTests",
+            dependencies: [
+                "SchneeGlassFileSystemAdapter",
+                "SchneeGlassApplication",
+                "SchneeGlassDomain",
+                "FileDomain"
+            ]
         )
     ],
     swiftLanguageModes: [.v6]
