@@ -1,292 +1,210 @@
 # SchneeGlass v0.1 Implementation Plan
 
-## Goal
+このドキュメントは `ARCHITECTURE.md` の設計を実装順へ落としたものです。
 
-v0.1 を non-destructive な Folder Glass として成立させる。
+## Phase 0 — Architecture Baseline
 
-## Phase 0 — Bootstrap
+### TASK-000 — 設計Baseline
 
-### TASK-001 Project Bootstrap
+Status: **DONE on `bootstrap/architecture-baseline`**
 
-- Xcode project
-- macOS 15 deployment target
+- Architecture
+- Security
+- Testing
+- Dependency policy
+- Agent rules
+- Tech debt policy
+- ADR baseline
+
+---
+
+## Phase 1 — Bootstrap
+
+### TASK-001 — Project / Package Bootstrap
+
+Status: **IN PROGRESS**
+
+完了済み:
+
+- `Packages/SchneeGlassKit/Package.swift`
+- macOS 15 platform declaration
 - Swift 6 language mode
-- App Sandbox
-- Local `SchneeGlassKit` package
-- Target dependency graph
-- Architecture CI skeleton
+- SPM architecture targets
+- App Sandbox entitlement baseline
+- Domain/Application contract skeleton
+- Initial Swift Testing tests
+- Architecture guard
+- File mutation allowlist guard
+- Public repository guard
+- Bootstrap GitHub Actions CI
 
-Completion:
+未完了:
 
-```text
-Debug build PASS
-Release build PASS
-unexpected entitlement = 0
-```
+- Xcode macOS App target
+- Local package linkage from App target
+- `CODE_SIGN_ENTITLEMENTS` linkage
+- App target Debug/Release build verification
 
-### TASK-002 Domain Contracts
+Xcode Projectは、使用可能なXcode環境で生成・検証してからCommitする。
+未検証の`project.pbxproj`を手書きでCommitしない。
 
-Implement:
-
-- GlassID
-- GlassConfiguration
-- GlassPlacement
-- FileIdentity
-- FolderIdentity
-- FileKind
-- FolderSnapshot
-- GlassContentState
-- InteractionState
-- DropPlan / DropRejection
-- Copy request/result contracts
-
-Completion:
-
-- Domain imports SwiftUI/AppKit = 0
-- Domain unit tests PASS
-
-## Phase 1 — Read Path
-
-### TASK-003 Application Ports / Use Cases
-
-Ports:
-
-- FolderSnapshotReading
-- FolderAccessControlling
-- FileCopying
-- ConfigurationPersisting
-- FileEventStreaming
-- WindowControlling
-
-Use cases:
-
-- CreateGlass
-- RemoveGlass
-- RestoreApplication
-- RefreshGlass
-- ExecuteDrop
-
-### TASK-004 Security-Scoped Access
-
-- Bookmark creation/resolve
-- stale refresh
-- balanced acquire/release
-- GlassRuntimeSession lifecycle
-
-### TASK-005 Folder Snapshot Reader
-
-- one-level only
-- hidden files default off
-- max 500 displayed items
-- package before directory classification
-
-### TASK-006 File Event Hub
-
-Order:
+Completion Criteria:
 
 ```text
-scope acquire
-→ watcher start
-→ initial snapshot
-→ dirty reconciliation
-→ steady state
+SPM tests PASS
+Architecture guard PASS
+File safety guard PASS
+Public repo guard PASS
+App target Debug build PASS
+App target Release build PASS
 ```
 
-No polling timer.
+---
 
-## Phase 2 — Window / UI
+## Phase 2 — Core Domain / Application
 
-### TASK-007 Windowing
+### TASK-002 — Domain Contracts
 
-- NSPanel
-- NSHostingView
-- Header-only move
-- frame persistence
-- offscreen recovery
-- Current Space default
+Status: **STARTED**
 
-### TASK-008 Design System / Presentation
+初期実装済み:
 
-States:
+- `GlassID`
+- `ResourceFingerprint`
+- `FolderSource`
+- `GlassPlacement`
+- `GlassConfiguration`
+- `FileIdentity`
+- `FolderIdentity`
+- `FileKind`
+- `GlassItem`
+- `FolderSnapshot`
+- `StorageCapabilities`
+- `DropCandidate`
+- `DestinationDescriptor`
+- `CopyItemPlan`
+- `CopyBatchPlan`
+- `DropPlan`
+- `DropRejection`
 
-```text
-loading
-ready
-empty
-unavailable
-failed
-```
+残り:
 
-Interaction:
+- File classification implementation
+- DropPlanner
+- Production-level error mapping
+- Additional invariant tests
 
-```text
-idle
-hovered
-drop valid
-drop invalid
-copying
-```
+### TASK-003 — Application Ports / Use Cases
 
-- Light/Dark
-- Reduce Transparency
-- Reduce Motion
-- Increase Contrast
+Status: **STARTED**
 
-## Phase 3 — Safe Copy
+初期Contract済み:
 
-### TASK-009 Drop Planner
+- `FolderAccessHandle`
+- `AuthorizedCopyBatchRequest`
+- `CopyBatchResult`
+- `CopyProgress`
+- `GlassContentState`
+- `InteractionState`
+- Application Ports
 
-Pure validation:
+残り:
 
-- regular file allowed
-- same-directory no-op
-- folder/package/symlink reject
-- collision reject
-- unsupported/network/read-only destination reject
+- Use Case implementation
+- Runtime session orchestration
+- Fake ports for application tests
 
-### TASK-010 Recovery Metadata
+---
 
-Persist `PendingCopyRecord` before staging mutation.
+## Phase 3 — macOS / Filesystem Adapters
 
-Unknown `.glass-*` file is never auto-deleted.
+### TASK-004 — Security Scoped Access
+Status: NOT STARTED
 
-### TASK-011 Safe File Copy Engine
+### TASK-005 — Folder Snapshot Reader
+Status: NOT STARTED
 
-```text
-batch preflight
-→ pending record
-→ staging copy
-→ basic verify
-→ collision recheck
-→ internal staging commit
-→ metadata cleanup
-```
+### TASK-006 — File Event Hub
+Status: NOT STARTED
 
-Sequential copy only.
+### TASK-007 — Drop Planner
+Status: NOT STARTED
 
-Batch runtime failure:
+### TASK-008 — Recovery Metadata Store
+Status: NOT STARTED
 
-- previous successes remain
-- failed item reported
-- later items not attempted
-- no rollback deletion
+### TASK-009 — Safe File Copy Engine
+Status: NOT STARTED
+
+---
 
 ## Phase 4 — Persistence / Recovery
 
-### TASK-012 Configuration Store
+### TASK-010 — Configuration Store
+Status: NOT STARTED
 
-- schemaVersion = 1
-- atomic write
-- max 5 valid backups
-- no silent rollback
+### TASK-011 — Startup / Recovery Coordinator
+Status: NOT STARTED
 
-### TASK-013 Startup Recovery / Safe Mode
+---
 
-Crash-loop prevention:
+## Phase 5 — macOS UI
 
-```text
-starting marker
-→ restore
-→ healthy marker
-```
+### TASK-012 — Windowing
+Status: NOT STARTED
 
-Previous incomplete startup defaults to Safe Mode.
+### TASK-013 — Glass Presentation
+Status: NOT STARTED
 
-## Phase 5 — Interaction Shell
+### TASK-014 — Open / Finder Integration
+Status: NOT STARTED
 
-### TASK-014 Open / Reveal
+### TASK-015 — Menu Bar / Global Shortcut
+Status: NOT STARTED
 
-- Open using actual URL
-- Reveal using actual URL
-- Display name is never used to construct filesystem path
-
-### TASK-015 Menu Bar / Global Shortcut
-
-- Add Glass
-- Show All
-- Hide All
-- Recovery
-- Settings
-- Quit
+---
 
 ## Phase 6 — Quality / Release
 
-### TASK-016 Static Architecture & Safety Gates
+### TASK-016 — Static Architecture / Safety Gates
 
-Reject:
+Status: **BASELINE DONE**
 
-- forbidden imports
-- mutation APIs outside allowlist
-- private CGS
-- unapproved `@unchecked Sendable`
-- bare TODO/FIXME
+実装追加に合わせてallowlistと検査項目を拡張する。
 
-### TASK-017 CI
+### TASK-017 — CI / Diagnostics
 
-PR:
+Status: **BOOTSTRAP CI DONE / FULL CI NOT STARTED**
 
-- Build
-- Format/Lint
-- Unit
-- Architecture
-- FileSafety
-- Recovery
+追加予定:
 
-Main:
-
-- Integration
-- Snapshot
+- swift-format
+- SwiftLint
 - Periphery
-
-Nightly:
-
+- CodeQL
 - ASan
 - TSan
-- CodeQL
-- Performance
+- Main Thread Checker
+- Integration test plan
 
-### TASK-018 Release Pipeline
+### TASK-018 — Release Pipeline
+Status: NOT STARTED
 
-```text
-archive
-→ sign
-→ notarize
-→ staple
-→ verify entitlements
-→ smoke launch
-→ publish
-```
+### TASK-019 — Documentation
+Status: IN PROGRESS
 
-Unsigned binary must not be presented as trusted stable public release.
+---
 
-## Parallel Groups
+## 実装原則
 
-After Bootstrap:
+実装順を変更する場合でも以下を破ってはいけない。
 
 ```text
-Domain
-Persistence
-Windowing skeleton
-Architecture gates
+Filesystem source of truth
+UI -> concrete filesystem adapter 禁止
+User-owned source destructive mutation 禁止
+Security-scoped acquire/release balance
+Unknown data auto-delete 禁止
 ```
 
-After Application ports:
-
-```text
-Security scope
-Drop planner
-Presentation
-Open/Reveal
-Shortcut/Menu Bar
-```
-
-## v0.1 Release Invariants
-
-```text
-user source move = 0
-user source rename = 0
-user source delete = 0
-silent overwrite = 0
-unknown partial auto-delete = 0
-UI -> concrete filesystem adapter dependency = 0
-```
+Architectureを変更する必要がある場合は、実装で先に回避せずADRを追加して判断する。
