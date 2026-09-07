@@ -1,92 +1,112 @@
 # AGENTS.md — SchneeGlass Coding Agent Rules
 
-この Repository に対する Human / AI Coding Agent の最上位実装規約です。
+このRepositoryに対するHuman / AI Coding Agentの最上位実装規約です。
 
 ## 1. Safety First
 
 ### NEVER
 
-- UI から filesystem mutation を行う
-- user-owned source を Move / Rename / Delete / Replace する
-- Existing destination を silent overwrite する
-- Full Disk Access を要求する
-- Accessibility permission を追加する
-- Private macOS API / private CGS symbol を使用する
-- Network entitlement を設計変更なしに追加する
-- Dependency を `DEPENDENCIES.md` 更新なしに追加する
-- Failing safety test を削除・skipして green にする
-- `@unchecked Sendable` で compiler error を黙らせる
-- File Safety path で `try?` を使い failure を握り潰す
-- Secret / token / credential / private key を commit する
-- 実在会社・顧客・内部 path を test fixture に使う
+- UIからfilesystem mutationを行う
+- user-owned sourceをMove / Rename / Delete / Replaceする
+- Existing destinationをsilent overwriteする
+- Full Disk Accessを要求する
+- Accessibility Permissionを追加する
+- Private macOS API / private CGS symbolを使用する
+- Network entitlementを設計変更なしに追加する
+- Dependencyを`DEPENDENCIES.md`更新なしに追加する
+- Failing safety testを削除・skipしてgreenにする
+- `@unchecked Sendable`でcompiler errorを黙らせる
+- File Safety pathで`try?`を使いFailureを握り潰す
+- Secret / Token / Credential / Private KeyをCommitする
+- 実在会社・顧客・内部PathをTest Fixtureに使う
 
 ### MUST
 
-- Filesystem を Source of Truth とする
-- File mutation を `SchneeGlassFileSystemAdapter` の allowlist 内へ限定する
-- Security-scoped access の acquire/release を balance する
-- File Safety change と同じ PR で safety test を追加/更新する
-- Schema change と同じ PR で migration/recovery test を追加する
-- Architecture decision を変更する場合 ADR を追加/更新する
-- Runtime dependency 追加時に `DEPENDENCIES.md` を更新する
-- Error を明示的な domain/user-facing state へ map する
+- FilesystemをSource of Truthとする
+- File mutationを`SchneeGlassFileSystemAdapter`のallowlist内へ限定する
+- Security-scoped accessのAcquire/Releaseをbalanceする
+- File Safety changeと同じPRでSafety Testを追加/更新する
+- Schema changeと同じPRでMigration/Recovery Testを追加する
+- Architecture Decisionを変更する場合ADRを追加/更新する
+- Runtime Dependency追加時に`DEPENDENCIES.md`を更新する
+- Errorを明示的なDomain/User-facing Stateへmapする
 
 ## 2. Architecture Boundaries
 
-依存方向は `ARCHITECTURE.md` に従います。
+依存方向は`ARCHITECTURE.md`に従う。
 
 特に:
 
 ```text
-Presentation -> concrete FileSystem Adapter  禁止
-Presentation -> concrete Persistence Adapter 禁止
-Domain -> SwiftUI/AppKit                     禁止
+Presentation -> Concrete FileSystem Adapter   禁止
+Presentation -> Concrete Persistence Adapter  禁止
+Domain -> SwiftUI/AppKit                       禁止
+FileDomain -> SchneeGlassApplication           禁止
 ```
 
-Architecture boundary を bypass するために source file を別 target へ移動してはいけません。
+`GlassContentState`やSecurity Scope付きCopy Requestのように複数Layerを組み合わせる型は、循環依存を避けるためApplication Layerへ配置する。
+
+Architecture BoundaryをbypassするためにSource Fileを別Targetへ移動してはいけない。
 
 ## 3. Concurrency
 
-- UI mutable state → `@MainActor`
-- Shared mutable service → `actor`
-- Cross-isolation value → `Sendable` value type
-- Structured concurrency を優先
-- `Task.detached` は原則禁止。必要なら ADR
-- `@unchecked Sendable` は原則禁止。必要なら ADR + thread-safety rationale + tests
+```text
+UI mutable state       -> @MainActor
+Shared mutable service -> actor
+Cross-isolation value  -> Sendable value type
+```
+
+- Structured Concurrencyを優先する
+- `Task.detached`は原則禁止。必要ならADR
+- `@unchecked Sendable`は原則禁止。必要ならADR + Thread-safety rationale + Tests
 
 ## 4. Error Handling
 
-Production safety path では:
+Production Safety Pathでは:
 
 ```text
-try!  禁止
-force unwrap 原則禁止
-as!   原則禁止
-try?  correctness に関わる処理では禁止
+try!          禁止
+force unwrap  原則禁止
+as!           原則禁止
+try?          correctnessに関わる処理では禁止
 ```
 
-Raw `NSError` をそのまま UI に表示しません。
+Raw `NSError`をそのままUIへ表示しない。
 
 ## 5. Public Repository Safety
 
-この Repository は Public です。
+このRepositoryはPublicです。
 
-Commit 前に必ず確認:
+Commit前に必ず確認:
 
-- secret がない
-- credential がない
-- local absolute path がない
-- company/internal/customer name がない
-- raw bookmark data がない
-- signing private material がない
+- Secretがない
+- Credentialがない
+- Local Absolute Pathがない
+- Company/Internal/Customer Nameがない
+- Raw Bookmark Dataがない
+- Signing Private Materialがない
 
-Sample は架空値を使います。
+Sampleは架空値を使う。
+
+CIでは以下を実行する。
+
+```text
+Scripts/verify-public-repo.sh
+Scripts/verify-architecture.sh
+Scripts/verify-file-safety.sh
+```
+
+Guardを回避するためのrenameやencoding変更は禁止する。
 
 ## 6. Change Discipline
 
-1 PR = 1 conceptual change を基本とします。
+基本:
 
-次を1 PRに混在させない:
+```text
+1 PR = 1 conceptual change
+```
+
+次を1 PRへ混在させない:
 
 ```text
 architecture refactor
@@ -95,30 +115,45 @@ dependency update
 large UI redesign
 ```
 
-やむを得ない場合は PR body で理由を説明します。
+やむを得ない場合はPR Bodyで理由を説明する。
 
-## 7. TODO / Tech Debt
+## 7. Xcode Project Policy
 
-Bare `TODO` / `FIXME` を追加しません。
+未検証の`project.pbxproj`を手書き生成してCommitしない。
+
+Xcode App Targetは実際のXcode環境で生成し、最低限以下を確認してからCommitする。
+
+```text
+Debug build PASS
+Release build PASS
+Local SchneeGlassKit linkage PASS
+Entitlement linkage PASS
+```
+
+AIが推測だけでpbxprojのobjectVersionやBuild Settingを作成してはいけない。
+
+## 8. TODO / Tech Debt
+
+Bare `TODO` / `FIXME`をSwift Sourceへ追加しない。
 
 ```text
 TODO(#123)
 FIXME(#123)
 ```
 
-の形式とし、intentional debt は `TECH_DEBT.md` または Issue に理由と revisit trigger を記録します。
+の形式とし、Intentional Debtは`TECH_DEBT.md`またはIssueに理由とRevisit Triggerを記録する。
 
-## 8. Definition of Done
+## 9. Definition of Done
 
-Feature 完了は「動く」だけではありません。
+Feature完了は「動く」だけではない。
 
-- implementation
-- success path test
-- failure path test
-- recovery behavior
-- accessibility impact
-- logging/privacy check
-- architecture gate
-- documentation update when needed
+- Implementation
+- Success Path Test
+- Failure Path Test
+- Recovery Behavior
+- Accessibility Impact
+- Logging/Privacy Check
+- Architecture Gate
+- Documentation Update when needed
 
-File operation change の場合は FileSafety suite PASS が必須です。
+File Operation変更の場合はFileSafety Suite PASSが必須。
