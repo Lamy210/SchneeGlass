@@ -40,7 +40,10 @@ public enum DropPlanner {
         }
 
         let standardizedDestination = context.destination.url.standardizedFileURL
+        let supportsCaseSensitiveNames =
+            context.destination.capabilities.supportsCaseSensitiveNames ?? false
         var sameDirectoryCount = 0
+        var plannedDestinationNames: Set<String> = []
         var copyItems: [CopyItemPlan] = []
         copyItems.reserveCapacity(context.candidates.count)
 
@@ -78,6 +81,14 @@ public enum DropPlanner {
             }
 
             let filename = sourceURL.lastPathComponent
+            let destinationNameKey = collisionKey(
+                for: filename,
+                supportsCaseSensitiveNames: supportsCaseSensitiveNames
+            )
+            guard plannedDestinationNames.insert(destinationNameKey).inserted else {
+                return .reject(.collision)
+            }
+
             copyItems.append(
                 CopyItemPlan(
                     sourceURL: sourceURL,
@@ -106,5 +117,16 @@ public enum DropPlanner {
         } catch {
             return .reject(.unsupportedItem)
         }
+    }
+
+    private static func collisionKey(
+        for filename: String,
+        supportsCaseSensitiveNames: Bool
+    ) -> String {
+        let canonicallyNormalized = filename.precomposedStringWithCanonicalMapping
+        if supportsCaseSensitiveNames {
+            return canonicallyNormalized
+        }
+        return canonicallyNormalized.lowercased()
     }
 }

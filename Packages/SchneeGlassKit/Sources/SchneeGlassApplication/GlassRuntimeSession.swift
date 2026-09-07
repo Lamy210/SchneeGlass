@@ -11,6 +11,7 @@ public actor GlassRuntimeSession {
     private enum Lifecycle: Equatable {
         case idle
         case running
+        case stopping
         case stopped
     }
 
@@ -21,12 +22,15 @@ public actor GlassRuntimeSession {
     private let eventStreaming: any FileEventStreaming
     private let snapshotReader: any FolderSnapshotReading
     private let accessController: any FolderAccessControlling
+    private let dropPlanning: any DropPlanning
+    private let fileCopying: any FileCopying
     private let initialSnapshot: FolderSnapshot
 
     private var generation: UInt64
     private var lifecycle: Lifecycle = .idle
     private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
     private var eventTask: Task<Void, Never>?
+    private var activeCopyTask: Task<CopyBatchResult, Never>?
     private var accessReleased = false
     private var subscriptionStopped = false
 
@@ -34,7 +38,9 @@ public actor GlassRuntimeSession {
         seed: CreatedGlassRuntimeSeed,
         eventStreaming: any FileEventStreaming,
         snapshotReader: any FolderSnapshotReading,
-        accessController: any FolderAccessControlling
+        accessController: any FolderAccessControlling,
+        dropPlanning: any DropPlanning,
+        fileCopying: any FileCopying
     ) {
         self.configuration = seed.configuration
         self.access = seed.access
@@ -42,6 +48,8 @@ public actor GlassRuntimeSession {
         self.eventStreaming = eventStreaming
         self.snapshotReader = snapshotReader
         self.accessController = accessController
+        self.dropPlanning = dropPlanning
+        self.fileCopying = fileCopying
         self.initialSnapshot = seed.snapshot
         self.generation = seed.snapshot.generation
     }
@@ -52,7 +60,7 @@ public actor GlassRuntimeSession {
             break
         case .running:
             throw GlassRuntimeSessionError.alreadyStarted
-        case .stopped:
+        case .stopping, .stopped:
             throw GlassRuntimeSessionError.stopped
         }
 
@@ -76,18 +84,66 @@ public actor GlassRuntimeSession {
         return pair.stream
     }
 
-    public func stop() async {
-        guard lifecycle != .stopped else {
-            return
+    public func planDrop(sourceURLs: [URL]) async -> DropPlan {
+        guard lifecycle == .running else {
+            return .reject(.destinationUnavailable)
+        }
+        return await dropPlanning.plan(
+            sourceURLs: sourceURLs,
+            destinationAccess: access
+        )
+    }
+
+    public func executeCopy(_ plan: CopyBatchPlan) async throws -> CopyBatchResult {
+        guard lifecycle == .running else {
+            throw GlassCopyExecutionError.sessionNotRunning
+        }
+        guard activeCopyTask == nil else {
+            throw GlassCopyExecutionError.copyInProgress
+        }
+        guard plan.destination.glassID == access.glassID,
+              plan.destination.url.standardizedFileURL == access.url.standardizedFileURL
+        else {
+            throw GlassCopyExecutionError.destinationMismatch
         }
 
-        lifecycle = .stopped
+        let request = AuthorizedCopyBatchRequest(
+            plan: plan,
+            destinationAccess: access
+        )
+        let fileCopying = self.fileCopying
+        let task = Task {
+            await fileCopying.copy(request)
+        }
+        activeCopyTask = task
+
+        let result = await task.value
+        activeCopyTask = nil
+        return result
+    }
+
+    public func stop() async {
+        switch lifecycle {
+        case .stopped, .stopping:
+            return
+        case .idle, .running:
+            lifecycle = .stopping
+        }
+
         eventTask?.cancel()
         eventTask = nil
         stateContinuation?.finish()
         stateContinuation = nil
+
         await stopSubscriptionIfNeeded()
+
+        if let activeCopyTask {
+            _ = await activeCopyTask.value
+            self.activeCopyTask = nil
+        }
+
         await releaseAccessIfNeeded()
+        lifecycle = .stopped
     }
 
     private func consumeEvents() async {
@@ -99,7 +155,7 @@ public actor GlassRuntimeSession {
             switch event {
             case .rootChanged:
                 stateContinuation?.yield(.unavailable(.sourceMissing))
-                await finishAfterEventStreamTermination()
+                await stop()
                 return
 
             case .changed, .requiresFullRescan:
@@ -117,20 +173,8 @@ public actor GlassRuntimeSession {
         }
 
         if !Task.isCancelled, lifecycle == .running {
-            await finishAfterEventStreamTermination()
+            await stop()
         }
-    }
-
-    private func finishAfterEventStreamTermination() async {
-        guard lifecycle != .stopped else {
-            return
-        }
-        lifecycle = .stopped
-        eventTask = nil
-        stateContinuation?.finish()
-        stateContinuation = nil
-        await stopSubscriptionIfNeeded()
-        await releaseAccessIfNeeded()
     }
 
     private func stopSubscriptionIfNeeded() async {

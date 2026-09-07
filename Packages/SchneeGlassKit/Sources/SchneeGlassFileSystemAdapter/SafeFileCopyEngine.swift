@@ -20,6 +20,7 @@ enum CopyFileSystemError: Error, Hashable, Sendable {
 protocol CopyFileSystemAccessing: Sendable {
     func sourceMetadata(at url: URL) async throws -> CopySourceMetadata
     func isWritableDirectory(at url: URL) async -> Bool
+    func supportsCaseSensitiveNames(at url: URL) async -> Bool?
     func itemExists(at url: URL) async -> Bool
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
     func regularFileSize(at url: URL) async throws -> Int64
@@ -61,6 +62,17 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             return false
         }
         return fileManager.isWritableFile(atPath: path)
+    }
+
+    func supportsCaseSensitiveNames(at url: URL) -> Bool? {
+        do {
+            let values = try url.standardizedFileURL.resourceValues(
+                forKeys: [.volumeSupportsCaseSensitiveNamesKey]
+            )
+            return values.volumeSupportsCaseSensitiveNames
+        } catch {
+            return nil
+        }
     }
 
     func itemExists(at url: URL) -> Bool {
@@ -278,10 +290,18 @@ public actor SafeFileCopyEngine: FileCopying {
             )
         }
 
+        let destinationDirectory = request.destinationAccess.url.standardizedFileURL
+        let observedCaseSensitivity = await fileSystem.supportsCaseSensitiveNames(
+            at: destinationDirectory
+        )
+        let supportsCaseSensitiveNames =
+            observedCaseSensitivity
+            ?? request.plan.destination.capabilities.supportsCaseSensitiveNames
+            ?? false
+
         var prepared: [PreparedItem] = []
         prepared.reserveCapacity(request.plan.items.count)
-        var plannedFinalURLs: Set<URL> = []
-        let destinationDirectory = request.destinationAccess.url.standardizedFileURL
+        var plannedDestinationNames: Set<String> = []
 
         for (index, item) in request.plan.items.enumerated() {
             let source = item.sourceURL.standardizedFileURL
@@ -306,7 +326,11 @@ public actor SafeFileCopyEngine: FileCopying {
                 )
             }
 
-            guard plannedFinalURLs.insert(finalURL).inserted else {
+            let destinationNameKey = Self.destinationCollisionKey(
+                item.destinationFilename,
+                supportsCaseSensitiveNames: supportsCaseSensitiveNames
+            )
+            guard plannedDestinationNames.insert(destinationNameKey).inserted else {
                 return .failed(
                     index: index,
                     failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
@@ -446,6 +470,17 @@ public actor SafeFileCopyEngine: FileCopying {
             // Keep stale metadata. Startup recovery can discard a record when
             // neither staging nor final data exists.
         }
+    }
+
+    private static func destinationCollisionKey(
+        _ filename: String,
+        supportsCaseSensitiveNames: Bool
+    ) -> String {
+        let canonicallyNormalized = filename.precomposedStringWithCanonicalMapping
+        if supportsCaseSensitiveNames {
+            return canonicallyNormalized
+        }
+        return canonicallyNormalized.lowercased()
     }
 
     private static func failureReason(for error: Error) -> CopyItemFailure.Reason {
