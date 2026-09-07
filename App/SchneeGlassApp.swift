@@ -15,6 +15,9 @@ struct SchneeGlassApp: App {
             switch bootstrapState {
             case let .ready(model):
                 SchneeGlassWorkspaceView(model: model)
+                    .task {
+                        await model.restoreIfNeeded()
+                    }
 
             case .failed:
                 SchneeGlassBootstrapFailureView()
@@ -30,7 +33,7 @@ struct SchneeGlassApp: App {
                         }
                     }
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(model.isCreatingGlass)
+                    .disabled(model.isCreatingGlass || model.isRestoring)
                 }
             }
         }

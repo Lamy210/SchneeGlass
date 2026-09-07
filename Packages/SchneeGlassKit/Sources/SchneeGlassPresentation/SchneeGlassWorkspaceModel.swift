@@ -23,23 +23,75 @@ public struct GlassWorkspaceEntry: Identifiable, Hashable, Sendable {
 public final class SchneeGlassWorkspaceModel {
     public private(set) var glasses: [GlassWorkspaceEntry] = []
     public private(set) var isCreatingGlass = false
+    public private(set) var isRestoring = false
     public private(set) var userMessage: String?
 
     private let createGlassUseCase: CreateGlassUseCase
+    private let restoreApplicationUseCase: RestoreApplicationUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
+    private var didAttemptInitialRestore = false
 
     public init(
         createGlassUseCase: CreateGlassUseCase,
+        restoreApplicationUseCase: RestoreApplicationUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
         self.createGlassUseCase = createGlassUseCase
+        self.restoreApplicationUseCase = restoreApplicationUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
 
+    public func restoreIfNeeded() async {
+        guard !didAttemptInitialRestore else {
+            return
+        }
+
+        didAttemptInitialRestore = true
+        isRestoring = true
+        userMessage = nil
+        defer { isRestoring = false }
+
+        do {
+            let result = try await restoreApplicationUseCase.execute()
+
+            for failure in result.failures {
+                upsert(
+                    GlassWorkspaceEntry(
+                        id: failure.glassID,
+                        title: failure.title,
+                        contentState: Self.contentState(for: failure.reason)
+                    )
+                )
+            }
+
+            for seed in result.seeds {
+                do {
+                    try await activate(seed)
+                } catch {
+                    upsert(
+                        GlassWorkspaceEntry(
+                            id: seed.configuration.id,
+                            title: seed.configuration.title,
+                            contentState: .failed(.unexpected)
+                        )
+                    )
+                }
+            }
+
+            if result.refreshedConfigurationSavePending {
+                userMessage = "Some refreshed folder permissions could not be saved. Your current Glasses remain available for this session."
+            } else if !result.failures.isEmpty {
+                userMessage = "Some Glasses couldn't reconnect. Other Glasses were restored normally."
+            }
+        } catch {
+            userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
+        }
+    }
+
     public func addGlass() async {
-        guard !isCreatingGlass else {
+        guard !isCreatingGlass, !isRestoring else {
             return
         }
 
@@ -51,8 +103,31 @@ public final class SchneeGlassWorkspaceModel {
             guard let seed = try await createGlassUseCase.execute() else {
                 return
             }
+            try await activate(seed)
+        } catch {
+            userMessage = Self.userFacingMessage(for: error)
+        }
+    }
 
-            let session = runtimeSessionFactory.makeSession(from: seed)
+    public func dismissMessage() {
+        userMessage = nil
+    }
+
+    public func shutdown() async {
+        let activeSessions = Array(sessions.values)
+        stateTasks.values.forEach { $0.cancel() }
+        stateTasks.removeAll(keepingCapacity: false)
+        sessions.removeAll(keepingCapacity: false)
+
+        for session in activeSessions {
+            await session.stop()
+        }
+    }
+
+    private func activate(_ seed: CreatedGlassRuntimeSeed) async throws {
+        let session = runtimeSessionFactory.makeSession(from: seed)
+
+        do {
             let states = try await session.start()
             let glassID = seed.configuration.id
 
@@ -77,22 +152,8 @@ public final class SchneeGlassWorkspaceModel {
                 self?.sessions[glassID] = nil
             }
         } catch {
-            userMessage = Self.userFacingMessage(for: error)
-        }
-    }
-
-    public func dismissMessage() {
-        userMessage = nil
-    }
-
-    public func shutdown() async {
-        let activeSessions = Array(sessions.values)
-        stateTasks.values.forEach { $0.cancel() }
-        stateTasks.removeAll(keepingCapacity: false)
-        sessions.removeAll(keepingCapacity: false)
-
-        for session in activeSessions {
             await session.stop()
+            throw error
         }
     }
 
@@ -108,6 +169,31 @@ public final class SchneeGlassWorkspaceModel {
             glasses[index] = entry
         } else {
             glasses.append(entry)
+        }
+    }
+
+    private static func contentState(
+        for failure: GlassRestoreFailure.Reason
+    ) -> GlassContentState {
+        switch failure {
+        case let .folderAccess(accessError):
+            switch accessError {
+            case .bookmarkResolutionFailed:
+                return .unavailable(.bookmarkResolutionFailed)
+            case .accessDenied:
+                return .unavailable(.permissionLost)
+            case .resourceReplacementDetected:
+                return .unavailable(.replacementDetected)
+            }
+
+        case .eventStreamFailed:
+            return .failed(.unexpected)
+
+        case .snapshotFailed:
+            return .failed(.enumerationFailed)
+
+        case .invalidRefreshedConfiguration:
+            return .failed(.unexpected)
         }
     }
 
