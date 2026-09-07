@@ -72,29 +72,26 @@ Recovery、failure semantics、I/O competition、Test determinismを単純化す
 
 ---
 
-## DEBT-004 — macOS App Target未作成のBootstrap期間
+## Resolved Debt
 
-### Current
+### DEBT-004 — macOS App Target未作成のBootstrap期間
 
-SPM Package / Domain / Application / Test / CI Guardを先に構築し、Xcode App TargetはまだRepositoryへ追加していない。
+**Status: RESOLVED**
 
-### Reason
-
-この作業環境では実際のXcodeによるApp Target生成・`project.pbxproj` validationができないため、未検証pbxprojを手書きCommitしない。
-
-### Revisit Trigger
-
-Xcodeを利用可能なmacOS環境でBootstrapを継続するとき。
-
-### Exit Criteria
+解消内容:
 
 ```text
-Xcode App Target generated
-Debug build PASS
-Release build PASS
-Local SchneeGlassKit linkage PASS
-SchneeGlass.entitlements linkage PASS
+SchneeGlass.xcodeproj added
+Shared SchneeGlass scheme added
+Local SchneeGlassKit linkage validated
+macOS 15 Debug app build PASS
+macOS 26 / Xcode 26.6 Debug app build PASS
+macOS 26 / Xcode 26.6 Release app build PASS
+SchneeGlass.entitlements source validation PASS
+Unsigned CI app artifact generation PASS
 ```
+
+App Targetは推測上の未検証pbxprojとして残さず、GitHub-hosted macOS runner上の`xcodebuild`で継続検証する状態へ移行した。
 
 ---
 
