@@ -1,3 +1,4 @@
+import FileDomain
 import Foundation
 import SchneeGlassDomain
 
@@ -86,7 +87,7 @@ public final class CreateGlassUseCase {
                 throw CreateGlassError.eventStreamFailed
             }
 
-            let snapshot: FileDomain.FolderSnapshot
+            let snapshot: FolderSnapshot
             do {
                 snapshot = try await snapshotReader.snapshot(
                     for: acquisition.handle,
