@@ -46,6 +46,14 @@ final class SchneeGlassCompositionRoot {
             snapshotReader: snapshotReader
         )
 
+        let removeGlassUseCase = RemoveGlassUseCase(
+            configurationStore: configurationStore
+        )
+
+        let fileActionUseCase = WorkspaceFileActionUseCase(
+            actor: NSWorkspaceFileActionAdapter()
+        )
+
         let runtimeSessionFactory = GlassRuntimeSessionFactory(
             eventStreaming: eventHub,
             snapshotReader: snapshotReader,
@@ -56,6 +64,8 @@ final class SchneeGlassCompositionRoot {
             workspaceModel: SchneeGlassWorkspaceModel(
                 createGlassUseCase: createGlassUseCase,
                 restoreApplicationUseCase: restoreApplicationUseCase,
+                removeGlassUseCase: removeGlassUseCase,
+                fileActionUseCase: fileActionUseCase,
                 runtimeSessionFactory: runtimeSessionFactory
             )
         )
