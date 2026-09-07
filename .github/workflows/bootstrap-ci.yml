@@ -21,7 +21,6 @@ jobs:
     timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      CI_DERIVED_DATA: ${{ runner.temp }}/SchneeGlassDerivedData
 
     steps:
       - name: Checkout
@@ -60,7 +59,7 @@ jobs:
             -scheme SchneeGlass \
             -configuration Debug \
             -destination 'platform=macOS' \
-            -derivedDataPath "$CI_DERIVED_DATA" \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
@@ -72,14 +71,14 @@ jobs:
             -scheme SchneeGlass \
             -configuration Release \
             -destination 'platform=macOS' \
-            -derivedDataPath "$CI_DERIVED_DATA" \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
 
       - name: Verify app bundle and sandbox baseline
         run: |
-          APP="$CI_DERIVED_DATA/Build/Products/Release/SchneeGlass.app"
+          APP="$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
           test -d "$APP"
           test -f "$APP/Contents/MacOS/SchneeGlass"
           plutil -lint "$APP/Contents/Info.plist"
@@ -95,14 +94,14 @@ jobs:
 
       - name: Package unsigned CI app artifact
         run: |
-          APP="$CI_DERIVED_DATA/Build/Products/Release/SchneeGlass.app"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" "${{ runner.temp }}/SchneeGlass-unsigned-release.zip"
+          APP="$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" SchneeGlass-unsigned-release.zip
 
       - name: Upload unsigned CI app artifact
         uses: actions/upload-artifact@v4
         with:
           name: SchneeGlass-unsigned-macos-ci
-          path: ${{ runner.temp }}/SchneeGlass-unsigned-release.zip
+          path: SchneeGlass-unsigned-release.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -110,8 +109,6 @@ jobs:
     name: Compatibility / macOS 15 / App Build
     runs-on: macos-15
     timeout-minutes: 20
-    env:
-      CI_DERIVED_DATA: ${{ runner.temp }}/SchneeGlassDerivedData
 
     steps:
       - name: Checkout
@@ -133,7 +130,7 @@ jobs:
             -scheme SchneeGlass \
             -configuration Debug \
             -destination 'platform=macOS' \
-            -derivedDataPath "$CI_DERIVED_DATA" \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
