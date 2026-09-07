@@ -169,11 +169,13 @@ Domain同士を組み合わせるApplication ContractとUse Caseを配置しま�
 - Runtime session orchestration
 - Recovery orchestration
 - `FolderAccessHandle`
+- `FolderAccessAcquisition`
 - `AuthorizedCopyBatchRequest`
 - `CopyBatchResult`
 - `CopyProgress`
 - `GlassContentState`
 - `InteractionState`
+- `FileEvent`
 
 `GlassContentState` / `InteractionState` は `FileDomain` の型をassociated valueとして保持するため、循環依存を避ける目的で `SchneeGlassDomain` ではなくApplication Layerへ配置します。
 
@@ -212,11 +214,14 @@ Viewから禁止:
 
 ### 4.5 SchneeGlassFileSystemAdapter
 
-配置予定:
+Read Pathで実装済み:
 
 - `SecurityScopedAccessCoordinator`
 - `NativeFolderSnapshotReader`
 - `FileEventHub`
+
+Safe Copyで実装予定:
+
 - `SafeFileCopyEngine`
 - `InternalStagingCommitter`
 - `RecoveryMetadataStore`
@@ -284,7 +289,9 @@ FolderSource
    ↓
 FolderAccessControlling.acquire
    ↓
-FolderAccessHandle
+FolderAccessAcquisition
+   ├ FolderAccessHandle
+   └ refreshedSource?
    ↓
 Authorized operation
 ```
@@ -297,9 +304,43 @@ Acquire / Releaseは必ずbalanceさせます。
 
 Duplicate releaseはidempotentとし、二重 `stopAccessing...` は行いません。
 
+stale bookmarkをresolveした場合は`refreshedSource`を返し、Application/Persistence側で新しいBookmarkを永続化できるようにします。
+
+Fingerprintが利用可能で、保存済みFingerprintと現在のResourceが明確に異なる場合は、同じPathを別Resourceとして暗黙採用せず`resourceReplacementDetected`として扱います。
+
 ---
 
-## 7. File Mutation Boundary
+## 7. Folder Snapshot / File Classification
+
+Folder Snapshotは登録Folderの**直下1階層だけ**を列挙します。
+
+```text
+hidden files            → default skip
+subdirectory descendants → skip
+package descendants      → skip
+maximum displayed items  → 500
+```
+
+501件目を観測した時点で列挙を打ち切り、`isTruncated = true`を返します。
+
+File classificationはmacOS上の実挙動を考慮し、次の順序とします。
+
+```text
+1. Physical symbolic link (FileManager file attributes)
+2. Finder Alias
+3. Package
+4. Directory
+5. Regular File
+6. Unsupported
+```
+
+`URLResourceValues.isAliasFile`はsymlinkでもAlias相当として見える場合があるため、symlinkは物理File Attributeを先に確認します。
+
+Display NameからFilesystem Pathを再構築せず、操作には常に実URLを使用します。
+
+---
+
+## 8. File Mutation Boundary
 
 v0.1ではユーザー所有sourceに対して以下を禁止します。
 
@@ -326,7 +367,7 @@ CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceIte
 
 ---
 
-## 8. Copy PlanとAuthorized Executionの分離
+## 9. Copy PlanとAuthorized Executionの分離
 
 循環依存とSecurity Context漏洩を防ぐため、Copyを2段階に分離します。
 
@@ -350,7 +391,7 @@ AuthorizedCopyBatchRequest
 
 ---
 
-## 9. Copy Semantics
+## 10. Copy Semantics
 
 v0.1はSequential Copyです。
 
@@ -375,7 +416,7 @@ A/Bの成功済みCopyを自動削除してrollbackしてはいけません。
 
 ---
 
-## 10. FSEvents
+## 11. FSEvents
 
 FSEventsはauthoritative stateとして扱いません。
 
@@ -383,7 +424,22 @@ FSEventsはauthoritative stateとして扱いません。
 event = "何かが変化した可能性がある"
 ```
 
-必ずdirect-child snapshotを再取得します。
+Applicationへ渡すEventも、Path差分ではなく次の意味だけを持ちます。
+
+```text
+FileEvent.changed
+  → 通常変更。Snapshot refreshが必要
+
+FileEvent.requiresFullRescan
+  → MustScanSubDirs / KernelDropped / UserDropped
+  → Incremental assumptionを捨ててFull direct-child snapshot
+
+FileEvent.rootChanged
+  → watched root自体のMove/Delete/Identity変化
+  → Access/Identityを再検証してから表示
+```
+
+`rootChanged`は同一Eventにdrop flagが含まれていても優先します。
 
 Startup順序:
 
@@ -398,11 +454,13 @@ Startup順序:
 8. Steady state
 ```
 
-`MustScanSubDirs` / dropped events / root change相当時はfull direct-child rescanとします。
+`FileEventHub`は`WatchRoot` + `FileEvents`を使用しますが、個別Path EventをDomain上のauthoritative diffとして公開しません。
+
+Integration TestではEvent件数をassertせず、実Temporary Folderへ変更を加え、eventual notificationを確認します。
 
 ---
 
-## 11. Persistence / Recovery
+## 12. Persistence / Recovery
 
 v0.1は `Codable JSON` を使用します。
 
@@ -425,7 +483,7 @@ Application Support/<bundle-id>/
 
 ---
 
-## 12. Windowing
+## 13. Windowing
 
 v0.1:
 
@@ -440,7 +498,7 @@ v0.1:
 
 ---
 
-## 13. Architecture Enforcement
+## 14. Architecture Enforcement
 
 CIで最低限以下を検出します。
 
@@ -457,7 +515,7 @@ Architectureは文書だけでなくCompiler/CIで強制します。
 
 ---
 
-## 14. Bootstrap方針
+## 15. Bootstrap / CI方針
 
 初期段階ではAdapterにFakeの実装を詰め込みません。
 
@@ -475,6 +533,20 @@ Tests
 Safety/Architecture CI guards
 ↓
 Concrete macOS adapters
+```
+
+CIは2つのToolchain役割を分離します。
+
+```text
+Compatibility
+  → macOS 15 runner
+  → Deployment Target下限側の互換性確認
+
+Canonical
+  → macOS 26 runner
+  → Xcode 26.6 / Swift 6.3
+  → Architecture / Safety / Public Repo Guards
+  → Full Swift Package Tests
 ```
 
 Concrete implementationの都合でDomain/Dependency方向を変更してはいけません。
