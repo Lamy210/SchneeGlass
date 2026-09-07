@@ -17,6 +17,7 @@ public struct PendingCopyRecord: Codable, Hashable, Sendable, Identifiable {
     public let stagingFilename: String
     public let finalFilename: String
     public let expectedSize: Int64?
+    public let stagingResourceIdentifier: String?
     public let createdAt: Date
     public let state: PendingCopyState
 
@@ -27,6 +28,7 @@ public struct PendingCopyRecord: Codable, Hashable, Sendable, Identifiable {
         stagingFilename: String,
         finalFilename: String,
         expectedSize: Int64?,
+        stagingResourceIdentifier: String? = nil,
         createdAt: Date = Date(),
         state: PendingCopyState
     ) {
@@ -36,6 +38,7 @@ public struct PendingCopyRecord: Codable, Hashable, Sendable, Identifiable {
         self.stagingFilename = stagingFilename
         self.finalFilename = finalFilename
         self.expectedSize = expectedSize
+        self.stagingResourceIdentifier = stagingResourceIdentifier
         self.createdAt = createdAt
         self.state = state
     }
@@ -48,6 +51,23 @@ public struct PendingCopyRecord: Codable, Hashable, Sendable, Identifiable {
             stagingFilename: stagingFilename,
             finalFilename: finalFilename,
             expectedSize: expectedSize,
+            stagingResourceIdentifier: stagingResourceIdentifier,
+            createdAt: createdAt,
+            state: state
+        )
+    }
+
+    public func recordingStagingResourceIdentifier(
+        _ resourceIdentifier: String?
+    ) -> PendingCopyRecord {
+        PendingCopyRecord(
+            operationID: operationID,
+            batchID: batchID,
+            destinationGlassID: destinationGlassID,
+            stagingFilename: stagingFilename,
+            finalFilename: finalFilename,
+            expectedSize: expectedSize,
+            stagingResourceIdentifier: resourceIdentifier,
             createdAt: createdAt,
             state: state
         )
