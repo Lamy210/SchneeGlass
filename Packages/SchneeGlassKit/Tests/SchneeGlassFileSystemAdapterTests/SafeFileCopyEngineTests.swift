@@ -244,7 +244,7 @@ func midBatchFailureKeepsEarlierSuccessAndDoesNotRollback() async throws {
     let result = await engine.copy(request)
     let firstFinal = destination.appendingPathComponent("first-success.txt")
     let firstExists = await environment.exists(firstFinal)
-    let firstSourceStillExists = await environment.sourceMetadata(at: first)
+    let firstSourceStillExists = try await environment.sourceMetadata(at: first)
     let pending = try await recovery.records()
 
     #expect(result.succeeded.map(\.operationID) == [request.plan.items[0].operationID])
