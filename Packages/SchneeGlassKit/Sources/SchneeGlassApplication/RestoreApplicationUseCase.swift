@@ -12,11 +12,21 @@ public struct GlassRestoreFailure: Hashable, Sendable {
 
     public let glassID: GlassID
     public let title: String
+    public let placement: GlassPlacement
+    public let showOnAllSpaces: Bool
     public let reason: Reason
 
-    public init(glassID: GlassID, title: String, reason: Reason) {
+    public init(
+        glassID: GlassID,
+        title: String,
+        placement: GlassPlacement,
+        showOnAllSpaces: Bool,
+        reason: Reason
+    ) {
         self.glassID = glassID
         self.title = title
+        self.placement = placement
+        self.showOnAllSpaces = showOnAllSpaces
         self.reason = reason
     }
 }
@@ -88,19 +98,12 @@ public actor RestoreApplicationUseCase {
                     glassID: configuration.id
                 )
             } catch let error as FolderAccessError {
-                failures.append(
-                    GlassRestoreFailure(
-                        glassID: configuration.id,
-                        title: configuration.title,
-                        reason: .folderAccess(error)
-                    )
-                )
+                failures.append(Self.failure(for: configuration, reason: .folderAccess(error)))
                 continue
             } catch {
                 failures.append(
-                    GlassRestoreFailure(
-                        glassID: configuration.id,
-                        title: configuration.title,
+                    Self.failure(
+                        for: configuration,
                         reason: .folderAccess(.bookmarkResolutionFailed)
                     )
                 )
@@ -112,13 +115,7 @@ public actor RestoreApplicationUseCase {
                 subscription = try await eventStreaming.subscribe(for: acquisition.handle)
             } catch {
                 await accessController.release(handleID: acquisition.handle.id)
-                failures.append(
-                    GlassRestoreFailure(
-                        glassID: configuration.id,
-                        title: configuration.title,
-                        reason: .eventStreamFailed
-                    )
-                )
+                failures.append(Self.failure(for: configuration, reason: .eventStreamFailed))
                 continue
             }
 
@@ -131,13 +128,7 @@ public actor RestoreApplicationUseCase {
             } catch {
                 await eventStreaming.stop(subscriptionID: subscription.id)
                 await accessController.release(handleID: acquisition.handle.id)
-                failures.append(
-                    GlassRestoreFailure(
-                        glassID: configuration.id,
-                        title: configuration.title,
-                        reason: .snapshotFailed
-                    )
-                )
+                failures.append(Self.failure(for: configuration, reason: .snapshotFailed))
                 continue
             }
 
@@ -158,9 +149,8 @@ public actor RestoreApplicationUseCase {
                     await eventStreaming.stop(subscriptionID: subscription.id)
                     await accessController.release(handleID: acquisition.handle.id)
                     failures.append(
-                        GlassRestoreFailure(
-                            glassID: configuration.id,
-                            title: configuration.title,
+                        Self.failure(
+                            for: configuration,
                             reason: .invalidRefreshedConfiguration
                         )
                     )
@@ -191,6 +181,19 @@ public actor RestoreApplicationUseCase {
             seeds: seeds,
             failures: failures,
             refreshedConfigurationSavePending: refreshedConfigurationSavePending
+        )
+    }
+
+    private static func failure(
+        for configuration: GlassConfiguration,
+        reason: GlassRestoreFailure.Reason
+    ) -> GlassRestoreFailure {
+        GlassRestoreFailure(
+            glassID: configuration.id,
+            title: configuration.title,
+            placement: configuration.placement,
+            showOnAllSpaces: configuration.showOnAllSpaces,
+            reason: reason
         )
     }
 }
