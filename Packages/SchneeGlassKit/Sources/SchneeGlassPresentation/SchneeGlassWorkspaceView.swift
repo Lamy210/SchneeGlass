@@ -57,7 +57,7 @@ public struct SchneeGlassWorkspaceView: View {
                     Label("Add Glass", systemImage: "plus")
                 }
             }
-            .disabled(model.isCreatingGlass || model.isRestoring)
+            .disabled(model.isMutatingConfiguration)
             .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add Glass")
         }
@@ -78,6 +78,7 @@ public struct SchneeGlassWorkspaceView: View {
                     ForEach(model.glasses) { entry in
                         GlassPreviewSurface(
                             entry: entry,
+                            canRemove: !model.isMutatingConfiguration,
                             onOpen: model.open,
                             onReveal: model.revealInFinder,
                             onRemove: {
@@ -125,7 +126,7 @@ public struct SchneeGlassWorkspaceView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.isCreatingGlass)
+                .disabled(model.isMutatingConfiguration)
             }
 
             if let message = model.userMessage {
@@ -163,6 +164,7 @@ public struct SchneeGlassWorkspaceView: View {
 
 private struct GlassPreviewSurface: View {
     let entry: GlassWorkspaceEntry
+    let canRemove: Bool
     let onOpen: (GlassItem) -> Void
     let onReveal: (GlassItem) -> Void
     let onRemove: () -> Void
@@ -184,6 +186,7 @@ private struct GlassPreviewSurface: View {
                     Button("Remove Glass…", role: .destructive) {
                         showsRemoveConfirmation = true
                     }
+                    .disabled(!canRemove)
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 24, height: 24)
