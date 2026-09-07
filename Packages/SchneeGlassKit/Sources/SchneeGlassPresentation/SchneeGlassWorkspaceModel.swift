@@ -1,3 +1,4 @@
+import FileDomain
 import Observation
 import SchneeGlassApplication
 import SchneeGlassDomain
@@ -28,6 +29,8 @@ public final class SchneeGlassWorkspaceModel {
 
     private let createGlassUseCase: CreateGlassUseCase
     private let restoreApplicationUseCase: RestoreApplicationUseCase
+    private let removeGlassUseCase: RemoveGlassUseCase
+    private let fileActionUseCase: WorkspaceFileActionUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
@@ -36,10 +39,14 @@ public final class SchneeGlassWorkspaceModel {
     public init(
         createGlassUseCase: CreateGlassUseCase,
         restoreApplicationUseCase: RestoreApplicationUseCase,
+        removeGlassUseCase: RemoveGlassUseCase,
+        fileActionUseCase: WorkspaceFileActionUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
         self.createGlassUseCase = createGlassUseCase
         self.restoreApplicationUseCase = restoreApplicationUseCase
+        self.removeGlassUseCase = removeGlassUseCase
+        self.fileActionUseCase = fileActionUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
 
@@ -107,6 +114,43 @@ public final class SchneeGlassWorkspaceModel {
         } catch {
             userMessage = Self.userFacingMessage(for: error)
         }
+    }
+
+    public func removeGlass(id: GlassID) async {
+        guard !isCreatingGlass, !isRestoring else {
+            return
+        }
+
+        do {
+            let removed = try await removeGlassUseCase.execute(glassID: id)
+            guard removed else {
+                return
+            }
+
+            stateTasks[id]?.cancel()
+            stateTasks[id] = nil
+
+            if let session = sessions.removeValue(forKey: id) {
+                await session.stop()
+            }
+
+            glasses.removeAll { $0.id == id }
+            userMessage = nil
+        } catch {
+            userMessage = "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+        }
+    }
+
+    public func open(_ item: GlassItem) {
+        do {
+            try fileActionUseCase.open(item)
+        } catch {
+            userMessage = "macOS couldn't open \(item.displayName)."
+        }
+    }
+
+    public func revealInFinder(_ item: GlassItem) {
+        fileActionUseCase.reveal(item)
     }
 
     public func dismissMessage() {
