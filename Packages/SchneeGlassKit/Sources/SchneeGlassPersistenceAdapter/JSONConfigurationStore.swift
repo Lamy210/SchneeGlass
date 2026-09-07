@@ -40,12 +40,8 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
         self.encoder = encoder
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        self.decoder = decoder
+        self.decoder = JSONDecoder()
     }
 
     public func load() async throws -> [GlassConfiguration] {
