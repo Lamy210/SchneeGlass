@@ -9,12 +9,14 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* SchneeGlassApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* SchneeGlassApp.swift */; };
 		A10000000000000000000002 /* SchneeGlassKit in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* SchneeGlassKit */; };
+		A10000000000000000000003 /* CompositionRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* CompositionRoot.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A20000000000000000000001 /* SchneeGlassApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchneeGlassApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* SchneeGlass.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SchneeGlass.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000003 /* SchneeGlass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SchneeGlass.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000004 /* CompositionRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositionRoot.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -42,6 +44,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* SchneeGlassApp.swift */,
+				A20000000000000000000004 /* CompositionRoot.swift */,
 				A20000000000000000000002 /* SchneeGlass.entitlements */,
 			);
 			path = App;
@@ -137,6 +140,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* SchneeGlassApp.swift in Sources */,
+				A10000000000000000000003 /* CompositionRoot.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

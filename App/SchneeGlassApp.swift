@@ -1,11 +1,38 @@
-import SwiftUI
 import SchneeGlassPresentation
+import SwiftUI
 
 @main
+@MainActor
 struct SchneeGlassApp: App {
+    private let bootstrapState: SchneeGlassBootstrapState
+
+    init() {
+        self.bootstrapState = SchneeGlassBootstrapState.resolve()
+    }
+
     var body: some Scene {
         WindowGroup {
-            SchneeGlassBootstrapView()
+            switch bootstrapState {
+            case let .ready(model):
+                SchneeGlassWorkspaceView(model: model)
+
+            case .failed:
+                SchneeGlassBootstrapFailureView()
+            }
+        }
+        .defaultSize(width: 720, height: 560)
+        .commands {
+            if case let .ready(model) = bootstrapState {
+                CommandGroup(after: .newItem) {
+                    Button("Add Glass") {
+                        Task {
+                            await model.addGlass()
+                        }
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(model.isCreatingGlass)
+                }
+            }
         }
 
         Settings {
@@ -14,20 +41,24 @@ struct SchneeGlassApp: App {
     }
 }
 
-private struct SchneeGlassBootstrapView: View {
+private struct SchneeGlassBootstrapFailureView: View {
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "snowflake")
-                .font(.system(size: 44, weight: .medium))
+        VStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 38, weight: .regular))
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            Text("SchneeGlass")
-                .font(.title2.weight(.semibold))
+            Text("SchneeGlass couldn't start")
+                .font(.title3.weight(.semibold))
 
-            Text("macOS desktop file workspace")
+            Text("The application support location could not be prepared. No folders or files were changed.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
         }
-        .frame(minWidth: 360, minHeight: 240)
+        .frame(minWidth: 520, minHeight: 360)
         .padding(24)
     }
 }
@@ -36,12 +67,12 @@ private struct SchneeGlassSettingsBootstrapView: View {
     var body: some View {
         Form {
             Section("SchneeGlass") {
-                Text("Settings will be connected to the application layer in a later task.")
+                Text("Settings and Recovery controls will be connected as the next v0.1 slices are completed.")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420)
+        .frame(width: 440)
         .padding()
     }
 }
