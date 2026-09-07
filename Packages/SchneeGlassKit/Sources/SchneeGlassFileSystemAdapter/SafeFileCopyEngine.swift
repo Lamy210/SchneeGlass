@@ -42,21 +42,10 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         }
 
         do {
-            let attributes = try fileManager.attributesOfItem(atPath: sourceURL.path)
-            let resourceValues = try sourceURL.resourceValues(forKeys: [
-                .isAliasFileKey,
-                .isPackageKey,
-            ])
-
-            guard attributes[.type] as? FileAttributeType == .typeRegular,
-                  resourceValues.isAliasFile != true,
-                  resourceValues.isPackage != true
-            else {
-                throw CopyFileSystemError.unsupportedItem
-            }
-
-            let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            return CopySourceMetadata(size: size)
+            return try Self.readRegularSourceMetadata(
+                at: sourceURL,
+                fileManager: fileManager
+            )
         } catch let error as CopyFileSystemError {
             throw error
         } catch {
@@ -107,6 +96,10 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             let coordinatedStaging = coordinatedDirectory
                 .appendingPathComponent(staging.lastPathComponent, isDirectory: false)
             do {
+                _ = try Self.readRegularSourceMetadata(
+                    at: coordinatedSource,
+                    fileManager: fileManager
+                )
                 try fileManager.copyItem(at: coordinatedSource, to: coordinatedStaging)
             } catch {
                 operationError = error
@@ -114,6 +107,9 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         }
 
         if let operationError {
+            if let copyError = operationError as? CopyFileSystemError {
+                throw copyError
+            }
             throw Self.map(operationError)
         }
         if let coordinationError {
@@ -135,6 +131,28 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         }
     }
 
+    private static func readRegularSourceMetadata(
+        at url: URL,
+        fileManager: FileManager
+    ) throws -> CopySourceMetadata {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        let resourceValues = try url.resourceValues(forKeys: [
+            .isAliasFileKey,
+            .isPackageKey,
+        ])
+
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              resourceValues.isAliasFile != true,
+              resourceValues.isPackage != true
+        else {
+            throw CopyFileSystemError.unsupportedItem
+        }
+
+        return CopySourceMetadata(
+            size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        )
+    }
+
     private static func map(_ error: Error) -> CopyFileSystemError {
         let cocoa = error as NSError
         guard cocoa.domain == NSCocoaErrorDomain else {
@@ -147,6 +165,8 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             return .permissionDenied
         case CocoaError.Code.fileWriteOutOfSpace.rawValue:
             return .insufficientSpace
+        case CocoaError.Code.fileWriteFileExists.rawValue:
+            return .collision
         case CocoaError.Code.fileNoSuchFile.rawValue,
              CocoaError.Code.fileReadNoSuchFile.rawValue:
             return .sourceUnavailable
