@@ -293,7 +293,9 @@ public actor SafeFileCopyEngine: FileCopying {
                 )
             }
 
-            if await fileSystem.itemExists(at: finalURL) || await fileSystem.itemExists(at: stagingURL) {
+            let finalExists = await fileSystem.itemExists(at: finalURL)
+            let stagingExists = await fileSystem.itemExists(at: stagingURL)
+            if finalExists || stagingExists {
                 return .failed(
                     index: index,
                     failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
