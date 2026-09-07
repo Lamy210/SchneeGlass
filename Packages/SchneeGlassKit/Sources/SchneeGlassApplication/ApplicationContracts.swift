@@ -21,6 +21,22 @@ public struct FolderAccessHandle: Hashable, Sendable {
     }
 }
 
+public struct FolderAccessAcquisition: Hashable, Sendable {
+    public let handle: FolderAccessHandle
+    public let refreshedSource: FolderSource?
+
+    public init(handle: FolderAccessHandle, refreshedSource: FolderSource? = nil) {
+        self.handle = handle
+        self.refreshedSource = refreshedSource
+    }
+}
+
+public enum FolderAccessError: Error, Hashable, Sendable {
+    case bookmarkResolutionFailed
+    case accessDenied
+    case resourceReplacementDetected
+}
+
 public struct AuthorizedCopyBatchRequest: Hashable, Sendable {
     public let plan: CopyBatchPlan
     public let destinationAccess: FolderAccessHandle
@@ -139,7 +155,7 @@ public protocol FolderSnapshotReading: Sendable {
 }
 
 public protocol FolderAccessControlling: Sendable {
-    func acquire(source: FolderSource, glassID: GlassID) async throws -> FolderAccessHandle
+    func acquire(source: FolderSource, glassID: GlassID) async throws -> FolderAccessAcquisition
     func release(handleID: UUID) async
 }
 
