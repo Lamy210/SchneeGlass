@@ -1,18 +1,23 @@
 # SchneeGlass Testing Strategy
 
-## 1. 方針
+SchneeGlass はファイルを扱うため、テストを「実装後の確認」ではなく Architecture の一部として扱います。
 
-Test coverage percentage より、壊してはいけない Invariant を優先します。
+## 1. 最優先Invariant
 
-Release-critical invariants:
+```text
+Source file loss = 0
+Silent overwrite = 0
+User-owned Move/Rename/Delete = 0
+Unknown partial auto-delete = 0
+Security scope leak = 0
+UI -> concrete filesystem mutation adapter = 0
+```
 
-1. Copy failure で source が変更されない
-2. Existing destination を暗黙 overwrite しない
-3. v0.1 で user-owned Move/Delete/Rename/Replace をしない
-4. Unknown partial を自動削除しない
-5. Permission failure を Empty と表示しない
-6. Config corruption から Recovery 可能
-7. UI が filesystem mutation adapter に直接依存しない
+Coverage率だけではRelease可否を決めません。
+
+Critical scenario coverageを優先します。
+
+---
 
 ## 2. Test Categories
 
@@ -28,80 +33,87 @@ Performance
 ReleaseArtifact
 ```
 
-優先順位:
+Priority:
 
 ```text
 FileSafety
-> Recovery
-> Architecture
-> Domain
-> Integration
-> UI
+>
+Recovery
+>
+Architecture
+>
+Domain
+>
+Integration
+>
+UI
 ```
 
-## 3. Libraries / Tools
+---
 
-- Swift Testing
-- XCTest / XCUITest
-- SnapshotTesting (test-only)
-- swift-clocks (test-only)
-- swift-format
-- SwiftLint
-- Periphery
-- CodeQL
-- Address Sanitizer
-- Thread Sanitizer
-- Main Thread Checker
+## 3. Bootstrap Test
 
-Runtime binary に test-only dependency を持ち込みません。
+現在のBootstrapでは `Packages/SchneeGlassKit` に対してSwift Testingを使用します。
 
-## 4. Test Plans
+初期Test対象:
 
-### Fast — every PR
+- `GlassConfiguration` title invariant
+- `GlassPlacement` minimum size invariant
+- Codable decode経由でもInvariantが維持されること
+- `FileKind` contract
+- `FileIdentity` URL normalization
+- Batch Copyのpartial-success result contract
 
-- Build
-- Format
-- Lint
-- Domain Unit
-- Application Unit
-- Architecture rules
+実行:
 
-### Safety — every PR
+```bash
+swift test --package-path Packages/SchneeGlassKit
+```
 
-- FileSafety
-- Recovery
-- Configuration
-- Fault injection
+---
 
-### Integration — main
+## 4. CI Safety Guards
 
-- Security-scoped access
-- FSEvents
-- File coordination
-- Window/AppKit integration
+Bootstrap CIでは次を必須とします。
 
-### Diagnostics — nightly/release
+```text
+Scripts/verify-public-repo.sh
+Scripts/verify-architecture.sh
+Scripts/verify-file-safety.sh
+swift test --package-path Packages/SchneeGlassKit
+```
 
-- ASan
-- TSan
-- Main Thread Checker
-- Periphery
-- CodeQL
+### Public Repository Guard
 
-### Release
+検出対象:
 
-- Critical suites
-- Release build
-- codesign verification
-- entitlement verification
-- notarization verification
-- smoke launch
+- credential-like tracked file
+- private-key marker
+- high-confidence GitHub token pattern
 
-## 5. Filesystem Test Isolation
+これはGitHub Secret Scanning等を置き換えるものではなく、Repository内の第一防衛線です。
 
-実ユーザーフォルダを Test に使用しません。
+### Architecture Guard
 
-各 Test は独自 root を持ちます。
+検出対象:
+
+- Domain → SwiftUI/AppKit/CoreServices/GRDB import
+- Presentation → FileSystem/Persistence Concrete Adapter import
+- Private CGS symbol
+- 無承認`@unchecked Sendable`
+- Swift source内のIssue番号なしTODO/FIXME
+
+### File Safety Guard
+
+`removeItem` / `moveItem` / `replaceItem` 相当APIの利用場所を検査します。
+
+v0.1で許可予定のinternal moveは、Glass-owned staging fileのfinal commitに限定し、`InternalStagingCommitter.swift` だけをallowlistにします。
+
+---
+
+## 5. FileSafety Tests — 実装フェーズ
+
+実Filesystem用Test root:
 
 ```text
 /tmp/SchneeGlassTests/<UUID>/
@@ -110,9 +122,31 @@ Runtime binary に test-only dependency を持ち込みません。
 └ unrelated/
 ```
 
+各Testは独立したUUID rootを使用します。
+
+実ユーザーFolderや会社FolderをFixtureに使用してはいけません。
+
+主要Case:
+
+- normal regular-file copy
+- collision
+- same-directory no-op
+- folder/package/symlink reject
+- multi-file preflight failure
+- disk full fault injection
+- source disappears
+- destination disappears
+- commit collision race
+- partial recovery
+- unknown `.glass-*` safety
+
+---
+
 ## 6. Fault Injection
 
-`FaultInjectingFileSystem` test adapter で最低限次を再現します。
+Test Adapterとして `FaultInjectingFileSystem` を導入予定です。
+
+Fault:
 
 ```text
 permissionDenied
@@ -124,81 +158,115 @@ cancelled
 unexpectedIO
 ```
 
-Fake adapter のみで完結せず、Foundation/FileManager を使った real filesystem integration test も実施します。
+Fakeのみでは不十分です。
 
-## 7. Critical Scenarios
+Foundation/FileManager/NSFileCoordinatorを使用したIntegration Testも実施します。
 
-### Copy
+---
 
-- Regular file success
-- Collision preflight
-- Same-directory no-op
-- Folder/package/symlink rejection
-- Multi-file success
-- Batch deterministic rejection → 0 copied
-- Runtime failure mid-batch → previous success retained, remaining not attempted
-- Disk full
-- Source disappears
-- Destination disappears
-- Commit collision race
+## 7. Recovery Tests
 
-### Recovery
-
-- Recovery metadata + partial
-- Recovery metadata + final
-- Unknown `.glass-*` file
-- Config corruption
-- All backups corrupt
-- Backup rotation
-- Startup crash marker
-- Safe Mode
-
-### Security Scope
-
-- Acquire / release balance
-- Duplicate release
-- Stale bookmark refresh
-- Bookmark resolution failure
-
-### FSEvents
-
-- Initial snapshot race
-- Event burst
-- dropped events / root change
-- Final filesystem state equality (event count は assert しない)
-
-### UI / Accessibility
-
-- Light / Dark
-- Reduce Transparency
-- Reduce Motion
-- Long filename
-- Empty / unavailable / failure
-
-## 8. Architecture Tests
-
-CI は最低限以下を reject します。
+対象:
 
 ```text
-SchneeGlassDomain imports SwiftUI/AppKit
-FileDomain imports SwiftUI
-SchneeGlassPresentation imports concrete filesystem/persistence adapter
-Private CGS symbols
-Filesystem mutation APIs outside allowlist
-Bare TODO/FIXME
-Unapproved @unchecked Sendable
+config corruption
+backup rotation
+all backups corrupt
+stale bookmark
+bookmark failure
+duplicate security-scope release
+startup crash marker
+safe mode
+offscreen window
+pending copy metadata
+ambiguous partial
 ```
 
-## 9. Coverage
+Recovery testではUser fileを自動削除しないことも確認します。
 
-Coverage は補助指標です。
+---
 
-推奨目標:
+## 8. FSEvents Tests
 
-- Domain / DropPlanner: 90–95%+
-- Recovery: 90%+
-- FileOperations: 85%+
-- Presentation: 80% 前後
-- UI rendering: percentage gate なし
+Event件数をassertしません。
 
-Critical path は coverage 率ではなく scenario completeness で release 判定します。
+検証対象は最終observable stateです。
+
+```text
+Filesystem change
+↓
+eventually
+↓
+FolderSnapshot == final filesystem state
+```
+
+Startup snapshot中のeventを取りこぼさないTestも必須です。
+
+---
+
+## 9. Test-only Dependencies
+
+予定:
+
+```text
+SnapshotTesting
+swift-clocks
+```
+
+Runtime BinaryへTest dependencyを持ち込みません。
+
+---
+
+## 10. Full CI Roadmap
+
+### PR
+
+```text
+Build
+swift-format
+SwiftLint
+Unit
+Architecture
+FileSafety
+Recovery
+```
+
+### Main
+
+```text
+Integration
+Snapshot
+Periphery
+```
+
+### Nightly
+
+```text
+ASan
+TSan
+Main Thread Checker
+CodeQL
+Performance
+```
+
+### Release
+
+```text
+All critical tests
+Release build
+codesign verify
+notarization verify
+staple verify
+entitlement verify
+smoke launch
+```
+
+---
+
+## 11. Release原則
+
+Safety TestをskipしてGreenにすることは禁止します。
+
+Snapshotの1px差よりFile Safety failureを重大として扱います。
+
+Source codeだけでなく、最終的にユーザーがDownloadするRelease Artifactまで検証します。
