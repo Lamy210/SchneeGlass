@@ -150,6 +150,20 @@ public enum InteractionState: Hashable, Sendable {
     case copying(CopyProgress)
 }
 
+public enum FileEvent: Hashable, Sendable {
+    /// A filesystem change occurred. The consumer must refresh from a snapshot
+    /// rather than treating this event as an authoritative diff.
+    case changed
+
+    /// FSEvents reported dropped/coalesced history. The consumer must perform
+    /// a full direct-child snapshot and discard incremental assumptions.
+    case requiresFullRescan
+
+    /// The watched root itself moved, disappeared, or otherwise changed identity.
+    /// The consumer must revalidate access before presenting folder contents.
+    case rootChanged
+}
+
 public protocol FolderSnapshotReading: Sendable {
     func snapshot(for access: FolderAccessHandle, generation: UInt64) async throws -> FolderSnapshot
 }
@@ -169,7 +183,7 @@ public protocol ConfigurationPersisting: Sendable {
 }
 
 public protocol FileEventStreaming: Sendable {
-    func events(for access: FolderAccessHandle) async throws -> AsyncStream<Void>
+    func events(for access: FolderAccessHandle) async throws -> AsyncStream<FileEvent>
 }
 
 public protocol WindowControlling: Sendable {
