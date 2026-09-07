@@ -1,66 +1,127 @@
 # SchneeGlass
 
-SchneeGlass は、任意の実フォルダを macOS デスクトップ上に軽量な「Glass」として配置し、Finder を開かずにファイルへアクセスできるネイティブ macOS アプリを目指すプロジェクトです。
+> 好きなフォルダを、Macのデスクトップ上にGlassとして置く。
 
-> **Open. Local. Reversible.**
->
-> SchneeGlass はユーザーのファイルを所有しません。Filesystem を Source of Truth とし、アプリを削除しても通常の Finder から同じファイルを使い続けられることを最重要原則とします。
+SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量な半透明Surfaceとして配置し、Finderを開かずにファイルへ触れられるようにするネイティブmacOSアプリです。
 
-## 現在のステータス
+## Status
 
-**v0.1 設計・Bootstrap 段階**です。現時点では production-ready なバイナリは提供していません。
+**v0.1 Bootstrap / Architecture phase**
 
-v0.1 は意図的に non-destructive とし、regular file の **Copy のみ**を対象にします。
+現在は、実装開始前提となるArchitecture・File Safety・Recovery・SPM Module Boundary・初期Domain Contract・CI Guardを構築しています。
 
-### v0.1 で行わないこと
+現時点で入っているもの:
 
-- ユーザー所有ファイルの Move / Rename / Delete / Replace
-- 既存ファイルへの暗黙的 Overwrite
-- Folder の再帰 Copy
-- Network destination への Write
-- Runtime AI / Cloud backend
-- Full Disk Access / Accessibility permission の要求
-- Private macOS API の利用
+- `Packages/SchneeGlassKit`
+  - Swift 6
+  - macOS 15+
+  - Compile-time target boundaries
+- Initial Domain / Application contracts
+- Swift Testing bootstrap tests
+- App Sandbox entitlement baseline
+- Architecture guard
+- File mutation allowlist guard
+- Public repository safety guard
+- GitHub Actions bootstrap CI
 
-## 技術方針
+macOS App target自体は、利用可能なXcode環境で生成・検証後に追加します。未検証の`project.pbxproj`を手書きでCommitしません。
 
-- Native macOS
-- Swift 6 language mode
-- SwiftUI + AppKit hybrid
-- App Sandbox
-- Security-Scoped Bookmark
-- FSEvents
-- NSFileCoordinator
-- Swift Concurrency / Actor isolation
-- Swift Package Manager only
+## Product Promise
 
-Runtime の外部依存は原則最小化し、v0.1 では `KeyboardShortcuts` と `swift-async-algorithms` のみを初期候補とします。
+SchneeGlass v0.1 は意図的に **non-destructive** です。
 
-## ドキュメント
+```text
+User-owned source Move      = 0
+User-owned source Rename    = 0
+User-owned source Delete    = 0
+Silent overwrite            = 0
+Unknown partial auto-delete = 0
+```
+
+v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commitに限定します。
+
+## Architecture
+
+```text
+SchneeGlassDomain
+FileDomain
+SchneeGlassApplication
+SchneeGlassPresentation
+SchneeGlassDesignSystem
+SchneeGlassFileSystemAdapter
+SchneeGlassPersistenceAdapter
+SchneeGlassMacOSAdapter
+```
+
+詳細は [`ARCHITECTURE.md`](ARCHITECTURE.md) を参照してください。
+
+## Public Repository Safety
+
+このRepositoryはPublicです。
+
+Commitしてはいけないもの:
+
+- API Key / Token / Secret
+- Private Key / Signing material
+- `.env`
+- Security-scoped Bookmark raw data
+- 実在する会社・顧客の内部情報
+- 個人・会社環境の絶対Pathを含むFixture
+- private diagnostics dump
+
+Sample/Test dataには架空値だけを使用します。
+
+詳細は [`SECURITY.md`](SECURITY.md) と [`AGENTS.md`](AGENTS.md) を参照してください。
+
+## Bootstrap Test
+
+```bash
+swift test --package-path Packages/SchneeGlassKit
+bash Scripts/verify-public-repo.sh
+bash Scripts/verify-architecture.sh
+bash Scripts/verify-file-safety.sh
+```
+
+## Documentation
 
 - [Architecture](ARCHITECTURE.md)
 - [Testing](TESTING.md)
 - [Security](SECURITY.md)
 - [Dependencies](DEPENDENCIES.md)
+- [Agent Rules](AGENTS.md)
 - [Technical Debt](TECH_DEBT.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
-- [ADR](docs/adr/)
 
-## 最重要 Invariants
+## v0.1 Scope
 
-1. Filesystem is the source of truth.
-2. UI never mutates the filesystem.
-3. v0.1 ではユーザー所有ファイルを Move / Rename / Delete / Replace しない。
-4. 既存 destination を暗黙的に上書きしない。
-5. Security-scoped access は必ず balanced release する。
-6. Unknown file / partial file を自動削除しない。
-7. Recovery は後付けではなく正式な product feature とする。
-8. AI 生成コードと人間が書いたコードに同じ quality gate を適用する。
+予定:
 
-## Public Repository Policy
+- Folder Glass
+- Multiple Glass
+- one-level Folder listing
+- External change refresh
+- Regular-file Copy Drop
+- Security-scoped Folder access
+- Config persistence / backup
+- Safe Mode / Recovery
+- Window position recovery
+- Menu Bar
+- Global Show/Hide shortcut
 
-このリポジトリは Public です。API key、token、certificate、private key、個人や勤務先に紐づく path、実在顧客情報などをコミットしないでください。詳細は [SECURITY.md](SECURITY.md) と [AGENTS.md](AGENTS.md) を参照してください。
+対象外:
 
-## License
+- Move
+- Rename
+- Delete
+- Folder recursive copy
+- Deep Drop
+- Git integration
+- Cloud backend
+- Runtime AI
+- Private macOS API
 
-ライセンスは正式決定後に追加します。ライセンス未設定の間は、第三者が自由に利用・再配布できる OSS ライセンスが付与されているとはみなさないでください。
+---
+
+SchneeGlassはユーザーのファイルを所有しません。
+
+SchneeGlassが使えなくなっても、ユーザーのファイルは通常のmacOSファイルとして残り続けることを最上位原則とします。
