@@ -248,6 +248,7 @@ public actor SafeFileCopyEngine: FileCopying {
 
         var prepared: [PreparedItem] = []
         prepared.reserveCapacity(request.plan.items.count)
+        var plannedFinalURLs: Set<URL> = []
         let destinationDirectory = request.destinationAccess.url.standardizedFileURL
 
         for (index, item) in request.plan.items.enumerated() {
@@ -270,6 +271,13 @@ public actor SafeFileCopyEngine: FileCopying {
                 return .failed(
                     index: index,
                     failure: CopyItemFailure(operationID: item.operationID, reason: .unsupportedItem)
+                )
+            }
+
+            guard plannedFinalURLs.insert(finalURL).inserted else {
+                return .failed(
+                    index: index,
+                    failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
                 )
             }
 
