@@ -25,6 +25,7 @@ public final class SchneeGlassWorkspaceModel {
     public private(set) var glasses: [GlassWorkspaceEntry] = []
     public private(set) var isCreatingGlass = false
     public private(set) var isRestoring = false
+    public private(set) var isMutatingConfiguration = false
     public private(set) var userMessage: String?
 
     private let createGlassUseCase: CreateGlassUseCase
@@ -51,14 +52,18 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func restoreIfNeeded() async {
-        guard !didAttemptInitialRestore else {
+        guard !didAttemptInitialRestore, !isMutatingConfiguration else {
             return
         }
 
         didAttemptInitialRestore = true
+        isMutatingConfiguration = true
         isRestoring = true
         userMessage = nil
-        defer { isRestoring = false }
+        defer {
+            isRestoring = false
+            isMutatingConfiguration = false
+        }
 
         do {
             let result = try await restoreApplicationUseCase.execute()
@@ -98,13 +103,17 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func addGlass() async {
-        guard !isCreatingGlass, !isRestoring else {
+        guard !isMutatingConfiguration else {
             return
         }
 
+        isMutatingConfiguration = true
         isCreatingGlass = true
         userMessage = nil
-        defer { isCreatingGlass = false }
+        defer {
+            isCreatingGlass = false
+            isMutatingConfiguration = false
+        }
 
         do {
             guard let seed = try await createGlassUseCase.execute() else {
@@ -117,9 +126,12 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func removeGlass(id: GlassID) async {
-        guard !isCreatingGlass, !isRestoring else {
+        guard !isMutatingConfiguration else {
             return
         }
+
+        isMutatingConfiguration = true
+        defer { isMutatingConfiguration = false }
 
         do {
             let removed = try await removeGlassUseCase.execute(glassID: id)
