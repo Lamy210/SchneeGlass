@@ -1,6 +1,6 @@
 # Dependency Policy
 
-SchneeGlass は Runtime dependency を最小化します。
+SchneeGlassはRuntime dependencyを最小化します。
 
 優先順位:
 
@@ -10,64 +10,117 @@ Apple Platform API
 → mature third-party OSS
 ```
 
-## v0.1 Runtime Candidates
+## 1. Bootstrap状態
+
+現時点の`SchneeGlassKit`にはExternal Runtime Dependencyをまだ追加していません。
+
+理由:
+
+- Architecture / Domain / Application Contractを先に安定させる
+- Dependency導入前でもPackage/Test/CIが成立することを確認する
+- Runtime dependencyが本当に必要なFeatureまで導入を遅らせる
+
+## 2. v0.1 Runtime Candidates
 
 ### KeyboardShortcuts
 
-用途: User-customizable global keyboard shortcut。
+用途:
+
+- User-customizable Global Keyboard Shortcut
+
+初期Pin候補:
+
+```text
+3.0.1
+```
+
+採用タイミング:
+
+`TASK-015 Menu Bar / Global Shortcut`
 
 採用理由:
 
-- macOS global shortcut の実装・Recorder UI を自前で再実装する価値が低い
-- Sandbox 対応
-- Swift Package Manager 対応
-- Swift 6 対応
-
-初期 pin 候補: `3.0.1`
+- macOS Global ShortcutとRecorder UIを自前実装する価値が低い
+- Sandbox対応
+- Swift Package Manager対応
+- Swift 6対応
 
 ### swift-async-algorithms
 
-用途: FSEvents 等の AsyncSequence debounce / event composition。
+用途:
 
-採用理由:
+- FSEvents等のAsyncSequence debounce / event composition
 
-- Swift ecosystem の公式 package
-- Combine 中心設計を避け、Swift Concurrency と統一可能
+初期Pin候補:
 
-初期 pin 候補: `1.1.5`
+```text
+1.1.5
+```
 
-## Test-only Candidates
+採用タイミング:
 
-- SnapshotTesting
-- swift-clocks
+`TASK-006 File Event Hub`
 
-Test-only dependency を Runtime product へ link しません。
+Apple/Swift標準APIだけで同等の簡潔性・検証容易性が得られる場合は導入しない。
 
-## Future / Not v0.1
+## 3. Test-only Candidates
+
+### SnapshotTesting
+
+用途:
+
+- SwiftUI visual regression
+
+Runtime Binaryへ持ち込まない。
+
+### swift-clocks
+
+用途:
+
+- debounce
+- progress delay
+- toast duration
+- retry timing
+
+のdeterministic test。
+
+Runtime/Application Coreへ直接第三者Clock型を漏らすかどうかは導入時にADRまたはDependency Reviewで確認する。
+
+## 4. Future Runtime Candidates
 
 ### GRDB
 
-Safe Move / Undo / Operation Journal を導入する v0.2 で再評価します。
+v0.2 Safe Move / Undo / Operation Journal導入時に再評価する。
+
+v0.1では不要。
 
 ### Sparkle
 
-Direct Distribution updater を導入する v0.1.1+ で再評価します。
+v0.1.1以降のDirect Distribution Updateで再評価する。
 
-## Dependency Admission Checklist
+v0.1 BootstrapではNetwork Entitlementを持たないため導入しない。
 
-Runtime dependency の追加前に全項目を満たしてください。
+## 5. Dependency Admission Checklist
 
-- [ ] Apple API で十分に代替できない
-- [ ] Active maintenance
-- [ ] Swift 6 compatible
-- [ ] Swift Package Manager support
-- [ ] License acceptable
-- [ ] Transitive dependencies understood
-- [ ] Security history reviewed
-- [ ] Removal strategy exists
-- [ ] `DEPENDENCIES.md` updated
-- [ ] Build/Test/Safety gates pass
+追加にはすべて必要:
 
-`Package.resolved` は commit します。
+```text
+Apple APIでは不足している
+Active Maintenance
+Swift 6 Compatible
+SPM Support
+License Acceptable
+Transitive Dependenciesを把握
+Security Sensitive Pathへの影響を確認
+Removal Strategyあり
+DEPENDENCIES.md更新
+CI PASS
+```
 
-Dependency update の auto-merge は行いません。
+## 6. Locking / Update
+
+External Dependency導入後は`Package.resolved`をCommitする。
+
+Dependency PRのAuto Mergeは禁止する。
+
+Dependency追加・Major Updateは通常Feature変更と分離したPRで行う。
