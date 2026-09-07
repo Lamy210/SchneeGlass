@@ -24,18 +24,18 @@ public struct CreatedGlassRuntimeSeed: Sendable {
     public let configuration: GlassConfiguration
     public let access: FolderAccessHandle
     public let snapshot: FolderSnapshot
-    public let events: AsyncStream<FileEvent>
+    public let eventSubscription: FileEventSubscription
 
     public init(
         configuration: GlassConfiguration,
         access: FolderAccessHandle,
         snapshot: FolderSnapshot,
-        events: AsyncStream<FileEvent>
+        eventSubscription: FileEventSubscription
     ) {
         self.configuration = configuration
         self.access = access
         self.snapshot = snapshot
-        self.events = events
+        self.eventSubscription = eventSubscription
     }
 }
 

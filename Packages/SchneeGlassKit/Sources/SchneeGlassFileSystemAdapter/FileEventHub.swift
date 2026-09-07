@@ -17,7 +17,7 @@ private final class FSEventCallbackBox {
 
 private let schneeGlassFSEventCallback: FSEventStreamCallback = {
     _, callbackInfo, numberOfEvents, _, eventFlags, _ in
-    guard let callbackInfo else {
+    guard let callbackInfo, numberOfEvents > 0 else {
         return
     }
 
@@ -25,9 +25,19 @@ private let schneeGlassFSEventCallback: FSEventStreamCallback = {
         .fromOpaque(callbackInfo)
         .takeUnretainedValue()
 
+    var strongestEvent: FileEvent = .changed
     for index in 0..<numberOfEvents {
-        box.continuation.yield(FileEventFlagMapper.map(eventFlags[index]))
+        let event = FileEventFlagMapper.map(eventFlags[index])
+        if event == .rootChanged {
+            strongestEvent = .rootChanged
+            break
+        }
+        if event == .requiresFullRescan {
+            strongestEvent = .requiresFullRescan
+        }
     }
+
+    box.continuation.yield(strongestEvent)
 }
 
 enum FileEventFlagMapper {
@@ -70,8 +80,8 @@ public actor FileEventHub: FileEventStreaming {
         )
     }
 
-    public func events(for access: FolderAccessHandle) async throws -> AsyncStream<FileEvent> {
-        let sessionID = UUID()
+    public func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
+        let subscriptionID = UUID()
         let pair = AsyncStream<FileEvent>.makeStream()
         let callbackBox = FSEventCallbackBox(continuation: pair.continuation)
         let retainedBox = Unmanaged.passRetained(callbackBox)
@@ -112,7 +122,7 @@ public actor FileEventHub: FileEventStreaming {
             throw FileEventHubError.streamStartFailed
         }
 
-        sessions[sessionID] = Session(
+        sessions[subscriptionID] = Session(
             stream: stream,
             callbackInfo: callbackInfo,
             continuation: pair.continuation
@@ -123,22 +133,29 @@ public actor FileEventHub: FileEventStreaming {
                 return
             }
             Task {
-                await self.stop(sessionID: sessionID)
+                await self.stop(subscriptionID: subscriptionID)
             }
         }
 
-        return pair.stream
+        return FileEventSubscription(
+            id: subscriptionID,
+            events: pair.stream
+        )
+    }
+
+    public func stop(subscriptionID: UUID) {
+        stopSession(subscriptionID: subscriptionID)
     }
 
     public func stopAll() {
-        let activeSessionIDs = Array(sessions.keys)
-        for sessionID in activeSessionIDs {
-            stop(sessionID: sessionID)
+        let activeSubscriptionIDs = Array(sessions.keys)
+        for subscriptionID in activeSubscriptionIDs {
+            stopSession(subscriptionID: subscriptionID)
         }
     }
 
-    private func stop(sessionID: UUID) {
-        guard let session = sessions.removeValue(forKey: sessionID) else {
+    private func stopSession(subscriptionID: UUID) {
+        guard let session = sessions.removeValue(forKey: subscriptionID) else {
             return
         }
 

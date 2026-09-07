@@ -32,7 +32,7 @@ func rootChangeMapsToRootChanged() {
     #expect(FileEventFlagMapper.map(flags) == .rootChanged)
 }
 
-@Test("FSEvents stream eventually reports a direct filesystem change")
+@Test("FSEvents subscription eventually reports a direct filesystem change")
 func fileEventHubReportsFilesystemChange() async throws {
     let fileManager = FileManager.default
     let root = fileManager.temporaryDirectory
@@ -46,15 +46,38 @@ func fileEventHubReportsFilesystemChange() async throws {
     let glassID = GlassID()
     let access = FolderAccessHandle(glassID: glassID, url: root)
     let hub = FileEventHub(latency: 0.05)
-    let stream = try await hub.events(for: access)
+    let subscription = try await hub.subscribe(for: access)
 
     try await Task.sleep(for: .milliseconds(100))
     try Data("changed".utf8).write(to: root.appendingPathComponent("event.txt"))
 
-    let event = await firstEvent(from: stream, timeout: .seconds(5))
+    let event = await firstEvent(from: subscription.events, timeout: .seconds(5))
     #expect(event != nil)
 
-    await hub.stopAll()
+    await hub.stop(subscriptionID: subscription.id)
+}
+
+@Test("explicit subscription stop finishes the stream and is idempotent")
+func explicitSubscriptionStopFinishesStream() async throws {
+    let fileManager = FileManager.default
+    let root = fileManager.temporaryDirectory
+        .appendingPathComponent("SchneeGlass-FSEvents-stop-\(UUID().uuidString)", isDirectory: true)
+
+    try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+    defer {
+        try? fileManager.removeItem(at: root)
+    }
+
+    let hub = FileEventHub(latency: 0.05)
+    let subscription = try await hub.subscribe(
+        for: FolderAccessHandle(glassID: GlassID(), url: root)
+    )
+
+    await hub.stop(subscriptionID: subscription.id)
+    await hub.stop(subscriptionID: subscription.id)
+
+    var iterator = subscription.events.makeAsyncIterator()
+    #expect(await iterator.next() == nil)
 }
 
 private func firstEvent(

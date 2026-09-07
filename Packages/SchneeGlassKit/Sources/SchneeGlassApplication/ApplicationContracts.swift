@@ -163,6 +163,16 @@ public enum FileEvent: Hashable, Sendable {
     case rootChanged
 }
 
+public struct FileEventSubscription: Sendable {
+    public let id: UUID
+    public let events: AsyncStream<FileEvent>
+
+    public init(id: UUID = UUID(), events: AsyncStream<FileEvent>) {
+        self.id = id
+        self.events = events
+    }
+}
+
 public protocol FolderSnapshotReading: Sendable {
     func snapshot(for access: FolderAccessHandle, generation: UInt64) async throws -> FolderSnapshot
 }
@@ -182,7 +192,8 @@ public protocol ConfigurationPersisting: Sendable {
 }
 
 public protocol FileEventStreaming: Sendable {
-    func events(for access: FolderAccessHandle) async throws -> AsyncStream<FileEvent>
+    func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription
+    func stop(subscriptionID: UUID) async
 }
 
 public protocol WindowControlling: Sendable {
