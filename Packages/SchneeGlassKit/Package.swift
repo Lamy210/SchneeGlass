@@ -73,6 +73,14 @@ let package = Package(
                 "SchneeGlassDomain",
                 "FileDomain"
             ]
+        ),
+        .testTarget(
+            name: "SchneeGlassPersistenceAdapterTests",
+            dependencies: [
+                "SchneeGlassPersistenceAdapter",
+                "SchneeGlassApplication",
+                "SchneeGlassDomain"
+            ]
         )
     ],
     swiftLanguageModes: [.v6]
