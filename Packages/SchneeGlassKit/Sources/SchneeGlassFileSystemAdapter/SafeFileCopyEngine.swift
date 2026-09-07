@@ -23,6 +23,7 @@ protocol CopyFileSystemAccessing: Sendable {
     func itemExists(at url: URL) async -> Bool
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
     func regularFileSize(at url: URL) async throws -> Int64
+    func resourceIdentifier(at url: URL) async -> String?
 }
 
 actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
@@ -128,6 +129,17 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             throw error
         } catch {
             throw Self.map(error)
+        }
+    }
+
+    func resourceIdentifier(at url: URL) -> String? {
+        do {
+            let values = try url.standardizedFileURL.resourceValues(
+                forKeys: [.fileResourceIdentifierKey]
+            )
+            return values.fileResourceIdentifier.map { String(describing: $0) }
+        } catch {
+            return nil
         }
     }
 
@@ -357,13 +369,19 @@ public actor SafeFileCopyEngine: FileCopying {
             state: .recorded
         )
 
+        var verifiedRecord = baseRecord
         do {
             try await recoveryStore.upsert(baseRecord)
             try await recoveryStore.upsert(baseRecord.updating(state: .staging))
             try await fileSystem.copyItem(at: item.plan.sourceURL, to: item.stagingURL)
 
-            try await recoveryStore.upsert(baseRecord.updating(state: .verifying))
             let stagedSize = try await fileSystem.regularFileSize(at: item.stagingURL)
+            let stagingResourceIdentifier = await fileSystem.resourceIdentifier(at: item.stagingURL)
+            verifiedRecord = baseRecord
+                .recordingStagingResourceIdentifier(stagingResourceIdentifier)
+                .updating(state: .verifying)
+            try await recoveryStore.upsert(verifiedRecord)
+
             guard stagedSize == item.sourceSize else {
                 throw CopyFileSystemError.verificationFailed
             }
@@ -387,7 +405,7 @@ public actor SafeFileCopyEngine: FileCopying {
         }
 
         do {
-            try await recoveryStore.upsert(baseRecord.updating(state: .committing))
+            try await recoveryStore.upsert(verifiedRecord.updating(state: .committing))
             try await committer.commit(stagingURL: item.stagingURL, finalURL: item.finalURL)
         } catch {
             return .failure(
