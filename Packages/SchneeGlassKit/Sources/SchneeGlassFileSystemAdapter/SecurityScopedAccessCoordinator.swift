@@ -94,17 +94,6 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             throw FolderAccessError.accessDenied
         }
 
-        var shouldStopAccess = true
-        defer {
-            if shouldStopAccess {
-                let accessor = resourceAccessor
-                let url = resolved.url
-                Task {
-                    await accessor.stopAccessing(url)
-                }
-            }
-        }
-
         let actualFingerprint: ResourceFingerprint?
         do {
             actualFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
@@ -113,6 +102,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         }
 
         if Self.representsReplacement(expected: source.fingerprint, actual: actualFingerprint) {
+            await resourceAccessor.stopAccessing(resolved.url)
             throw FolderAccessError.resourceReplacementDetected
         }
 
@@ -122,6 +112,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             do {
                 refreshedBookmark = try await resourceAccessor.createBookmark(for: resolved.url)
             } catch {
+                await resourceAccessor.stopAccessing(resolved.url)
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
@@ -140,7 +131,6 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             fingerprint: actualFingerprint
         )
         activeAccesses[handle.id] = ActiveAccess(url: resolved.url)
-        shouldStopAccess = false
 
         return FolderAccessAcquisition(
             handle: handle,
