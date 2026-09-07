@@ -1,9 +1,29 @@
 import Foundation
 
-public enum PendingCopyFileVerification: Hashable, Sendable {
+public enum PendingCopySizeVerification: Hashable, Sendable {
     case matchesExpectedSize
     case sizeMismatch(expected: Int64, actual: Int64)
     case expectedSizeUnavailable(actual: Int64)
+}
+
+public enum PendingCopyResourceIdentityVerification: Hashable, Sendable {
+    case matchesRecordedIdentity
+    case mismatchesRecordedIdentity
+    case recordedIdentityUnavailable
+    case observedIdentityUnavailable
+}
+
+public struct PendingCopyFileVerification: Hashable, Sendable {
+    public let size: PendingCopySizeVerification
+    public let resourceIdentity: PendingCopyResourceIdentityVerification
+
+    public init(
+        size: PendingCopySizeVerification,
+        resourceIdentity: PendingCopyResourceIdentityVerification
+    ) {
+        self.size = size
+        self.resourceIdentity = resourceIdentity
+    }
 }
 
 public enum PendingCopyRecoveryDisposition: Hashable, Sendable {
@@ -15,13 +35,15 @@ public enum PendingCopyRecoveryDisposition: Hashable, Sendable {
     case stagingPresent(PendingCopyFileVerification)
 
     /// A final file exists but the staging file does not. The final file must never
-    /// be deleted or overwritten automatically because ownership cannot be proven
-    /// after a restart from filename/size alone.
+    /// be deleted or overwritten automatically after restart.
     case finalPresent(PendingCopyFileVerification)
 
     /// Staging and final files both exist. This is a collision/conflict state and
     /// requires user review; automatic cleanup is forbidden.
-    case stagingAndFinalPresent
+    case stagingAndFinalPresent(
+        staging: PendingCopyFileVerification,
+        final: PendingCopyFileVerification
+    )
 
     /// Persisted metadata does not prove ownership of the referenced staging file
     /// or contains an unsafe filename/path component.
