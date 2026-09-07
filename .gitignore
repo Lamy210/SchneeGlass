@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# SwiftPM
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.pem
+*.key
+*.mobileprovision
+*.cer
+*.crt
+*.der
+
+# Local diagnostic / recovery exports
+Diagnostics/
+RecoveryExports/
+
+# Editors
+.vscode/
+.idea/
+
+# Temporary
+*.tmp
+*.swp
+*~

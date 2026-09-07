@@ -1,0 +1,42 @@
+name: Bootstrap CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'bootstrap/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-and-guards:
+    name: Package Tests and Safety Guards
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Public repository guard
+        run: bash Scripts/verify-public-repo.sh
+
+      - name: Architecture guard
+        run: bash Scripts/verify-architecture.sh
+
+      - name: File safety guard
+        run: bash Scripts/verify-file-safety.sh
+
+      - name: Swift package tests
+        run: swift test --package-path Packages/SchneeGlassKit
