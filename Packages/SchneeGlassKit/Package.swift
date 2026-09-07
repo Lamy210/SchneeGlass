@@ -81,6 +81,14 @@ let package = Package(
                 "SchneeGlassApplication",
                 "SchneeGlassDomain"
             ]
+        ),
+        .testTarget(
+            name: "SchneeGlassMacOSAdapterTests",
+            dependencies: [
+                "SchneeGlassMacOSAdapter",
+                "SchneeGlassApplication",
+                "SchneeGlassDomain"
+            ]
         )
     ],
     swiftLanguageModes: [.v6]
