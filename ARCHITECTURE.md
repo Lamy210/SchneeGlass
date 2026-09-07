@@ -24,6 +24,8 @@ Modular Monolith
 
 TCA、Service Locator、Global Event Bus、Microservice、Plugin Framework は v0.1 では採用しません。
 
+---
+
 ## 2. Source of Truth
 
 ```text
@@ -35,9 +37,13 @@ SchneeGlass app = Optional convenience layer
 
 SchneeGlass 独自形式へユーザーファイルを格納しません。
 
-## 3. Target 構成
+SchneeGlass を削除・停止しても、ユーザーは Finder 等から通常のファイルへアクセスできなければなりません。
 
-Local Swift Package `SchneeGlassKit` 内の SPM Target を Architecture Boundary とします。
+---
+
+## 3. Local Package / Target構成
+
+Local Swift Package `Packages/SchneeGlassKit` 内の **SPM TargetをArchitecture Boundary** とします。
 
 ```text
 SchneeGlassDomain
@@ -50,7 +56,11 @@ SchneeGlassPersistenceAdapter
 SchneeGlassMacOSAdapter
 ```
 
-### 依存方向
+Packageは物理的なコンテナです。
+
+責務境界はTarget dependency graphで強制します。
+
+### 3.1 依存方向
 
 ```text
 SchneeGlassDomain
@@ -58,7 +68,7 @@ SchneeGlassDomain
 
 FileDomain
   ├ Foundation
-  └ SchneeGlassDomain (必要時のみ)
+  └ SchneeGlassDomain
 
 SchneeGlassApplication
   ├ SchneeGlassDomain
@@ -77,7 +87,7 @@ SchneeGlassFileSystemAdapter
   ├ SchneeGlassApplication
   ├ FileDomain
   ├ Foundation
-  └ CoreServices
+  └ CoreServices / macOS filesystem APIs
 
 SchneeGlassPersistenceAdapter
   ├ SchneeGlassApplication
@@ -91,44 +101,66 @@ SchneeGlassMacOSAdapter
   └ Foundation
 ```
 
-`SchneeGlassPresentation` から Concrete filesystem/persistence adapter への直接依存は禁止します。
+`SchneeGlassPresentation` から `SchneeGlassFileSystemAdapter` / `SchneeGlassPersistenceAdapter` への直接依存は禁止します。
+
+`SchneeGlassDomain` / `FileDomain` から Presentation / AppKit / Concrete Adapter への依存は禁止します。
+
+---
 
 ## 4. Layer Responsibilities
 
-### SchneeGlassDomain
+### 4.1 SchneeGlassDomain
+
+Glass自身に閉じたValue Objectを配置します。
 
 配置:
 
 - `GlassID`
-- `GlassConfiguration`
+- `ResourceFingerprint`
+- `FolderSource`
 - `GlassPlacement`
-- `GlassContentState`
-- `InteractionState`
+- `GlassConfiguration`
 
 禁止:
 
 - SwiftUI
 - AppKit
 - FSEvents
-- DB
+- Database
 - File mutation
+- Concrete adapter
 
-### FileDomain
+### 4.2 FileDomain
+
+Filesystemに関するPureな意味・計画を配置します。
 
 配置:
 
 - `FileKind`
 - `FileIdentity`
 - `FolderIdentity`
+- `GlassItem`
 - `FolderSnapshot`
+- `StorageLocationKind`
+- `StorageCapabilities`
+- `DropCandidate`
+- `DestinationDescriptor`
 - `DropPlan`
 - `DropRejection`
-- Copy request/result value objects
-- Domain errors
+- `CopyItemPlan`
+- `CopyBatchPlan`
 
-Filesystem mutation は行いません。
+重要:
 
-### SchneeGlassApplication
+`FileDomain` にSecurity-Scoped Access Handleを置きません。
+
+`CopyBatchPlan` は「何をどこへCopyするか」というPure Planであり、OS上のAccess Authorizationを保持しません。
+
+Filesystem mutationは禁止します。
+
+### 4.3 SchneeGlassApplication
+
+Domain同士を組み合わせるApplication ContractとUse Caseを配置します。
 
 配置:
 
@@ -136,6 +168,14 @@ Filesystem mutation は行いません。
 - Ports
 - Runtime session orchestration
 - Recovery orchestration
+- `FolderAccessHandle`
+- `AuthorizedCopyBatchRequest`
+- `CopyBatchResult`
+- `CopyProgress`
+- `GlassContentState`
+- `InteractionState`
+
+`GlassContentState` / `InteractionState` は `FileDomain` の型をassociated valueとして保持するため、循環依存を避ける目的で `SchneeGlassDomain` ではなくApplication Layerへ配置します。
 
 主要 Ports:
 
@@ -146,20 +186,33 @@ Filesystem mutation は行いません。
 - `FileEventStreaming`
 - `WindowControlling`
 
-### SchneeGlassPresentation
+### 4.4 SchneeGlassPresentation
 
 配置:
 
-- `@Observable` presentation models
-- SwiftUI Views
-- UI intents
-- User-facing error mapping
+- `@Observable` Presentation Model
+- SwiftUI View
+- UI Intent
+- User-facing Error Mapping
 
-View から Folder enumeration、Bookmark resolve、FSEvents registration、File mutation を行ってはいけません。
+Viewが行ってよいこと:
 
-### SchneeGlassFileSystemAdapter
+- Render
+- Intent emit
+- Display formatting
 
-配置:
+Viewから禁止:
+
+- Folder enumeration
+- Bookmark resolve
+- FSEvents registration
+- File mutation
+- Config direct write
+- Concrete adapter import
+
+### 4.5 SchneeGlassFileSystemAdapter
+
+配置予定:
 
 - `SecurityScopedAccessCoordinator`
 - `NativeFolderSnapshotReader`
@@ -168,112 +221,31 @@ View から Folder enumeration、Bookmark resolve、FSEvents registration、File
 - `InternalStagingCommitter`
 - `RecoveryMetadataStore`
 
-Runtime でユーザーの destination filesystem に対する mutation を行える唯一の target とします。
+Runtimeでdestination filesystemに対するmutationを実行できる唯一のTargetです。
 
-## 5. File Mutation Boundary
+### 4.6 SchneeGlassPersistenceAdapter
 
-v0.1 でユーザー所有 source に対して以下を禁止します。
+配置予定:
 
-```text
-Move
-Rename
-Delete
-Replace
-Truncate
-Write
-```
+- `JSONConfigurationStore`
+- `ConfigurationBackupStore`
+- `AtomicConfigurationWriter`
 
-唯一の内部例外は、SchneeGlass 自身が現在の Copy operation のために作成した staging file を同一 destination directory 内で final name へ commit する rename です。
+### 4.7 SchneeGlassMacOSAdapter
 
-```text
-.glass-<operation-id>.partial
-              ↓
-         final-name.ext
-```
+配置予定:
 
-この処理は `InternalStagingCommitter` のみ実行できます。
+- `GlassWindowCoordinator`
+- `NSPanel` subclass
+- `NSWorkspace` bridge
+- Folder picker
+- Menu Bar controller
 
-## 6. Security-Scoped Access
+---
 
-`SecurityScopedAccessCoordinator` actor が次を一元管理します。
+## 5. Stateの配置原則
 
-```text
-bookmark resolve
-→ stale check
-→ startAccessingSecurityScopedResource
-→ FolderAccessHandle 登録
-→ resource usage
-→ watcher stop
-→ stopAccessingSecurityScopedResource
-→ handle 削除
-```
-
-Acquire/Release は必ず balance させます。Duplicate release は idempotent とし、二重 `stopAccessing...` は行いません。
-
-## 7. FSEvents
-
-FSEvents は authoritative state として扱いません。
-
-```text
-event = "何かが変化した可能性がある"
-```
-
-必ず direct-child snapshot を再取得します。
-
-Startup 順序:
-
-```text
-1. Security scope acquire
-2. FSEvent stream create
-3. FSEvent stream start
-4. Initial snapshot start
-5. Snapshot 中の event は dirty=true
-6. Initial snapshot commit
-7. dirty なら再 snapshot
-8. Steady state
-```
-
-`MustScanSubDirs` / dropped events / root change 相当時は full direct-child rescan とします。
-
-## 8. Copy Semantics
-
-v0.1 は sequential copy (`maxConcurrentCopies = 1`) とします。
-
-Batch 全件を preflight して deterministic rejection が1件でもあれば、0件の copy で batch 全体を reject します。
-
-Runtime failure は最初の失敗で停止します。Batch は transactional ではありません。
-
-```text
-A success
-B success
-C failure
-D not attempted
-```
-
-A/B の成功済み copy を自動削除して rollback してはいけません。
-
-## 9. Persistence / Recovery
-
-v0.1 は `Codable JSON` を使用します。
-
-```text
-Application Support/<bundle-id>/
-├ Configuration/
-│  ├ config.json
-│  └ Backups/
-└ Recovery/
-   └ pending-copies.json
-```
-
-- Config は atomic write
-- Valid backup 最大5世代
-- Silent automatic rollback 禁止
-- Config corruption は Recovery/Safe Mode へ遷移
-- Unknown `.glass-*` file は自動削除禁止
-
-## 10. UI State
-
-Primary state を boolean 群で表現しません。
+次の状態はPure Glass DomainではなくApplication orchestration stateです。
 
 ```text
 GlassContentState
@@ -291,28 +263,220 @@ InteractionState
 └ copying(progress)
 ```
 
-## 11. Windowing
+理由:
+
+- `FolderSnapshot`
+- `DropPlan`
+- `CopyProgress`
+
+など複数Domain/Application Contractを組み合わせるためです。
+
+Primary stateを独立Boolean群で表現しません。
+
+---
+
+## 6. Security-Scoped Access Boundary
+
+Security ScopeはPure FileDomainへ持ち込みません。
+
+```text
+FolderSource
+   ↓
+FolderAccessControlling.acquire
+   ↓
+FolderAccessHandle
+   ↓
+Authorized operation
+```
+
+`FolderAccessHandle` はApplication Contractです。
+
+ConcreteなBookmark resolve / `startAccessingSecurityScopedResource()` / `stopAccessingSecurityScopedResource()` は `SchneeGlassFileSystemAdapter` が実装します。
+
+Acquire / Releaseは必ずbalanceさせます。
+
+Duplicate releaseはidempotentとし、二重 `stopAccessing...` は行いません。
+
+---
+
+## 7. File Mutation Boundary
+
+v0.1ではユーザー所有sourceに対して以下を禁止します。
+
+```text
+Move
+Rename
+Delete
+Replace
+Truncate
+Write
+```
+
+唯一の内部例外は、SchneeGlass自身が現在のCopy operationのために作成したstaging fileを同一destination directory内でfinal nameへcommitするRenameです。
+
+```text
+.glass-<operation-id>.partial
+              ↓
+         final-name.ext
+```
+
+この処理は `InternalStagingCommitter` のみ実行できます。
+
+CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceItem` 使用を拒否します。
+
+---
+
+## 8. Copy PlanとAuthorized Executionの分離
+
+循環依存とSecurity Context漏洩を防ぐため、Copyを2段階に分離します。
+
+### Pure Plan — FileDomain
+
+```text
+CopyBatchPlan
+├ destination: DestinationDescriptor
+└ items: [CopyItemPlan]
+```
+
+### Authorized Execution — SchneeGlassApplication
+
+```text
+AuthorizedCopyBatchRequest
+├ plan: CopyBatchPlan
+└ destinationAccess: FolderAccessHandle
+```
+
+これにより `FileDomain` は `SchneeGlassApplication` へ逆依存しません。
+
+---
+
+## 9. Copy Semantics
+
+v0.1はSequential Copyです。
+
+```text
+maxConcurrentCopies = 1
+```
+
+Batch全件をpreflightし、決定的rejectが1件でもあれば0件CopyでBatch全体をrejectします。
+
+Runtime failureは最初の失敗で停止します。
+
+Batchはtransactionalではありません。
+
+```text
+A success
+B success
+C failure
+D not attempted
+```
+
+A/Bの成功済みCopyを自動削除してrollbackしてはいけません。
+
+---
+
+## 10. FSEvents
+
+FSEventsはauthoritative stateとして扱いません。
+
+```text
+event = "何かが変化した可能性がある"
+```
+
+必ずdirect-child snapshotを再取得します。
+
+Startup順序:
+
+```text
+1. Security scope acquire
+2. FSEvent stream create
+3. FSEvent stream start
+4. Initial snapshot start
+5. Snapshot中のeventはdirty=true
+6. Initial snapshot commit
+7. dirtyなら再snapshot
+8. Steady state
+```
+
+`MustScanSubDirs` / dropped events / root change相当時はfull direct-child rescanとします。
+
+---
+
+## 11. Persistence / Recovery
+
+v0.1は `Codable JSON` を使用します。
+
+```text
+Application Support/<bundle-id>/
+├ Configuration/
+│  ├ config.json
+│  └ Backups/
+└ Recovery/
+   └ pending-copies.json
+```
+
+原則:
+
+- Configはatomic write
+- Valid backup最大5世代
+- Silent automatic rollback禁止
+- Config corruptionはRecovery/Safe Modeへ遷移
+- Unknown `.glass-*` fileは自動削除禁止
+
+---
+
+## 12. Windowing
 
 v0.1:
 
 - `NSApplication.ActivationPolicy.regular`
-- Dock icon 表示
+- Dock icon表示
 - `NSPanel` + `NSHostingView`
-- Header drag area のみ window movement に利用
-- All Spaces は opt-in
-- Private Space API 禁止
+- Header drag areaのみWindow移動に利用
+- All Spacesはopt-in
+- Private Space API禁止
 
-保存先 display が存在しない場合は main display の `visibleFrame` 内へ recovery します。
+保存先displayが存在しない場合はmain displayの`visibleFrame`内へRecoveryします。
 
-## 12. Architecture Enforcement
+---
 
-CI で最低限以下を検出します。
+## 13. Architecture Enforcement
 
-- Domain → SwiftUI/AppKit import
-- Presentation → FileSystem/Persistence concrete adapter import
+CIで最低限以下を検出します。
+
+- Domain → SwiftUI/AppKit/CoreServices/GRDB import
+- Presentation → FileSystem/Persistence Concrete Adapter import
 - Private CGS symbol
-- Filesystem mutation API の allowlist 外利用
+- Filesystem mutation APIのallowlist外利用
 - `@unchecked Sendable` の無承認利用
-- Issue 番号なし TODO/FIXME
+- Swift source内のIssue番号なしTODO/FIXME
+- Public repositoryへのcredential-like file混入
+- 高確度Secret Pattern
 
-Architecture は文書だけでなく Compiler/CI で強制します。
+Architectureは文書だけでなくCompiler/CIで強制します。
+
+---
+
+## 14. Bootstrap方針
+
+初期段階ではAdapterにFakeの実装を詰め込みません。
+
+最初に以下を安定させます。
+
+```text
+SPM dependency graph
+↓
+Domain contracts
+↓
+Application ports
+↓
+Tests
+↓
+Safety/Architecture CI guards
+↓
+Concrete macOS adapters
+```
+
+Concrete implementationの都合でDomain/Dependency方向を変更してはいけません。
+
+変更が必要な場合はADRを追加し、Architecture Reviewを行います。
