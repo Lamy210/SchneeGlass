@@ -16,9 +16,9 @@ concurrency:
 
 jobs:
   canonical:
-    name: Canonical / Xcode 26.6 / Safety Guards
+    name: Canonical / Xcode 26.6 / App Build / Safety Guards
     runs-on: macos-26
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
@@ -44,10 +44,71 @@ jobs:
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
+      - name: Validate Xcode project
+        run: |
+          xcodebuild -list -project SchneeGlass.xcodeproj
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -resolvePackageDependencies
+
+      - name: Debug app build
+        run: |
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Release app build
+        run: |
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Verify app bundle and sandbox baseline
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
+          test -d "$APP"
+          test -f "$APP/Contents/MacOS/SchneeGlass"
+          plutil -lint "$APP/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = 'io.github.lamy210.schneeglass'
+
+          plutil -lint App/SchneeGlass.entitlements
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' App/SchneeGlass.entitlements)" = 'true'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' App/SchneeGlass.entitlements)" = 'true'
+          if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' App/SchneeGlass.entitlements >/dev/null 2>&1; then
+            echo 'Unexpected network client entitlement' >&2
+            exit 1
+          fi
+
+      - name: Package unsigned CI app artifact
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" SchneeGlass-unsigned-release.zip
+
+      - name: Upload unsigned CI app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchneeGlass-unsigned-macos-ci
+          path: SchneeGlass-unsigned-release.zip
+          if-no-files-found: error
+          retention-days: 7
+
   compatibility-macos-15:
-    name: Compatibility / macOS 15
+    name: Compatibility / macOS 15 / App Build
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -60,3 +121,16 @@ jobs:
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
+
+      - name: macOS 15 app compatibility build
+        run: |
+          xcodebuild -list -project SchneeGlass.xcodeproj
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
