@@ -337,10 +337,6 @@ public actor SafeFileCopyEngine: FileCopying {
             guard stagedSize == item.sourceSize else {
                 throw CopyFileSystemError.verificationFailed
             }
-
-            guard !fileSystemItemExistsSynchronouslyUnsupported else {
-                throw CopyFileSystemError.unexpected
-            }
         } catch {
             await removeStaleRecordWhenNoStagingExists(
                 operationID: item.plan.operationID,
@@ -399,8 +395,8 @@ public actor SafeFileCopyEngine: FileCopying {
         do {
             try await recoveryStore.remove(operationID: operationID)
         } catch {
-            // Explicitly keep the stale metadata. Startup recovery can safely
-            // discard a record when neither staging nor final data exists.
+            // Keep stale metadata. Startup recovery can discard a record when
+            // neither staging nor final data exists.
         }
     }
 
@@ -440,7 +436,3 @@ public actor SafeFileCopyEngine: FileCopying {
         return .unexpected
     }
 }
-
-// Kept as a compile-time constant to make it impossible to accidentally add
-// a synchronous filesystem check inside the actor's mutation sequence.
-private let fileSystemItemExistsSynchronouslyUnsupported = false
