@@ -79,14 +79,15 @@ public final class CreateGlassUseCase {
             throw CreateGlassError.folderAccess(.bookmarkResolutionFailed)
         }
 
+        let eventSubscription: FileEventSubscription
         do {
-            let events: AsyncStream<FileEvent>
-            do {
-                events = try await eventStreaming.events(for: acquisition.handle)
-            } catch {
-                throw CreateGlassError.eventStreamFailed
-            }
+            eventSubscription = try await eventStreaming.subscribe(for: acquisition.handle)
+        } catch {
+            await accessController.release(handleID: acquisition.handle.id)
+            throw CreateGlassError.eventStreamFailed
+        }
 
+        do {
             let snapshot: FolderSnapshot
             do {
                 snapshot = try await snapshotReader.snapshot(
@@ -127,9 +128,10 @@ public final class CreateGlassUseCase {
                 configuration: persistedConfiguration,
                 access: acquisition.handle,
                 snapshot: snapshot,
-                events: events
+                eventSubscription: eventSubscription
             )
         } catch {
+            await eventStreaming.stop(subscriptionID: eventSubscription.id)
             await accessController.release(handleID: acquisition.handle.id)
             throw error
         }
