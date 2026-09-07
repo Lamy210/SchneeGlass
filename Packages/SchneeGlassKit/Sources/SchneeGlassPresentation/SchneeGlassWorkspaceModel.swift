@@ -7,15 +7,18 @@ public struct GlassWorkspaceEntry: Identifiable, Hashable, Sendable {
     public let id: GlassID
     public let title: String
     public var contentState: GlassContentState
+    public var interactionState: InteractionState
 
     public init(
         id: GlassID,
         title: String,
-        contentState: GlassContentState
+        contentState: GlassContentState,
+        interactionState: InteractionState = .idle
     ) {
         self.id = id
         self.title = title
         self.contentState = contentState
+        self.interactionState = interactionState
     }
 }
 
@@ -126,7 +129,9 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func removeGlass(id: GlassID) async {
-        guard !isMutatingConfiguration else {
+        guard !isMutatingConfiguration,
+              !isCopying(glassID: id)
+        else {
             return
         }
 
@@ -151,6 +156,112 @@ public final class SchneeGlassWorkspaceModel {
         } catch {
             userMessage = "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
         }
+    }
+
+    public func planDrop(
+        glassID: GlassID,
+        sourceURLs: [URL]
+    ) async -> DropPlan {
+        guard let session = sessions[glassID],
+              !isCopying(glassID: glassID)
+        else {
+            let rejection = DropPlan.reject(.destinationUnavailable)
+            updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+            return rejection
+        }
+
+        updateInteraction(.hovered, for: glassID)
+        let plan = await session.planDrop(sourceURLs: sourceURLs)
+
+        switch plan {
+        case let .copy(copyPlan):
+            updateInteraction(.dropValid(.copy(copyPlan)), for: glassID)
+        case .noOperation:
+            updateInteraction(.dropInvalid(.containsSameDirectoryItem), for: glassID)
+        case let .reject(reason):
+            updateInteraction(.dropInvalid(reason), for: glassID)
+        }
+
+        return plan
+    }
+
+    public func performDrop(
+        glassID: GlassID,
+        sourceURLs: [URL]
+    ) async -> Bool {
+        guard let session = sessions[glassID],
+              !isCopying(glassID: glassID)
+        else {
+            updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+            return false
+        }
+
+        // Re-plan immediately before mutation. Hover-time plans are display-only
+        // and must never authorize a copy after filesystem state has changed.
+        let freshPlan = await session.planDrop(sourceURLs: sourceURLs)
+        guard case let .copy(copyPlan) = freshPlan else {
+            switch freshPlan {
+            case .noOperation:
+                updateInteraction(.dropInvalid(.containsSameDirectoryItem), for: glassID)
+            case let .reject(reason):
+                updateInteraction(.dropInvalid(reason), for: glassID)
+            case .copy:
+                break
+            }
+            return false
+        }
+
+        let firstFilename = copyPlan.items.first?.destinationFilename ?? "file"
+        updateInteraction(
+            .copying(
+                CopyProgress(
+                    currentIndex: 1,
+                    totalCount: copyPlan.items.count,
+                    currentFilename: firstFilename
+                )
+            ),
+            for: glassID
+        )
+
+        do {
+            let result = try await session.executeCopy(copyPlan)
+            updateInteraction(.idle, for: glassID)
+
+            if let failure = result.failed {
+                userMessage = Self.copyFailureMessage(
+                    failure,
+                    succeededCount: result.succeeded.count
+                )
+                return !result.succeeded.isEmpty
+            }
+
+            if result.succeeded.contains(where: \.recoveryMetadataCleanupPending) {
+                userMessage = "The files were copied, but SchneeGlass still has recovery metadata to clean up. Your copied files were not changed."
+            } else {
+                userMessage = nil
+            }
+            return true
+        } catch let error as GlassCopyExecutionError {
+            updateInteraction(.idle, for: glassID)
+            switch error {
+            case .sessionNotRunning, .destinationMismatch:
+                userMessage = "This Glass is no longer available as a copy destination. Nothing was copied."
+            case .copyInProgress:
+                userMessage = "A copy is already running for this Glass."
+            }
+            return false
+        } catch {
+            updateInteraction(.idle, for: glassID)
+            userMessage = "SchneeGlass couldn't copy these files. Source files were not moved or deleted."
+            return false
+        }
+    }
+
+    public func cancelDrop(glassID: GlassID) {
+        guard !isCopying(glassID: glassID) else {
+            return
+        }
+        updateInteraction(.idle, for: glassID)
     }
 
     public func open(_ item: GlassItem) {
@@ -220,6 +331,23 @@ public final class SchneeGlassWorkspaceModel {
         glasses[index].contentState = state
     }
 
+    private func updateInteraction(_ state: InteractionState, for glassID: GlassID) {
+        guard let index = glasses.firstIndex(where: { $0.id == glassID }) else {
+            return
+        }
+        glasses[index].interactionState = state
+    }
+
+    private func isCopying(glassID: GlassID) -> Bool {
+        guard let entry = glasses.first(where: { $0.id == glassID }) else {
+            return false
+        }
+        if case .copying = entry.interactionState {
+            return true
+        }
+        return false
+    }
+
     private func upsert(_ entry: GlassWorkspaceEntry) {
         if let index = glasses.firstIndex(where: { $0.id == entry.id }) {
             glasses[index] = entry
@@ -250,6 +378,36 @@ public final class SchneeGlassWorkspaceModel {
 
         case .invalidRefreshedConfiguration:
             return .failed(.unexpected)
+        }
+    }
+
+    private static func copyFailureMessage(
+        _ failure: CopyItemFailure,
+        succeededCount: Int
+    ) -> String {
+        let prefix = succeededCount > 0
+            ? "\(succeededCount) file(s) were copied before the operation stopped. "
+            : "Nothing was copied. "
+
+        switch failure.reason {
+        case .sourceUnavailable:
+            return prefix + "A source file became unavailable."
+        case .unsupportedItem:
+            return prefix + "One of the dropped items is not supported."
+        case .destinationUnavailable:
+            return prefix + "The destination folder became unavailable."
+        case .permissionDenied:
+            return prefix + "macOS denied file access."
+        case .insufficientSpace:
+            return prefix + "There is not enough free space at the destination."
+        case .collision:
+            return prefix + "A file with the same name already exists. Nothing was overwritten."
+        case .verificationFailed:
+            return prefix + "SchneeGlass could not verify a copied file safely."
+        case .cancelled:
+            return prefix + "The copy was cancelled."
+        case .unexpected:
+            return prefix + "SchneeGlass encountered an unexpected copy error."
         }
     }
 
