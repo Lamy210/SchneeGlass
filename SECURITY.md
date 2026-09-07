@@ -1,111 +1,199 @@
-# Security Policy
+# SchneeGlass Security Policy
 
-## 1. Security Model
+SchneeGlassはユーザーのFileを扱うため、利便性よりFilesystem Safetyを優先します。
 
-SchneeGlass はローカルファイルを扱うため、File Safety を Security Requirement と同等に扱います。
+## 1. Public Repository
 
-v0.1 の原則:
+このRepositoryはPublicです。
 
-- App Sandbox enabled
-- User-selected file/folder access only
-- Full Disk Access 不要
-- Accessibility permission 不要
-- Network Client entitlement なし
-- Runtime AI / telemetry / cloud upload なし
-- Silent overwrite なし
-- User-owned source Move / Rename / Delete / Replace なし
+Commitしてはいけません:
 
-## 2. Public Repository: 絶対に Commit しないもの
+- API key
+- Access token
+- Private key
+- Certificate private material
+- `.env`
+- Notarization credential
+- Security-scoped bookmark raw data
+- private diagnostics export
+- 実在する会社・顧客の内部データ
+- 個人/会社環境を示すTest Fixture
 
-この Repository は Public です。次を Git に追加しないでください。
+`.gitignore`だけをSecurity Boundaryとして信用しません。
 
-- API key / access token / refresh token
-- Password / secret / private key
-- `.p12`, `.p8`, private certificate material
-- Notarization credentials
-- Provisioning/signing credentials を含む export
-- 実在する勤務先・顧客の内部パス
-- 実在顧客名や非公開 Project 名を含む fixtures
-- 個人メールアドレスや電話番号を含む test data
-- Security-scoped bookmark の raw data
-- ローカル machine 固有の absolute path
-- `.env` や secret-bearing configuration
+`Scripts/verify-public-repo.sh`をCIで実行し、credential-like tracked fileと高確度Secret Patternを検出します。
 
-公開ドキュメント・Issue・PR・CI log にも同じルールを適用します。
+このGuardはGitHub側のSecret Scanning等を置き換えるものではなく、Repository内の追加防御です。
 
-## 3. Sample / Test Data
+## 2. Test / Sample Data
 
-必ず架空値を使用します。
+Test dataは架空値のみ使用します。
 
-推奨例:
+良い例:
 
 ```text
 ExampleProject
 sample.txt
-Example User
 /tmp/SchneeGlassTests/<UUID>/
 ```
 
-実在の会社名・顧客名・repo名を fixture として使いません。
-
-## 4. Logging Privacy
-
-Public diagnostic/log へ以下を出してはいけません。
-
-- Full path
-- Filename
-- Folder name
-- Repository name
-- File contents
-
-許可する情報:
-
-- operation category
-- generic error category
-- duration
-- item count
-- app/macOS version
-- valid/stale bookmark count
-
-Sensitive values が必要な OSLog interpolation は private 扱いとします。
-
-## 5. File Mutation Boundary
-
-Filesystem mutation は `SchneeGlassFileSystemAdapter` 内の allowlisted implementation に限定します。
-
-User-owned source を次へ渡すことは禁止します。
+禁止:
 
 ```text
-removeItem
-moveItem
-replaceItem
+実在会社名
+顧客名
+社内Repository名
+社内Server名
+実際のHome Directory Path
 ```
 
-内部 commit rename は、現在の operation が作成し recovery metadata が存在する staging file のみ許可します。
+## 3. v0.1 Entitlement Baseline
+
+予定する最小Entitlement:
+
+```text
+com.apple.security.app-sandbox = true
+com.apple.security.files.user-selected.read-write = true
+```
+
+`App/SchneeGlass.entitlements`をBaselineとします。
+
+v0.1では以下を追加しません:
+
+```text
+network.client
+不要なApple Events
+Full Disk Access相当の要求
+Accessibility Permission要求
+```
+
+Entitlement追加はArchitecture/Security Review対象です。
+
+## 4. Filesystem Mutation Boundary
+
+v0.1ではuser-owned sourceについて以下を禁止します。
+
+```text
+Move
+Rename
+Delete
+Replace
+Truncate
+Write
+```
+
+Copy destinationへのmutationは `SchneeGlassFileSystemAdapter` 内に限定します。
+
+Glass-owned staging fileのfinal commit Renameのみ、将来 `InternalStagingCommitter` へ限定して許可します。
+
+`Scripts/verify-file-safety.sh` がallowlist外のmutation APIをCIで検出します。
+
+## 5. Security-Scoped Access
+
+Folder accessはSecurity-Scoped Bookmarkを使用します。
+
+原則:
+
+```text
+resolve
+→ startAccessing
+→ use
+→ stopAccessing
+```
+
+Acquire/Releaseを必ずbalanceします。
+
+Bookmark raw dataをLog/Issue/Test Fixtureへ出してはいけません。
 
 ## 6. Unknown Data Policy
 
-SchneeGlass が ownership を証明できない file は自動変更しません。
+SchneeGlassが所有していると証明できないFileを自動変更しません。
 
-特に `.glass-*` に似た名前でも recovery metadata がなければ user data とみなし、自動 Delete / Rename を禁止します。
+特に:
 
-## 7. Dependency Security
+```text
+.glass-* のような名前
+```
 
-Runtime dependency 追加時は次を確認します。
+だけを根拠にDelete/Renameしてはいけません。
 
-1. Apple API で代替できないか
-2. Maintenance 状況
-3. Swift 6 compatibility
-4. License
-5. Transitive dependency
-6. Security history
-7. Removal strategy
-8. SPM support
+Recovery cleanupにはSchneeGlassのOperation Metadataとの一致が必要です。
 
-`DEPENDENCIES.md` の更新なしに runtime dependency を追加しません。
+## 7. Logging Privacy
 
-## 8. Reporting a Vulnerability
+Public Logへ出してよい情報:
 
-Repository が初期 Bootstrap 段階のため正式な private vulnerability reporting channel は今後設定します。
+```text
+operation category
+item count
+duration
+generic error category
+```
 
-公開 Issue に secret・credential・private file content を投稿しないでください。
+Defaultで出してはいけない情報:
+
+```text
+absolute path
+filename
+folder name
+repository name
+company/customer name
+bookmark data
+```
+
+OSLog privacy機構を利用します。
+
+## 8. Network / Telemetry
+
+v0.1:
+
+```text
+Cloud backend   = none
+Telemetry       = none
+Runtime AI      = none
+Account         = none
+Network need    = none
+```
+
+Updater等でNetworkを導入する場合、別ADRでNetwork Boundaryを定義します。
+
+## 9. Dependency Security
+
+Runtime dependency追加には `DEPENDENCIES.md` 更新が必要です。
+
+確認項目:
+
+- maintainer activity
+- license
+- Swift compatibility
+- transitive dependency
+- security-sensitive codeへの侵入範囲
+- removal strategy
+
+## 10. Release Security
+
+Public stable binaryは最終的に以下を満たす必要があります。
+
+```text
+Developer ID signed
+Hardened Runtime
+Notarized
+Stapled
+Entitlement verified
+Smoke tested
+```
+
+Developer IDが利用できない場合、unsigned binaryをtrusted stable releaseとして扱いません。
+
+## 11. Security Incident
+
+Public issueへSecretそのものを貼り付けてはいけません。
+
+Secret漏洩を発見した場合は、値を再掲せず以下を優先します。
+
+```text
+credential revoke / rotate
+history exposure assessment
+affected release assessment
+preventive guard update
+```
