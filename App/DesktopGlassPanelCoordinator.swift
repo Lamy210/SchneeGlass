@@ -1,5 +1,6 @@
 import AppKit
 import SchneeGlassDomain
+import SchneeGlassMacOSAdapter
 import SchneeGlassPresentation
 import SwiftUI
 
@@ -31,9 +32,16 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     init(model: SchneeGlassWorkspaceModel) {
         self.model = model
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
         for record in panels.values {
             record.persistenceTask?.cancel()
         }
@@ -108,12 +116,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         panels[panel.glassID] = nil
     }
 
+    @objc
+    private func screenParametersDidChange(_ notification: Notification) {
+        sync()
+    }
+
     private func createPanel(
         for entry: GlassWorkspaceEntry,
         placement: GlassPlacement
     ) {
         let requestedFrame = Self.frame(for: placement)
-        let displayFrame = Self.clampedFrame(requestedFrame, screens: NSScreen.screens)
+        let displayFrame = recoveredDisplayFrame(requestedFrame)
         let panel = DesktopGlassPanel(glassID: entry.id, contentRect: displayFrame)
 
         configure(panel, for: entry)
@@ -137,7 +150,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         configure(record.panel, for: entry)
 
         let persistedFrame = Self.frame(for: placement)
-        let desiredFrame = Self.clampedFrame(persistedFrame, screens: NSScreen.screens)
+        let desiredFrame = recoveredDisplayFrame(persistedFrame)
         if !record.panel.inLiveResize,
            !Self.framesApproximatelyEqual(record.panel.frame, desiredFrame)
         {
@@ -240,6 +253,14 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         panels[glassID]?.persistenceTask = task
     }
 
+    private func recoveredDisplayFrame(_ requestedFrame: NSRect) -> NSRect {
+        DesktopGlassFrameCalculator.recoveredFrame(
+            requestedFrame: requestedFrame,
+            visibleFrames: NSScreen.screens.map(\.visibleFrame),
+            preferredVisibleFrame: NSScreen.main?.visibleFrame
+        )
+    }
+
     private static func frame(for placement: GlassPlacement) -> NSRect {
         NSRect(
             x: placement.x,
@@ -247,24 +268,6 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             width: placement.width,
             height: placement.height
         )
-    }
-
-    static func clampedFrame(_ frame: NSRect, screens: [NSScreen]) -> NSRect {
-        guard !screens.isEmpty else {
-            return frame
-        }
-
-        if screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
-            return frame
-        }
-
-        let target = NSScreen.main?.visibleFrame ?? screens[0].visibleFrame
-        let width = min(max(frame.width, GlassPlacement.minimumWidth), target.width)
-        let height = min(max(frame.height, GlassPlacement.minimumHeight), target.height)
-        let x = min(max(frame.origin.x, target.minX), target.maxX - width)
-        let y = min(max(frame.origin.y, target.minY), target.maxY - height)
-
-        return NSRect(x: x, y: y, width: width, height: height)
     }
 
     private static func framesApproximatelyEqual(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
