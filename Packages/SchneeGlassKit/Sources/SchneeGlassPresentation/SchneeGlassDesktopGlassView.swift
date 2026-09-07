@@ -236,7 +236,7 @@ private struct DesktopGlassSurface: View {
             return AnyShapeStyle(.secondary.opacity(0.8))
         case .copying:
             return AnyShapeStyle(.tint.opacity(0.55))
-        case .idle, .hovered, .selection:
+        case .idle, .hovered:
             return AnyShapeStyle(.separator.opacity(0.45))
         }
     }
@@ -245,7 +245,7 @@ private struct DesktopGlassSurface: View {
         switch entry.interactionState {
         case .dropValid, .dropInvalid, .copying:
             return 2
-        case .idle, .hovered, .selection:
+        case .idle, .hovered:
             return 1
         }
     }
@@ -253,7 +253,7 @@ private struct DesktopGlassSurface: View {
     @ViewBuilder
     private var interactionOverlay: some View {
         switch entry.interactionState {
-        case .idle, .selection:
+        case .idle:
             EmptyView()
 
         case .hovered:
