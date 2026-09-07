@@ -8,7 +8,7 @@ public enum GlassRuntimeSessionError: Error, Hashable, Sendable {
 }
 
 public actor GlassRuntimeSession {
-    private enum Lifecycle {
+    private enum Lifecycle: Equatable {
         case idle
         case running
         case stopped
@@ -17,31 +17,34 @@ public actor GlassRuntimeSession {
     public let configuration: GlassConfiguration
 
     private let access: FolderAccessHandle
-    private let events: AsyncStream<FileEvent>
+    private let eventSubscription: FileEventSubscription
+    private let eventStreaming: any FileEventStreaming
     private let snapshotReader: any FolderSnapshotReading
     private let accessController: any FolderAccessControlling
+    private let initialSnapshot: FolderSnapshot
 
     private var generation: UInt64
     private var lifecycle: Lifecycle = .idle
     private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
     private var eventTask: Task<Void, Never>?
     private var accessReleased = false
+    private var subscriptionStopped = false
 
     public init(
         seed: CreatedGlassRuntimeSeed,
+        eventStreaming: any FileEventStreaming,
         snapshotReader: any FolderSnapshotReading,
         accessController: any FolderAccessControlling
     ) {
         self.configuration = seed.configuration
         self.access = seed.access
-        self.events = seed.events
+        self.eventSubscription = seed.eventSubscription
+        self.eventStreaming = eventStreaming
         self.snapshotReader = snapshotReader
         self.accessController = accessController
-        self.generation = seed.snapshot.generation
         self.initialSnapshot = seed.snapshot
+        self.generation = seed.snapshot.generation
     }
-
-    private let initialSnapshot: FolderSnapshot
 
     public func start() throws -> AsyncStream<GlassContentState> {
         switch lifecycle {
@@ -57,6 +60,14 @@ public actor GlassRuntimeSession {
         stateContinuation = pair.continuation
         lifecycle = .running
         pair.continuation.yield(Self.contentState(for: initialSnapshot))
+        pair.continuation.onTermination = { [weak self] _ in
+            guard let self else {
+                return
+            }
+            Task {
+                await self.stop()
+            }
+        }
 
         eventTask = Task { [weak self] in
             await self?.consumeEvents()
@@ -75,11 +86,12 @@ public actor GlassRuntimeSession {
         eventTask = nil
         stateContinuation?.finish()
         stateContinuation = nil
+        await stopSubscriptionIfNeeded()
         await releaseAccessIfNeeded()
     }
 
     private func consumeEvents() async {
-        for await event in events {
+        for await event in eventSubscription.events {
             if Task.isCancelled || lifecycle != .running {
                 return
             }
@@ -117,7 +129,16 @@ public actor GlassRuntimeSession {
         eventTask = nil
         stateContinuation?.finish()
         stateContinuation = nil
+        await stopSubscriptionIfNeeded()
         await releaseAccessIfNeeded()
+    }
+
+    private func stopSubscriptionIfNeeded() async {
+        guard !subscriptionStopped else {
+            return
+        }
+        subscriptionStopped = true
+        await eventStreaming.stop(subscriptionID: eventSubscription.id)
     }
 
     private func releaseAccessIfNeeded() async {
