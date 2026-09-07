@@ -110,7 +110,7 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
         resourceKeys: [URLResourceKey]
     ) throws -> GlassItem {
         let values = try url.resourceValues(forKeys: Set(resourceKeys))
-        let kind = Self.classify(values)
+        let kind = try classify(url: url, values: values)
 
         return GlassItem(
             id: FileIdentity(
@@ -126,13 +126,14 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
         )
     }
 
-    private static func classify(_ values: URLResourceValues) -> FileKind {
-        if values.isAliasFile == true {
-            return .alias
+    private func classify(url: URL, values: URLResourceValues) throws -> FileKind {
+        let attributes = try fileManager.attributesOfItem(atPath: url.path)
+        if attributes[.type] as? FileAttributeType == .typeSymbolicLink {
+            return .symbolicLink
         }
 
-        if values.fileResourceType == .symbolicLink {
-            return .symbolicLink
+        if values.isAliasFile == true {
+            return .alias
         }
 
         if values.isPackage == true {
