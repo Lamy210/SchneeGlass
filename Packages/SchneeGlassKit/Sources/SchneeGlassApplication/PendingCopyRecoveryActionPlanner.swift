@@ -2,14 +2,14 @@ public enum PendingCopyRecoveryAction: Hashable, Sendable {
     /// Remove only the app-owned recovery metadata. Never mutates user files.
     case discardMetadata
 
-    /// Reveal the app-owned staging item to the user.
+    /// Reveal the staging item to the user without claiming it is safe to delete.
     case revealStaging
 
     /// Reveal the final destination item without claiming ownership of it.
     case revealFinal
 
-    /// Explicitly remove only the staging item proven by operation metadata.
-    /// This action must never run automatically.
+    /// Explicitly remove only a staging item whose persisted operation metadata
+    /// and filesystem resource identity both match. Never runs automatically.
     case removeOwnedStaging
 
     /// Ask the user to restore/reconnect access to the destination folder.
@@ -34,14 +34,21 @@ public enum PendingCopyRecoveryActionPlanner {
         case .metadataOnly:
             actions = [.discardMetadata]
 
-        case .stagingPresent:
-            actions = [.revealStaging, .removeOwnedStaging]
+        case let .stagingPresent(verification):
+            actions = stagingActions(verification: verification)
 
         case .finalPresent:
             actions = [.revealFinal, .discardMetadata]
 
-        case .stagingAndFinalPresent:
-            actions = [.revealStaging, .revealFinal, .removeOwnedStaging]
+        case let .stagingAndFinalPresent(staging, _):
+            var conflictActions: [PendingCopyRecoveryAction] = [
+                .revealStaging,
+                .revealFinal,
+            ]
+            if staging.resourceIdentity == .matchesRecordedIdentity {
+                conflictActions.append(.removeOwnedStaging)
+            }
+            actions = conflictActions
 
         case .destinationMismatch, .destinationUnavailable:
             actions = [.reconnectDestination]
@@ -51,5 +58,14 @@ public enum PendingCopyRecoveryActionPlanner {
         }
 
         return PendingCopyRecoveryActionPlan(actions: actions)
+    }
+
+    private static func stagingActions(
+        verification: PendingCopyFileVerification
+    ) -> [PendingCopyRecoveryAction] {
+        guard verification.resourceIdentity == .matchesRecordedIdentity else {
+            return [.revealStaging]
+        }
+        return [.revealStaging, .removeOwnedStaging]
     }
 }
