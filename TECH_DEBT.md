@@ -1,67 +1,113 @@
-# Technical Debt Register
+# SchneeGlass Technical Debt Register
 
-SchneeGlass では「技術負債を完全に作らない」ことではなく、**意図せず・追跡不能な負債を作らないこと**を目標にします。
+SchneeGlassでは「技術負債を完全にゼロにする」ことではなく、**意図しない負債を作らないこと**を目標とします。
 
-Intentional simplification は許可しますが、理由と revisit trigger を記録します。
+Intentional Simplificationには必ず理由とRevisit Triggerを付けます。
 
-## Entry Format
+---
+
+## DEBT-001 — FSEvents後のFull Direct-child Snapshot
+
+### Current
+
+FSEvents受信後、差分PatchではなくFolder直下Snapshotを再構築する設計。
+
+### Reason
+
+v0.1ではCorrectnessとRecovery容易性を優先するため。
+
+### Revisit Trigger
 
 ```text
-DEBT-XXX
-
-Status:
-Area:
-Current:
-Reason:
-Risk:
-Revisit Trigger:
-Resolution Direction:
-Related Issue/ADR:
+500-item snapshotがPerformance Baselineを継続的に超える
+または
+実測でUI responsivenessへ影響する
 ```
 
-## DEBT-001 — FSEvents 後の full direct-child rescan
+---
 
-**Status:** Accepted for v0.1  
-**Area:** Filesystem observation
-
-### Current
-
-FSEvents の各 debounce batch 後に、対象 Folder の direct children を再 snapshot する。
-
-### Reason
-
-v0.1 は差分処理の複雑性より correctness と recovery を優先する。
-
-### Risk
-
-非常に大量の direct children を持つ Folder では enumeration cost が増える。
-
-### Revisit Trigger
-
-- 500-item snapshot が performance baseline を継続的に超える
-- Real-world profile で measurable UI latency が確認される
-
-### Resolution Direction
-
-Correctness invariant を維持したまま snapshot cache / scoped invalidation を検討する。
-
-## DEBT-002 — JSON configuration persistence
-
-**Status:** Accepted for v0.1  
-**Area:** Persistence
+## DEBT-002 — Configuration PersistenceにJSONを使用
 
 ### Current
 
-Glass configuration / recovery metadata を atomic JSON で管理する。
+v0.1 ConfigはCodable JSON + Atomic Write + Backup。
 
 ### Reason
 
-v0.1 の状態量には DB が過剰。
+Configuration量が小さく、DBを導入する価値がないため。
 
 ### Revisit Trigger
 
-Safe Move / Undo / Operation Journal 導入。
+```text
+Operation Journal
+Safe Move / Undo
+複雑なRecovery Query
+```
 
-### Resolution Direction
+が必要になった時点。
 
-GRDB/SQLite transaction journal へ移行する。
+候補:
+
+```text
+GRDB / SQLite
+```
+
+---
+
+## DEBT-003 — Sequential Copy Only
+
+### Current
+
+```text
+maxConcurrentCopies = 1
+```
+
+### Reason
+
+Recovery、failure semantics、I/O competition、Test determinismを単純化するため。
+
+### Revisit Trigger
+
+実測でSequential Copyが主要UX bottleneckになった場合。
+
+---
+
+## DEBT-004 — macOS App Target未作成のBootstrap期間
+
+### Current
+
+SPM Package / Domain / Application / Test / CI Guardを先に構築し、Xcode App TargetはまだRepositoryへ追加していない。
+
+### Reason
+
+この作業環境では実際のXcodeによるApp Target生成・`project.pbxproj` validationができないため、未検証pbxprojを手書きCommitしない。
+
+### Revisit Trigger
+
+Xcodeを利用可能なmacOS環境でBootstrapを継続するとき。
+
+### Exit Criteria
+
+```text
+Xcode App Target generated
+Debug build PASS
+Release build PASS
+Local SchneeGlassKit linkage PASS
+SchneeGlass.entitlements linkage PASS
+```
+
+---
+
+## 負債追加ルール
+
+新規Entryには最低限以下を記録する。
+
+```text
+Current
+Reason
+Impact
+Revisit Trigger
+Exit Criteria（定義可能なら）
+```
+
+「一時的」「あとで直す」だけの記録は禁止する。
