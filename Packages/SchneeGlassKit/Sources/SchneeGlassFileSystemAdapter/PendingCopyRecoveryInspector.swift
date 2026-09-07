@@ -4,7 +4,7 @@ import SchneeGlassApplication
 public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
     private enum FileObservation {
         case absent
-        case regular(size: Int64)
+        case regular(size: Int64, resourceIdentifier: String?)
         case unexpectedType
         case unavailable
     }
@@ -66,18 +66,44 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
         case (.absent, .absent):
             disposition = .metadataOnly
 
-        case let (.regular(size), .absent):
+        case let (.regular(size, resourceIdentifier), .absent):
             disposition = .stagingPresent(
-                Self.verification(actualSize: size, expectedSize: record.expectedSize)
+                Self.verification(
+                    actualSize: size,
+                    expectedSize: record.expectedSize,
+                    observedResourceIdentifier: resourceIdentifier,
+                    recordedResourceIdentifier: record.stagingResourceIdentifier
+                )
             )
 
-        case let (.absent, .regular(size)):
+        case let (.absent, .regular(size, resourceIdentifier)):
             disposition = .finalPresent(
-                Self.verification(actualSize: size, expectedSize: record.expectedSize)
+                Self.verification(
+                    actualSize: size,
+                    expectedSize: record.expectedSize,
+                    observedResourceIdentifier: resourceIdentifier,
+                    recordedResourceIdentifier: record.stagingResourceIdentifier
+                )
             )
 
-        case (.regular, .regular):
-            disposition = .stagingAndFinalPresent
+        case let (
+            .regular(stagingSize, stagingResourceIdentifier),
+            .regular(finalSize, finalResourceIdentifier)
+        ):
+            disposition = .stagingAndFinalPresent(
+                staging: Self.verification(
+                    actualSize: stagingSize,
+                    expectedSize: record.expectedSize,
+                    observedResourceIdentifier: stagingResourceIdentifier,
+                    recordedResourceIdentifier: record.stagingResourceIdentifier
+                ),
+                final: Self.verification(
+                    actualSize: finalSize,
+                    expectedSize: record.expectedSize,
+                    observedResourceIdentifier: finalResourceIdentifier,
+                    recordedResourceIdentifier: record.stagingResourceIdentifier
+                )
+            )
         }
 
         return PendingCopyRecoveryAssessment(
@@ -101,6 +127,7 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             let values = try url.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
+                .fileResourceIdentifierKey,
             ])
 
             guard attributes[.type] as? FileAttributeType == .typeRegular,
@@ -111,7 +138,8 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             }
 
             let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            return .regular(size: size)
+            let resourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+            return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
             let cocoa = error as NSError
             if cocoa.domain == NSCocoaErrorDomain,
@@ -146,14 +174,44 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
 
     private static func verification(
         actualSize: Int64,
-        expectedSize: Int64?
+        expectedSize: Int64?,
+        observedResourceIdentifier: String?,
+        recordedResourceIdentifier: String?
     ) -> PendingCopyFileVerification {
-        guard let expectedSize else {
-            return .expectedSizeUnavailable(actual: actualSize)
+        PendingCopyFileVerification(
+            size: sizeVerification(actual: actualSize, expected: expectedSize),
+            resourceIdentity: resourceIdentityVerification(
+                observed: observedResourceIdentifier,
+                recorded: recordedResourceIdentifier
+            )
+        )
+    }
+
+    private static func sizeVerification(
+        actual: Int64,
+        expected: Int64?
+    ) -> PendingCopySizeVerification {
+        guard let expected else {
+            return .expectedSizeUnavailable(actual: actual)
         }
-        guard expectedSize == actualSize else {
-            return .sizeMismatch(expected: expectedSize, actual: actualSize)
+        guard expected == actual else {
+            return .sizeMismatch(expected: expected, actual: actual)
         }
         return .matchesExpectedSize
+    }
+
+    private static func resourceIdentityVerification(
+        observed: String?,
+        recorded: String?
+    ) -> PendingCopyResourceIdentityVerification {
+        guard let recorded else {
+            return .recordedIdentityUnavailable
+        }
+        guard let observed else {
+            return .observedIdentityUnavailable
+        }
+        return observed == recorded
+            ? .matchesRecordedIdentity
+            : .mismatchesRecordedIdentity
     }
 }
