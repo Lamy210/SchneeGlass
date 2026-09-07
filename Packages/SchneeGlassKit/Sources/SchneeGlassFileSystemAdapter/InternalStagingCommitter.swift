@@ -13,6 +13,9 @@ protocol StagingCommitting: Sendable {
 }
 
 public actor InternalStagingCommitter: StagingCommitting {
+    private static let stagingPrefix = ".schneeglass-copy-"
+    private static let stagingSuffix = ".partial"
+
     private let fileManager: FileManager
 
     public init() {
@@ -31,8 +34,7 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.crossDirectoryCommit
         }
 
-        let stagingName = staging.lastPathComponent
-        guard stagingName.hasPrefix(".schneeglass-copy-"), stagingName.hasSuffix(".partial") else {
+        guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
             throw StagingCommitError.invalidStagingFile
         }
 
@@ -52,5 +54,20 @@ public actor InternalStagingCommitter: StagingCommitting {
             }
             throw StagingCommitError.commitFailed
         }
+    }
+
+    static func isOwnedStagingFilename(_ filename: String) -> Bool {
+        guard filename.hasPrefix(stagingPrefix), filename.hasSuffix(stagingSuffix) else {
+            return false
+        }
+
+        let start = filename.index(filename.startIndex, offsetBy: stagingPrefix.count)
+        let end = filename.index(filename.endIndex, offsetBy: -stagingSuffix.count)
+        guard start < end else {
+            return false
+        }
+
+        let operationID = String(filename[start..<end])
+        return UUID(uuidString: operationID) != nil
     }
 }
