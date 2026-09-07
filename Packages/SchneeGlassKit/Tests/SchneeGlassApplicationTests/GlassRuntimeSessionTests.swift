@@ -387,7 +387,8 @@ func runtimeSessionCannotBeStartedTwice() async throws {
 @Test
 func runtimeDropPlanningUsesTheSessionsAuthorizedDestination() async throws {
     let fixture = try makeRuntimeFixture()
-    _ = try await fixture.session.start()
+    let states = try await fixture.session.start()
+    _ = states
     let sources = [URL(fileURLWithPath: "/tmp/External/report.txt")]
 
     let result = await fixture.session.planDrop(sourceURLs: sources)
@@ -404,7 +405,8 @@ func runtimeDropPlanningUsesTheSessionsAuthorizedDestination() async throws {
 @Test
 func runtimeCopyRejectsPlanForAnotherDestinationBeforeMutation() async throws {
     let fixture = try makeRuntimeFixture()
-    _ = try await fixture.session.start()
+    let states = try await fixture.session.start()
+    _ = states
     let validPlan = try copyPlan(for: fixture)
     let otherURL = URL(fileURLWithPath: "/tmp/OtherGlass", isDirectory: true)
     let invalidPlan = try CopyBatchPlan(
@@ -433,7 +435,8 @@ func runtimeCopyRejectsPlanForAnotherDestinationBeforeMutation() async throws {
 @Test
 func runtimeRejectsSecondCopyWhileOneIsInProgress() async throws {
     let fixture = try makeRuntimeFixture(blockCopy: true)
-    _ = try await fixture.session.start()
+    let states = try await fixture.session.start()
+    _ = states
     let plan = try copyPlan(for: fixture)
     let session = fixture.session
     let firstCopy = Task {
@@ -462,7 +465,8 @@ func runtimeRejectsSecondCopyWhileOneIsInProgress() async throws {
 @Test
 func runtimeStopWaitsForActiveCopyBeforeReleasingSecurityScope() async throws {
     let fixture = try makeRuntimeFixture(blockCopy: true)
-    _ = try await fixture.session.start()
+    let states = try await fixture.session.start()
+    _ = states
     let plan = try copyPlan(for: fixture)
     let session = fixture.session
     let copyTask = Task {
