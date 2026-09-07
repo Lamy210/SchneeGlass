@@ -1,4 +1,5 @@
 import FileDomain
+import Foundation
 import Observation
 import SchneeGlassApplication
 import SchneeGlassDomain
@@ -235,7 +236,7 @@ public final class SchneeGlassWorkspaceModel {
                 return !result.succeeded.isEmpty
             }
 
-            if result.succeeded.contains(where: \.recoveryMetadataCleanupPending) {
+            if result.succeeded.contains(where: { $0.recoveryMetadataCleanupPending }) {
                 userMessage = "The files were copied, but SchneeGlass still has recovery metadata to clean up. Your copied files were not changed."
             } else {
                 userMessage = nil
