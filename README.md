@@ -15,16 +15,16 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 - `Packages/SchneeGlassKit`
   - Swift 6
   - macOS 15+
-  - Compile-time target boundaries
-- Initial Domain / Application contracts
-- Swift Testing bootstrap tests
-- App Sandbox entitlement baseline
-- Architecture guard
-- File mutation allowlist guard
-- Public repository safety guard
-- GitHub Actions bootstrap CI
+  - Compile-time Target Boundaries
+- Initial Domain / Application Contracts
+- Swift Testing Bootstrap Tests
+- App Sandbox Entitlement Baseline
+- Architecture Guard
+- File Mutation Allowlist Guard
+- Public Repository Safety Guard
+- GitHub Actions Bootstrap CI
 
-macOS App target自体は、利用可能なXcode環境で生成・検証後に追加します。未検証の`project.pbxproj`を手書きでCommitしません。
+macOS App Target自体は、利用可能なXcode環境で生成・検証後に追加します。未検証の`project.pbxproj`を手書きでCommitしません。
 
 ## Product Promise
 
@@ -62,14 +62,14 @@ SchneeGlassMacOSAdapter
 Commitしてはいけないもの:
 
 - API Key / Token / Secret
-- Private Key / Signing material
+- Private Key / Signing Material
 - `.env`
-- Security-scoped Bookmark raw data
+- Security-scoped Bookmark Raw Data
 - 実在する会社・顧客の内部情報
 - 個人・会社環境の絶対Pathを含むFixture
-- private diagnostics dump
+- Private Diagnostics Dump
 
-Sample/Test dataには架空値だけを使用します。
+Sample/Test Dataには架空値だけを使用します。
 
 詳細は [`SECURITY.md`](SECURITY.md) と [`AGENTS.md`](AGENTS.md) を参照してください。
 
@@ -98,25 +98,25 @@ bash Scripts/verify-file-safety.sh
 
 - Folder Glass
 - Multiple Glass
-- one-level Folder listing
-- External change refresh
+- One-level Folder Listing
+- External Change Refresh
 - Regular-file Copy Drop
-- Security-scoped Folder access
-- Config persistence / backup
+- Security-scoped Folder Access
+- Config Persistence / Backup
 - Safe Mode / Recovery
-- Window position recovery
+- Window Position Recovery
 - Menu Bar
-- Global Show/Hide shortcut
+- Global Show/Hide Shortcut
 
 対象外:
 
 - Move
 - Rename
 - Delete
-- Folder recursive copy
+- Folder Recursive Copy
 - Deep Drop
-- Git integration
-- Cloud backend
+- Git Integration
+- Cloud Backend
 - Runtime AI
 - Private macOS API
 
