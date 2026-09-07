@@ -267,9 +267,10 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             return
         }
 
-        for url in backups.dropFirst(Self.maximumBackupCount) {
-            try fileManager.removeItem(at: url)
-        }
+        try ConfigurationBackupRotator.removeBackups(
+            backups.dropFirst(Self.maximumBackupCount),
+            fileManager: fileManager
+        )
     }
 
     private static func mapCurrentFailure(_ failure: DecodingFailure) -> ConfigurationPersistenceError {
@@ -292,25 +293,36 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
     }
 
     private static func isBackupFilename(_ filename: String) -> Bool {
-        guard filename.hasPrefix("backup-"), filename.hasSuffix(".json") else {
-            return false
-        }
-        return backupCreatedAt(from: filename) != nil
+        backupComponents(from: filename) != nil
     }
 
     private static func backupCreatedAt(from filename: String) -> Date? {
+        guard let components = backupComponents(from: filename) else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: TimeInterval(components.milliseconds) / 1_000)
+    }
+
+    private static func backupComponents(
+        from filename: String
+    ) -> (milliseconds: Int64, id: UUID)? {
         guard filename.hasPrefix("backup-"), filename.hasSuffix(".json") else {
             return nil
         }
 
         let withoutPrefix = filename.dropFirst("backup-".count)
-        guard let separator = withoutPrefix.firstIndex(of: "-") else {
+        let withoutSuffix = withoutPrefix.dropLast(".json".count)
+        guard let separator = withoutSuffix.firstIndex(of: "-") else {
             return nil
         }
-        let timestampText = withoutPrefix[..<separator]
-        guard let milliseconds = Int64(timestampText) else {
+
+        let timestampText = withoutSuffix[..<separator]
+        let uuidText = withoutSuffix[withoutSuffix.index(after: separator)...]
+        guard let milliseconds = Int64(timestampText),
+              let id = UUID(uuidString: String(uuidText))
+        else {
             return nil
         }
-        return Date(timeIntervalSince1970: TimeInterval(milliseconds) / 1_000)
+        return (milliseconds, id)
     }
 }
