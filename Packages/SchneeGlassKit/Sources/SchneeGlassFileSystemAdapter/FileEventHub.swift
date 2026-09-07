@@ -62,7 +62,7 @@ public actor FileEventHub: FileEventStreaming {
     private let latency: TimeInterval
     private var sessions: [UUID: Session] = [:]
 
-    public init(latency: TimeInterval = Self.defaultLatency) {
+    public init(latency: TimeInterval = FileEventHub.defaultLatency) {
         self.latency = latency
         self.callbackQueue = DispatchQueue(
             label: "dev.schneeglass.filesystem-events",
