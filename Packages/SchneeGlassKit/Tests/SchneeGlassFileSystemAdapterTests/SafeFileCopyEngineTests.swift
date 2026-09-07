@@ -13,6 +13,7 @@ private actor FakeCopyEnvironment: CopyFileSystemAccessing, StagingCommitting {
     private var sourceSizes: [URL: Int64]
     private var existingItems: Set<URL>
     private var stagedSizes: [URL: Int64] = [:]
+    private var stagedResourceIdentifiers: [URL: String] = [:]
     private var stagingSizeOverrides: [URL: Int64]
     private var copyFailures: [URL: CopyFileSystemError]
     private var collisionOnCommit = false
@@ -72,6 +73,7 @@ private actor FakeCopyEnvironment: CopyFileSystemAccessing, StagingCommitting {
 
         existingItems.insert(staging)
         stagedSizes[staging] = stagingSizeOverrides[source] ?? sourceSize
+        stagedResourceIdentifiers[staging] = "fake-resource:\(staging.path)"
     }
 
     func regularFileSize(at url: URL) async throws -> Int64 {
@@ -80,6 +82,10 @@ private actor FakeCopyEnvironment: CopyFileSystemAccessing, StagingCommitting {
             throw CopyFileSystemError.verificationFailed
         }
         return size
+    }
+
+    func resourceIdentifier(at url: URL) async -> String? {
+        stagedResourceIdentifiers[url.standardizedFileURL]
     }
 
     func commit(stagingURL: URL, finalURL: URL) async throws {
@@ -102,6 +108,7 @@ private actor FakeCopyEnvironment: CopyFileSystemAccessing, StagingCommitting {
 
         existingItems.remove(staging)
         stagedSizes.removeValue(forKey: staging)
+        stagedResourceIdentifiers.removeValue(forKey: staging)
         existingItems.insert(final)
     }
 
@@ -257,7 +264,7 @@ func midBatchFailureKeepsEarlierSuccessAndDoesNotRollback() async throws {
 }
 
 @Test
-func verificationFailurePreservesStagingAndRecoveryRecord() async throws {
+func verificationFailurePreservesStagingIdentityAndRecoveryRecord() async throws {
     let destination = URL(fileURLWithPath: "/tmp/schneeglass-copy-verify", isDirectory: true)
     let source = URL(fileURLWithPath: "/tmp/verify-source.txt")
     let environment = FakeCopyEnvironment(
@@ -288,10 +295,11 @@ func verificationFailurePreservesStagingAndRecoveryRecord() async throws {
     #expect(pending.count == 1)
     #expect(pending.first?.operationID == operationID)
     #expect(pending.first?.state == .verifying)
+    #expect(pending.first?.stagingResourceIdentifier == "fake-resource:\(staging.path)")
 }
 
 @Test
-func commitCollisionRacePreservesStagingForRecovery() async throws {
+func commitCollisionRacePreservesStagingIdentityForRecovery() async throws {
     let destination = URL(fileURLWithPath: "/tmp/schneeglass-copy-race", isDirectory: true)
     let source = URL(fileURLWithPath: "/tmp/race-source.txt")
     let environment = FakeCopyEnvironment(sources: [source: 30])
@@ -319,10 +327,11 @@ func commitCollisionRacePreservesStagingForRecovery() async throws {
     #expect(stagingExists)
     #expect(pending.count == 1)
     #expect(pending.first?.state == .committing)
+    #expect(pending.first?.stagingResourceIdentifier == "fake-resource:\(staging.path)")
 }
 
 @Test
-func recoveryMetadataCleanupFailureDoesNotTurnCommittedCopyIntoFailure() async throws {
+func recoveryMetadataCleanupFailureKeepsCommittedIdentityMetadata() async throws {
     let destination = URL(fileURLWithPath: "/tmp/schneeglass-copy-cleanup", isDirectory: true)
     let source = URL(fileURLWithPath: "/tmp/cleanup-source.txt")
     let environment = FakeCopyEnvironment(sources: [source: 50])
@@ -338,6 +347,10 @@ func recoveryMetadataCleanupFailureDoesNotTurnCommittedCopyIntoFailure() async t
     )
 
     let result = await engine.copy(request)
+    let operationID = request.plan.items[0].operationID
+    let staging = destination.appendingPathComponent(
+        ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+    )
     let finalURL = destination.appendingPathComponent("cleanup-source.txt")
     let finalExists = await environment.exists(finalURL)
     let pending = try await recovery.records()
@@ -348,6 +361,7 @@ func recoveryMetadataCleanupFailureDoesNotTurnCommittedCopyIntoFailure() async t
     #expect(finalExists)
     #expect(pending.count == 1)
     #expect(pending.first?.state == .committing)
+    #expect(pending.first?.stagingResourceIdentifier == "fake-resource:\(staging.path)")
 }
 
 @Test
