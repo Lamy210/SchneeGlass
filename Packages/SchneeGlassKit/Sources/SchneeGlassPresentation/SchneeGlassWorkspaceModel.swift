@@ -1,3 +1,4 @@
+import FileDomain
 import Observation
 import SchneeGlassApplication
 import SchneeGlassDomain
@@ -24,10 +25,13 @@ public final class SchneeGlassWorkspaceModel {
     public private(set) var glasses: [GlassWorkspaceEntry] = []
     public private(set) var isCreatingGlass = false
     public private(set) var isRestoring = false
+    public private(set) var isMutatingConfiguration = false
     public private(set) var userMessage: String?
 
     private let createGlassUseCase: CreateGlassUseCase
     private let restoreApplicationUseCase: RestoreApplicationUseCase
+    private let removeGlassUseCase: RemoveGlassUseCase
+    private let fileActionUseCase: WorkspaceFileActionUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
@@ -36,22 +40,30 @@ public final class SchneeGlassWorkspaceModel {
     public init(
         createGlassUseCase: CreateGlassUseCase,
         restoreApplicationUseCase: RestoreApplicationUseCase,
+        removeGlassUseCase: RemoveGlassUseCase,
+        fileActionUseCase: WorkspaceFileActionUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
         self.createGlassUseCase = createGlassUseCase
         self.restoreApplicationUseCase = restoreApplicationUseCase
+        self.removeGlassUseCase = removeGlassUseCase
+        self.fileActionUseCase = fileActionUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
 
     public func restoreIfNeeded() async {
-        guard !didAttemptInitialRestore else {
+        guard !didAttemptInitialRestore, !isMutatingConfiguration else {
             return
         }
 
         didAttemptInitialRestore = true
+        isMutatingConfiguration = true
         isRestoring = true
         userMessage = nil
-        defer { isRestoring = false }
+        defer {
+            isRestoring = false
+            isMutatingConfiguration = false
+        }
 
         do {
             let result = try await restoreApplicationUseCase.execute()
@@ -91,13 +103,17 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func addGlass() async {
-        guard !isCreatingGlass, !isRestoring else {
+        guard !isMutatingConfiguration else {
             return
         }
 
+        isMutatingConfiguration = true
         isCreatingGlass = true
         userMessage = nil
-        defer { isCreatingGlass = false }
+        defer {
+            isCreatingGlass = false
+            isMutatingConfiguration = false
+        }
 
         do {
             guard let seed = try await createGlassUseCase.execute() else {
@@ -107,6 +123,46 @@ public final class SchneeGlassWorkspaceModel {
         } catch {
             userMessage = Self.userFacingMessage(for: error)
         }
+    }
+
+    public func removeGlass(id: GlassID) async {
+        guard !isMutatingConfiguration else {
+            return
+        }
+
+        isMutatingConfiguration = true
+        defer { isMutatingConfiguration = false }
+
+        do {
+            let removed = try await removeGlassUseCase.execute(glassID: id)
+            guard removed else {
+                return
+            }
+
+            stateTasks[id]?.cancel()
+            stateTasks[id] = nil
+
+            if let session = sessions.removeValue(forKey: id) {
+                await session.stop()
+            }
+
+            glasses.removeAll { $0.id == id }
+            userMessage = nil
+        } catch {
+            userMessage = "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+        }
+    }
+
+    public func open(_ item: GlassItem) {
+        do {
+            try fileActionUseCase.open(item)
+        } catch {
+            userMessage = "macOS couldn't open \(item.displayName)."
+        }
+    }
+
+    public func revealInFinder(_ item: GlassItem) {
+        fileActionUseCase.reveal(item)
     }
 
     public func dismissMessage() {
