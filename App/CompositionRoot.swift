@@ -39,6 +39,13 @@ final class SchneeGlassCompositionRoot {
             snapshotReader: snapshotReader
         )
 
+        let restoreApplicationUseCase = RestoreApplicationUseCase(
+            configurationStore: configurationStore,
+            accessController: accessController,
+            eventStreaming: eventHub,
+            snapshotReader: snapshotReader
+        )
+
         let runtimeSessionFactory = GlassRuntimeSessionFactory(
             eventStreaming: eventHub,
             snapshotReader: snapshotReader,
@@ -48,6 +55,7 @@ final class SchneeGlassCompositionRoot {
         return SchneeGlassCompositionRoot(
             workspaceModel: SchneeGlassWorkspaceModel(
                 createGlassUseCase: createGlassUseCase,
+                restoreApplicationUseCase: restoreApplicationUseCase,
                 runtimeSessionFactory: runtimeSessionFactory
             )
         )
