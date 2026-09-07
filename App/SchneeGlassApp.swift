@@ -5,9 +5,16 @@ import SwiftUI
 @MainActor
 struct SchneeGlassApp: App {
     private let bootstrapState: SchneeGlassBootstrapState
+    private let panelCoordinator: DesktopGlassPanelCoordinator?
 
     init() {
-        self.bootstrapState = SchneeGlassBootstrapState.resolve()
+        let state = SchneeGlassBootstrapState.resolve()
+        self.bootstrapState = state
+        if case let .ready(model) = state {
+            self.panelCoordinator = DesktopGlassPanelCoordinator(model: model)
+        } else {
+            self.panelCoordinator = nil
+        }
     }
 
     var body: some Scene {
@@ -17,6 +24,10 @@ struct SchneeGlassApp: App {
                 SchneeGlassWorkspaceView(model: model)
                     .task {
                         await model.restoreIfNeeded()
+                        panelCoordinator?.sync()
+                    }
+                    .onChange(of: model.glasses) { _, _ in
+                        panelCoordinator?.sync()
                     }
 
             case .failed:
@@ -33,7 +44,17 @@ struct SchneeGlassApp: App {
                         }
                     }
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(model.isCreatingGlass || model.isRestoring)
+                    .disabled(model.isMutatingConfiguration)
+                }
+
+                CommandMenu("Glasses") {
+                    Button("Show All Glasses") {
+                        panelCoordinator?.showAll()
+                    }
+
+                    Button("Hide All Glasses") {
+                        panelCoordinator?.hideAll()
+                    }
                 }
             }
         }
