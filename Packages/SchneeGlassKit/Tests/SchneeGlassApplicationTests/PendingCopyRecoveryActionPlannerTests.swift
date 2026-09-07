@@ -3,6 +3,13 @@ import SchneeGlassApplication
 import SchneeGlassDomain
 import Testing
 
+private func verification(
+    size: PendingCopySizeVerification = .matchesExpectedSize,
+    identity: PendingCopyResourceIdentityVerification
+) -> PendingCopyFileVerification {
+    PendingCopyFileVerification(size: size, resourceIdentity: identity)
+}
+
 private func makeAssessment(
     _ disposition: PendingCopyRecoveryDisposition
 ) -> PendingCopyRecoveryAssessment {
@@ -15,6 +22,7 @@ private func makeAssessment(
         stagingFilename: ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial",
         finalFilename: "payload.txt",
         expectedSize: 7,
+        stagingResourceIdentifier: "resource-a",
         state: .verifying
     )
     return PendingCopyRecoveryAssessment(
@@ -33,9 +41,13 @@ func metadataOnlyOffersMetadataDiscardOnly() {
 }
 
 @Test
-func stagingPresentNeverOffersFinalMutation() {
+func stagingWithMatchingIdentityOffersExplicitOwnedCleanup() {
     let plan = PendingCopyRecoveryActionPlanner.plan(
-        for: makeAssessment(.stagingPresent(.matchesExpectedSize))
+        for: makeAssessment(
+            .stagingPresent(
+                verification(identity: .matchesRecordedIdentity)
+            )
+        )
     )
 
     #expect(plan.actions == [.revealStaging, .removeOwnedStaging])
@@ -43,9 +55,39 @@ func stagingPresentNeverOffersFinalMutation() {
 }
 
 @Test
+func stagingWithoutRecordedIdentityIsRevealOnly() {
+    let plan = PendingCopyRecoveryActionPlanner.plan(
+        for: makeAssessment(
+            .stagingPresent(
+                verification(identity: .recordedIdentityUnavailable)
+            )
+        )
+    )
+
+    #expect(plan.actions == [.revealStaging])
+}
+
+@Test
+func stagingWithIdentityMismatchIsRevealOnly() {
+    let plan = PendingCopyRecoveryActionPlanner.plan(
+        for: makeAssessment(
+            .stagingPresent(
+                verification(identity: .mismatchesRecordedIdentity)
+            )
+        )
+    )
+
+    #expect(plan.actions == [.revealStaging])
+}
+
+@Test
 func finalPresentCanBeRevealedAndMetadataDismissed() {
     let plan = PendingCopyRecoveryActionPlanner.plan(
-        for: makeAssessment(.finalPresent(.matchesExpectedSize))
+        for: makeAssessment(
+            .finalPresent(
+                verification(identity: .matchesRecordedIdentity)
+            )
+        )
     )
 
     #expect(plan.actions == [.revealFinal, .discardMetadata])
@@ -53,12 +95,33 @@ func finalPresentCanBeRevealedAndMetadataDismissed() {
 }
 
 @Test
-func stagingAndFinalConflictNeverOffersMetadataDiscard() {
+func conflictWithMatchingStagingIdentityCanOfferOwnedStagingCleanup() {
     let plan = PendingCopyRecoveryActionPlanner.plan(
-        for: makeAssessment(.stagingAndFinalPresent)
+        for: makeAssessment(
+            .stagingAndFinalPresent(
+                staging: verification(identity: .matchesRecordedIdentity),
+                final: verification(identity: .mismatchesRecordedIdentity)
+            )
+        )
     )
 
     #expect(plan.actions == [.revealStaging, .revealFinal, .removeOwnedStaging])
+    #expect(!plan.actions.contains(.discardMetadata))
+}
+
+@Test
+func conflictWithoutStagingIdentityMatchIsRevealOnly() {
+    let plan = PendingCopyRecoveryActionPlanner.plan(
+        for: makeAssessment(
+            .stagingAndFinalPresent(
+                staging: verification(identity: .recordedIdentityUnavailable),
+                final: verification(identity: .matchesRecordedIdentity)
+            )
+        )
+    )
+
+    #expect(plan.actions == [.revealStaging, .revealFinal])
+    #expect(!plan.actions.contains(.removeOwnedStaging))
     #expect(!plan.actions.contains(.discardMetadata))
 }
 
