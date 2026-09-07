@@ -139,18 +139,30 @@ private actor FakeAccessController: FolderAccessControlling {
 private actor FakeEventStreaming: FileEventStreaming {
     let trace: CreateGlassTrace
     let fail: Bool
+    let subscriptionID = UUID()
+    private var stopped: [UUID] = []
 
     init(trace: CreateGlassTrace, fail: Bool = false) {
         self.trace = trace
         self.fail = fail
     }
 
-    func events(for access: FolderAccessHandle) async throws -> AsyncStream<FileEvent> {
-        await trace.append("events")
+    func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
+        await trace.append("subscribe")
         if fail { throw CreateGlassTestError.injected }
-        return AsyncStream { continuation in
-            continuation.finish()
-        }
+        return FileEventSubscription(
+            id: subscriptionID,
+            events: AsyncStream { _ in }
+        )
+    }
+
+    func stop(subscriptionID: UUID) async {
+        await trace.append("stopEvents")
+        stopped.append(subscriptionID)
+    }
+
+    func stopCount() -> Int {
+        stopped.count
     }
 }
 
@@ -203,7 +215,8 @@ private func makeUseCase(
 ) throws -> (
     useCase: CreateGlassUseCase,
     store: FakeConfigurationStore,
-    access: FakeAccessController
+    access: FakeAccessController,
+    events: FakeEventStreaming
 ) {
     let store = FakeConfigurationStore(
         trace: trace,
@@ -214,6 +227,7 @@ private func makeUseCase(
         trace: trace,
         refreshedSource: refreshedSource
     )
+    let events = FakeEventStreaming(trace: trace, fail: failEvents)
     let useCase = CreateGlassUseCase(
         folderSelector: FakeFolderSelector(url: selectedURL, trace: trace),
         sourceCreator: FakeFolderSourceCreator(source: initialSource, trace: trace),
@@ -222,10 +236,10 @@ private func makeUseCase(
         ),
         configurationStore: store,
         accessController: access,
-        eventStreaming: FakeEventStreaming(trace: trace, fail: failEvents),
+        eventStreaming: events,
         snapshotReader: FakeSnapshotReader(trace: trace, fail: failSnapshot)
     )
-    return (useCase, store, access)
+    return (useCase, store, access, events)
 }
 
 @Test
@@ -250,9 +264,10 @@ func createGlassStartsEventsBeforeSnapshotAndPersistsAfterSnapshot() async throw
     #expect(result.snapshot.generation == 1)
     #expect(saved == [result.configuration])
     #expect(await trace.snapshot() == [
-        "select", "source", "load", "acquire", "events", "snapshot", "save",
+        "select", "source", "load", "acquire", "subscribe", "snapshot", "save",
     ])
     #expect(await setup.access.counts().released == 0)
+    #expect(await setup.events.stopCount() == 0)
 }
 
 @Test
@@ -298,7 +313,33 @@ func configurationLoadFailureOccursBeforeSecurityScopeAcquisition() async throws
 
 @Test
 @MainActor
-func snapshotFailureReleasesSecurityScopeAndDoesNotSave() async throws {
+func eventSubscriptionFailureReleasesSecurityScope() async throws {
+    let trace = CreateGlassTrace()
+    let selected = URL(fileURLWithPath: "/tmp/EventFailure", isDirectory: true)
+    let setup = try makeUseCase(
+        selectedURL: selected,
+        trace: trace,
+        initialSource: source(path: selected.path, marker: 1),
+        failEvents: true
+    )
+
+    do {
+        _ = try await setup.useCase.execute()
+        Issue.record("Expected event subscription failure")
+    } catch let error as CreateGlassError {
+        #expect(error == .eventStreamFailed)
+    }
+
+    #expect(await trace.snapshot() == [
+        "select", "source", "load", "acquire", "subscribe", "release",
+    ])
+    #expect(await setup.access.counts().released == 1)
+    #expect(await setup.events.stopCount() == 0)
+}
+
+@Test
+@MainActor
+func snapshotFailureStopsWatcherThenReleasesSecurityScopeAndDoesNotSave() async throws {
     let trace = CreateGlassTrace()
     let selected = URL(fileURLWithPath: "/tmp/SnapshotFailure", isDirectory: true)
     let setup = try makeUseCase(
@@ -316,15 +357,16 @@ func snapshotFailureReleasesSecurityScopeAndDoesNotSave() async throws {
     }
 
     #expect(await trace.snapshot() == [
-        "select", "source", "load", "acquire", "events", "snapshot", "release",
+        "select", "source", "load", "acquire", "subscribe", "snapshot", "stopEvents", "release",
     ])
+    #expect(await setup.events.stopCount() == 1)
     #expect(await setup.access.counts().released == 1)
     #expect(await setup.store.lastSaved() == nil)
 }
 
 @Test
 @MainActor
-func persistenceFailureReleasesSecurityScopeAfterSnapshot() async throws {
+func persistenceFailureStopsWatcherThenReleasesSecurityScopeAfterSnapshot() async throws {
     let trace = CreateGlassTrace()
     let selected = URL(fileURLWithPath: "/tmp/SaveFailure", isDirectory: true)
     let setup = try makeUseCase(
@@ -342,7 +384,8 @@ func persistenceFailureReleasesSecurityScopeAfterSnapshot() async throws {
     }
 
     #expect(await trace.snapshot() == [
-        "select", "source", "load", "acquire", "events", "snapshot", "save", "release",
+        "select", "source", "load", "acquire", "subscribe", "snapshot", "save", "stopEvents", "release",
     ])
+    #expect(await setup.events.stopCount() == 1)
     #expect(await setup.access.counts().released == 1)
 }
