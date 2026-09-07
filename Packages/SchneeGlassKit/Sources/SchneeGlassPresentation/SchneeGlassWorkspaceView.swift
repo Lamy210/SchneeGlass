@@ -78,13 +78,32 @@ public struct SchneeGlassWorkspaceView: View {
                     ForEach(model.glasses) { entry in
                         GlassPreviewSurface(
                             entry: entry,
-                            canRemove: !model.isMutatingConfiguration,
+                            canRemove: !model.isMutatingConfiguration && !Self.isCopying(entry),
                             onOpen: model.open,
                             onReveal: model.revealInFinder,
                             onRemove: {
                                 Task {
                                     await model.removeGlass(id: entry.id)
                                 }
+                            },
+                            onPlanDrop: { urls in
+                                let plan = await model.planDrop(
+                                    glassID: entry.id,
+                                    sourceURLs: urls
+                                )
+                                if case .copy = plan {
+                                    return true
+                                }
+                                return false
+                            },
+                            onCancelDrop: {
+                                model.cancelDrop(glassID: entry.id)
+                            },
+                            onPerformDrop: { urls in
+                                _ = await model.performDrop(
+                                    glassID: entry.id,
+                                    sourceURLs: urls
+                                )
                             }
                         )
                     }
@@ -160,6 +179,13 @@ public struct SchneeGlassWorkspaceView: View {
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
+
+    private static func isCopying(_ entry: GlassWorkspaceEntry) -> Bool {
+        if case .copying = entry.interactionState {
+            return true
+        }
+        return false
+    }
 }
 
 private struct GlassPreviewSurface: View {
@@ -168,6 +194,9 @@ private struct GlassPreviewSurface: View {
     let onOpen: (GlassItem) -> Void
     let onReveal: (GlassItem) -> Void
     let onRemove: () -> Void
+    let onPlanDrop: @MainActor ([URL]) async -> Bool
+    let onCancelDrop: @MainActor () -> Void
+    let onPerformDrop: @MainActor ([URL]) async -> Void
 
     @State private var showsRemoveConfirmation = false
 
@@ -203,7 +232,19 @@ private struct GlassPreviewSurface: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(.separator.opacity(0.45), lineWidth: 1)
+                .stroke(borderStyle, lineWidth: borderWidth)
+        }
+        .overlay {
+            interactionOverlay
+                .allowsHitTesting(false)
+        }
+        .overlay {
+            FileURLDropTarget(
+                onPlan: onPlanDrop,
+                onExit: onCancelDrop,
+                onPerform: onPerformDrop
+            )
+            .accessibilityHidden(true)
         }
         .accessibilityElement(children: .contain)
         .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
@@ -214,28 +255,106 @@ private struct GlassPreviewSurface: View {
         }
     }
 
+    private var borderStyle: AnyShapeStyle {
+        switch entry.interactionState {
+        case .dropValid:
+            return AnyShapeStyle(.tint.opacity(0.8))
+        case .dropInvalid:
+            return AnyShapeStyle(.secondary.opacity(0.8))
+        case .copying:
+            return AnyShapeStyle(.tint.opacity(0.55))
+        case .idle, .hovered:
+            return AnyShapeStyle(.separator.opacity(0.45))
+        }
+    }
+
+    private var borderWidth: CGFloat {
+        switch entry.interactionState {
+        case .dropValid, .dropInvalid, .copying:
+            return 2
+        case .idle, .hovered:
+            return 1
+        }
+    }
+
+    @ViewBuilder
+    private var interactionOverlay: some View {
+        switch entry.interactionState {
+        case .idle:
+            EmptyView()
+
+        case .hovered:
+            DropOverlaySurface {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking files…")
+                    .font(.callout.weight(.medium))
+            }
+
+        case let .dropValid(plan):
+            DropOverlaySurface {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title2)
+                Text(copyLabel(for: plan))
+                    .font(.callout.weight(.semibold))
+                Text("Original files stay where they are.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+        case let .dropInvalid(reason):
+            DropOverlaySurface {
+                Image(systemName: "nosign")
+                    .font(.title2)
+                Text(rejectionTitle(for: reason))
+                    .font(.callout.weight(.semibold))
+                Text(rejectionDetail(for: reason))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+        case let .copying(progress):
+            DropOverlaySurface {
+                ProgressView()
+                    .controlSize(.regular)
+                Text("Copying to \(entry.title)…")
+                    .font(.callout.weight(.semibold))
+                Text(copyProgressLabel(progress))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     @ViewBuilder
     private var statusLabel: some View {
-        switch entry.contentState {
-        case .loading:
-            ProgressView()
-                .controlSize(.small)
-        case .ready:
-            Label("Connected", systemImage: "checkmark.circle")
+        if case .copying = entry.interactionState {
+            Label("Copying", systemImage: "doc.on.doc")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        case .empty:
-            Label("Empty", systemImage: "tray")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .unavailable:
-            Label("Unavailable", systemImage: "exclamationmark.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .failed:
-            Label("Refresh failed", systemImage: "arrow.clockwise.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        } else {
+            switch entry.contentState {
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+            case .ready:
+                Label("Connected", systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .empty:
+                Label("Empty", systemImage: "tray")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .unavailable:
+                Label("Unavailable", systemImage: "exclamationmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .failed:
+                Label("Refresh failed", systemImage: "arrow.clockwise.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -265,7 +384,7 @@ private struct GlassPreviewSurface: View {
                     .foregroundStyle(.secondary)
                 Text("Drop files here")
                     .font(.callout.weight(.medium))
-                Text("Copy drop support will be connected to this surface next.")
+                Text("Files are copied. Originals stay where they are.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -297,6 +416,94 @@ private struct GlassPreviewSurface: View {
             }
             .frame(maxWidth: .infinity, minHeight: 100)
         }
+    }
+
+    private func copyLabel(for plan: DropPlan) -> String {
+        guard case let .copy(batch) = plan else {
+            return "Copy to \(entry.title)"
+        }
+        if batch.items.count == 1 {
+            return "Copy \(batch.items[0].destinationFilename) to \(entry.title)"
+        }
+        return "Copy \(batch.items.count) files to \(entry.title)"
+    }
+
+    private func copyProgressLabel(_ progress: CopyProgress) -> String {
+        if progress.totalCount <= 1 {
+            return progress.currentFilename
+        }
+        return "\(progress.currentIndex) of \(progress.totalCount) · \(progress.currentFilename)"
+    }
+
+    private func rejectionTitle(for reason: DropRejection) -> String {
+        switch reason {
+        case .unsupportedFolder:
+            return "Folders aren't supported yet"
+        case .unsupportedPackage:
+            return "Packages aren't supported yet"
+        case .unsupportedSymbolicLink:
+            return "Symbolic links aren't supported"
+        case .unsupportedItem:
+            return "This item can't be copied"
+        case .collision:
+            return "A file with this name already exists"
+        case .containsSameDirectoryItem:
+            return "Already in \(entry.title)"
+        case .destinationUnavailable:
+            return "Folder unavailable"
+        case .destinationReadOnly:
+            return "Folder is read-only"
+        case .networkDestinationUnsupported:
+            return "Network folders aren't supported for copy yet"
+        case .sourceUnavailable:
+            return "A source file is unavailable"
+        case .cloudPlaceholderUnavailable:
+            return "Download the cloud file first"
+        }
+    }
+
+    private func rejectionDetail(for reason: DropRejection) -> String {
+        switch reason {
+        case .collision:
+            return "Nothing will be overwritten."
+        case .unsupportedFolder:
+            return "v0.1 accepts regular files only."
+        case .unsupportedPackage, .unsupportedSymbolicLink, .unsupportedItem:
+            return "The dropped item was not changed."
+        case .containsSameDirectoryItem:
+            return "No copy is needed."
+        case .destinationUnavailable:
+            return "Reconnect the Glass before copying files."
+        case .destinationReadOnly:
+            return "SchneeGlass can't write to this folder."
+        case .networkDestinationUnsupported:
+            return "Open the folder in Finder instead."
+        case .sourceUnavailable:
+            return "The source may have moved or become inaccessible."
+        case .cloudPlaceholderUnavailable:
+            return "SchneeGlass won't start an unexpected cloud download."
+        }
+    }
+}
+
+private struct DropOverlaySurface<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.regularMaterial)
+
+            VStack(spacing: 7) {
+                content
+            }
+            .padding(20)
+        }
+        .padding(4)
     }
 }
 
