@@ -89,10 +89,16 @@ public enum StorageLocationKind: Hashable, Sendable {
 public struct StorageCapabilities: Hashable, Sendable {
     public let locationKind: StorageLocationKind
     public let isWritable: Bool
+    public let supportsCaseSensitiveNames: Bool?
 
-    public init(locationKind: StorageLocationKind, isWritable: Bool) {
+    public init(
+        locationKind: StorageLocationKind,
+        isWritable: Bool,
+        supportsCaseSensitiveNames: Bool? = nil
+    ) {
         self.locationKind = locationKind
         self.isWritable = isWritable
+        self.supportsCaseSensitiveNames = supportsCaseSensitiveNames
     }
 }
 
