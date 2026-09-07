@@ -181,6 +181,7 @@ public enum DropRejection: Error, Hashable, Sendable {
     case unsupportedSymbolicLink
     case unsupportedItem
     case collision
+    case containsSameDirectoryItem
     case destinationUnavailable
     case destinationReadOnly
     case networkDestinationUnsupported

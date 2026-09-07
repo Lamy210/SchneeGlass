@@ -50,16 +50,23 @@ public struct AuthorizedCopyBatchRequest: Hashable, Sendable {
 public struct CopyItemSuccess: Hashable, Sendable {
     public let operationID: UUID
     public let destinationURL: URL
+    public let recoveryMetadataCleanupPending: Bool
 
-    public init(operationID: UUID, destinationURL: URL) {
+    public init(
+        operationID: UUID,
+        destinationURL: URL,
+        recoveryMetadataCleanupPending: Bool = false
+    ) {
         self.operationID = operationID
         self.destinationURL = destinationURL
+        self.recoveryMetadataCleanupPending = recoveryMetadataCleanupPending
     }
 }
 
 public struct CopyItemFailure: Error, Hashable, Sendable {
     public enum Reason: Hashable, Sendable {
         case sourceUnavailable
+        case unsupportedItem
         case destinationUnavailable
         case permissionDenied
         case insufficientSpace
@@ -151,16 +158,8 @@ public enum InteractionState: Hashable, Sendable {
 }
 
 public enum FileEvent: Hashable, Sendable {
-    /// A filesystem change occurred. The consumer must refresh from a snapshot
-    /// rather than treating this event as an authoritative diff.
     case changed
-
-    /// FSEvents reported dropped/coalesced history. The consumer must perform
-    /// a full direct-child snapshot and discard incremental assumptions.
     case requiresFullRescan
-
-    /// The watched root itself moved, disappeared, or otherwise changed identity.
-    /// The consumer must revalidate access before presenting folder contents.
     case rootChanged
 }
 
