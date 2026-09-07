@@ -93,7 +93,9 @@ public final class SchneeGlassWorkspaceModel {
                     GlassWorkspaceEntry(
                         id: failure.glassID,
                         title: failure.title,
-                        contentState: Self.contentState(for: failure.reason)
+                        contentState: Self.contentState(for: failure.reason),
+                        placement: failure.placement,
+                        showOnAllSpaces: failure.showOnAllSpaces
                     )
                 )
             }
@@ -245,8 +247,6 @@ public final class SchneeGlassWorkspaceModel {
             return false
         }
 
-        // Re-plan immediately before mutation. Hover-time plans are display-only
-        // and must never authorize a copy after filesystem state has changed.
         let freshPlan = await session.planDrop(sourceURLs: sourceURLs)
         guard case let .copy(copyPlan) = freshPlan else {
             switch freshPlan {
