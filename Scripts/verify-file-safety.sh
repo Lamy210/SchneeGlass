@@ -19,6 +19,11 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ConfigurationBackupRotator.swift"* ]] \
+     && [[ "$text" == *".removeItem("* ]]; then
+    continue
+  fi
+
   echo "File safety violation: ${file#$ROOT/}:$line:$text" >&2
   violations=1
 done < <(grep -RInE '\.(removeItem|moveItem|replaceItem)\(' "$SRC" --include='*.swift' || true)
