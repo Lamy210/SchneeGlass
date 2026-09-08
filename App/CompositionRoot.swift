@@ -40,6 +40,7 @@ final class SchneeGlassCompositionRoot {
         let activityGate = FileOperationActivityGate()
         let folderSelector = NativeFolderSelector()
         let sourceCreator = SecurityScopedFolderSourceFactory()
+        let fileActor = NSWorkspaceFileActionAdapter()
 
         let rawFileCopying = SafeFileCopyEngine(recoveryStore: pendingCopyStore)
         let fileCopying = ActivityTrackedFileCopying(
@@ -81,7 +82,7 @@ final class SchneeGlassCompositionRoot {
         )
 
         let fileActionUseCase = WorkspaceFileActionUseCase(
-            actor: NSWorkspaceFileActionAdapter()
+            actor: fileActor
         )
 
         let runtimeSessionFactory = GlassRuntimeSessionFactory(
@@ -125,10 +126,18 @@ final class SchneeGlassCompositionRoot {
             accessController: accessController,
             activityGate: activityGate
         )
+        let navigationUseCase = PendingCopyRecoveryNavigationUseCase(
+            pendingCopyStore: pendingCopyStore,
+            configurationStore: configurationStore,
+            accessController: accessController,
+            recoveryInspector: recoveryInspector,
+            fileActor: fileActor
+        )
         let pendingCopyRecoveryModel = PendingCopyRecoveryCenterModel(
             workspaceModel: workspaceModel,
             useCase: recoveryCenterUseCase,
-            reconnectUseCase: reconnectUseCase
+            reconnectUseCase: reconnectUseCase,
+            navigationUseCase: navigationUseCase
         )
 
         return SchneeGlassCompositionRoot(

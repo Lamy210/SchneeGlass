@@ -13,15 +13,18 @@ public final class PendingCopyRecoveryCenterModel {
     private let workspaceModel: SchneeGlassWorkspaceModel
     private let useCase: PendingCopyRecoveryCenterUseCase
     private let reconnectUseCase: PendingCopyDestinationReconnectUseCase
+    private let navigationUseCase: PendingCopyRecoveryNavigationUseCase
 
     public init(
         workspaceModel: SchneeGlassWorkspaceModel,
         useCase: PendingCopyRecoveryCenterUseCase,
-        reconnectUseCase: PendingCopyDestinationReconnectUseCase
+        reconnectUseCase: PendingCopyDestinationReconnectUseCase,
+        navigationUseCase: PendingCopyRecoveryNavigationUseCase
     ) {
         self.workspaceModel = workspaceModel
         self.useCase = useCase
         self.reconnectUseCase = reconnectUseCase
+        self.navigationUseCase = navigationUseCase
     }
 
     public func refresh() async {
@@ -80,6 +83,36 @@ public final class PendingCopyRecoveryCenterModel {
         }
     }
 
+    public func reveal(
+        action: PendingCopyRecoveryAction,
+        operationID: UUID
+    ) async -> Bool {
+        guard activeOperationID == nil else {
+            return false
+        }
+        guard action == .revealStaging || action == .revealFinal else {
+            message = "That Recovery action is not a read-only reveal action."
+            return false
+        }
+
+        activeOperationID = operationID
+        defer { activeOperationID = nil }
+
+        do {
+            try await navigationUseCase.reveal(action: action, operationID: operationID)
+            message = action == .revealStaging
+                ? "Finder opened the incomplete staging item for manual inspection. SchneeGlass did not modify it."
+                : "Finder opened the final destination item for manual inspection. SchneeGlass did not modify it."
+            return true
+        } catch let error as PendingCopyRecoveryNavigationError {
+            message = Self.message(for: error)
+            return false
+        } catch {
+            message = "SchneeGlass couldn't reveal that recovery item. No files were changed."
+            return false
+        }
+    }
+
     public func reconnectDestination(operationID: UUID) async -> Bool {
         guard activeOperationID == nil else {
             return false
@@ -128,6 +161,25 @@ public final class PendingCopyRecoveryCenterModel {
             message = Self.message(for: error)
         } catch {
             message = "The Recovery action completed, but SchneeGlass couldn't refresh the Recovery list."
+        }
+    }
+
+    private static func message(for error: PendingCopyRecoveryNavigationError) -> String {
+        switch error {
+        case .unsupportedAction:
+            return "That Recovery action cannot be opened in Finder."
+        case .recordsLoadFailed:
+            return "SchneeGlass couldn't reload pending copy metadata before opening Finder. No files were changed."
+        case .configurationLoadFailed:
+            return "SchneeGlass couldn't reload its configuration before opening Finder. No files were changed."
+        case .recordMissing:
+            return "That recovery record no longer exists. Refresh the Recovery list."
+        case .configurationMissing:
+            return "The Glass for that recovery record no longer exists. Nothing was opened or changed."
+        case .destinationUnavailable:
+            return "The destination folder is unavailable. Reconnect it before inspecting its recovery files."
+        case .actionNoLongerAvailable:
+            return "The recovery state changed before Finder was opened. Refresh the Recovery list and inspect the latest state."
         }
     }
 
