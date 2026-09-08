@@ -41,6 +41,9 @@ jobs:
       - name: File safety guard
         run: bash Scripts/verify-file-safety.sh
 
+      - name: Release metadata guard
+        run: bash Scripts/verify-release-metadata.sh
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
