@@ -385,6 +385,34 @@ private struct SchneeGlassSettingsView: View {
                                 .foregroundStyle(.secondary)
 
                             HStack(spacing: 8) {
+                                if item.actions.contains(.revealStaging)
+                                    || item.actions.contains(.revealFinal)
+                                {
+                                    Menu("Inspect in Finder") {
+                                        if item.actions.contains(.revealStaging) {
+                                            Button("Show Incomplete Copy") {
+                                                Task { @MainActor in
+                                                    _ = await pendingCopyRecoveryModel.reveal(
+                                                        action: .revealStaging,
+                                                        operationID: item.id
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if item.actions.contains(.revealFinal) {
+                                            Button("Show Final File") {
+                                                Task { @MainActor in
+                                                    _ = await pendingCopyRecoveryModel.reveal(
+                                                        action: .revealFinal,
+                                                        operationID: item.id
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 if item.actions.contains(.discardMetadata) {
                                     Button("Discard Metadata…") {
                                         guard confirmPendingCopyMetadataDiscard(filename: item.record.finalFilename) else {
@@ -450,7 +478,7 @@ private struct SchneeGlassSettingsView: View {
             }
 
             Section("Safety") {
-                Text("Configuration Recovery changes SchneeGlass configuration only. Reconnect Destination updates the saved security-scoped folder access after identity checks; it does not move, rename, delete, or overwrite folder contents. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery.")
+                Text("Configuration Recovery changes SchneeGlass configuration only. Reconnect Destination updates the saved security-scoped folder access after identity checks; it does not move, rename, delete, or overwrite folder contents. Inspect in Finder is read-only and revalidates the current recovery state before opening an item. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery.")
                     .foregroundStyle(.secondary)
             }
         }
