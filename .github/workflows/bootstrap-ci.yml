@@ -44,6 +44,14 @@ jobs:
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
+      - name: AddressSanitizer package tests
+        if: github.event_name == 'pull_request'
+        run: |
+          swift test \
+            --package-path Packages/SchneeGlassKit \
+            --sanitize=address \
+            --scratch-path "$RUNNER_TEMP/SchneeGlassKit-ASan"
+
       - name: Validate Xcode project
         run: |
           xcodebuild -list -project SchneeGlass.xcodeproj
