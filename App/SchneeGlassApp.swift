@@ -15,8 +15,8 @@ struct SchneeGlassApp: App {
         let state = SchneeGlassBootstrapState.resolve()
         self.bootstrapState = state
 
-        if case let .ready(model) = state {
-            let coordinator = DesktopGlassPanelCoordinator(model: model)
+        if case let .ready(root) = state {
+            let coordinator = DesktopGlassPanelCoordinator(model: root.workspaceModel)
             self.panelCoordinator = coordinator
             self.globalVisibilityShortcutController = SchneeGlassGlobalVisibilityShortcutController {
                 [weak coordinator] in
@@ -31,13 +31,13 @@ struct SchneeGlassApp: App {
     var body: some Scene {
         WindowGroup {
             switch bootstrapState {
-            case let .ready(model):
-                SchneeGlassWorkspaceView(model: model)
+            case let .ready(root):
+                SchneeGlassWorkspaceView(model: root.workspaceModel)
                     .task {
-                        await model.restoreIfNeeded()
+                        await root.workspaceModel.restoreIfNeeded()
                         panelCoordinator?.sync()
                     }
-                    .onChange(of: model.glasses) { _, _ in
+                    .onChange(of: root.workspaceModel.glasses) { _, _ in
                         panelCoordinator?.sync()
                     }
 
@@ -47,7 +47,9 @@ struct SchneeGlassApp: App {
         }
         .defaultSize(width: 720, height: 560)
         .commands {
-            if case let .ready(model) = bootstrapState {
+            if case let .ready(root) = bootstrapState {
+                let model = root.workspaceModel
+
                 CommandGroup(after: .newItem) {
                     Button("Add Glass") {
                         Task {
@@ -104,11 +106,11 @@ private struct SchneeGlassMenuBarBootstrapContent: View {
 
     @ViewBuilder
     var body: some View {
-        if case let .ready(model) = bootstrapState,
+        if case let .ready(root) = bootstrapState,
            let panelCoordinator
         {
             SchneeGlassMenuBarContent(
-                model: model,
+                model: root.workspaceModel,
                 panelCoordinator: panelCoordinator
             )
         } else {
@@ -243,11 +245,12 @@ private struct SchneeGlassSettingsBootstrapView: View {
 
     @ViewBuilder
     var body: some View {
-        if case let .ready(model) = bootstrapState,
+        if case let .ready(root) = bootstrapState,
            let panelCoordinator
         {
             SchneeGlassSettingsView(
-                model: model,
+                model: root.workspaceModel,
+                pendingCopyRecoveryModel: root.pendingCopyRecoveryModel,
                 panelCoordinator: panelCoordinator
             )
         } else {
@@ -269,6 +272,7 @@ private struct SchneeGlassSettingsBootstrapView: View {
 
 private struct SchneeGlassSettingsView: View {
     let model: SchneeGlassWorkspaceModel
+    let pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
     let panelCoordinator: DesktopGlassPanelCoordinator
 
     @State private var backups: [ConfigurationBackupDescriptor] = []
@@ -290,7 +294,7 @@ private struct SchneeGlassSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Recovery") {
+            Section("Configuration Recovery") {
                 Text("Restore an earlier SchneeGlass configuration without moving, renaming, deleting, or replacing files in connected folders.")
                     .foregroundStyle(.secondary)
 
@@ -347,16 +351,111 @@ private struct SchneeGlassSettingsView: View {
                 }
             }
 
+            Section("Pending Copy Recovery") {
+                Text("Review interrupted or incompletely finalized copy operations. SchneeGlass never deletes or overwrites a final user-visible file from this Recovery Center.")
+                    .foregroundStyle(.secondary)
+
+                if pendingCopyRecoveryModel.isLoading {
+                    ProgressView("Inspecting pending copies…")
+                } else if pendingCopyRecoveryModel.items.isEmpty {
+                    Text("No pending copy recovery items are available.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(pendingCopyRecoveryModel.items) { item in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.record.finalFilename)
+                                        .font(.body.weight(.medium))
+                                    Text(item.glassTitle ?? "Unknown Glass")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                if pendingCopyRecoveryModel.activeOperationID == item.id {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                            }
+
+                            Text(pendingCopyRecoveryDescription(for: item))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 8) {
+                                if item.actions.contains(.discardMetadata) {
+                                    Button("Discard Metadata…") {
+                                        guard confirmPendingCopyMetadataDiscard(filename: item.record.finalFilename) else {
+                                            return
+                                        }
+                                        Task { @MainActor in
+                                            _ = await pendingCopyRecoveryModel.executeMutation(
+                                                action: .discardMetadata,
+                                                operationID: item.id
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if item.actions.contains(.removeOwnedStaging) {
+                                    Button("Remove Incomplete Copy…") {
+                                        guard confirmOwnedStagingRemoval(filename: item.record.finalFilename) else {
+                                            return
+                                        }
+                                        Task { @MainActor in
+                                            _ = await pendingCopyRecoveryModel.executeMutation(
+                                                action: .removeOwnedStaging,
+                                                operationID: item.id
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if item.actions.contains(.reconnectDestination) {
+                                    Text("Destination reconnect required")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .disabled(
+                                model.isMutatingConfiguration
+                                    || pendingCopyRecoveryModel.activeOperationID != nil
+                            )
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Button("Refresh Pending Copies") {
+                    Task { @MainActor in
+                        await pendingCopyRecoveryModel.refresh()
+                    }
+                }
+                .disabled(
+                    pendingCopyRecoveryModel.isLoading
+                        || pendingCopyRecoveryModel.activeOperationID != nil
+                )
+
+                if let message = pendingCopyRecoveryModel.message {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Safety") {
-                Text("Recovery changes SchneeGlass configuration only. Connected folders remain the source of truth and their files are not modified by configuration recovery.")
+                Text("Configuration Recovery changes SchneeGlass configuration only. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery.")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
+        .frame(width: 560)
         .padding()
         .task {
             await refreshBackups()
+            await pendingCopyRecoveryModel.refresh()
         }
     }
 
@@ -394,9 +493,6 @@ private struct SchneeGlassSettingsView: View {
         isRestoringBackup = true
         defer { isRestoringBackup = false }
 
-        // Remove the old panel surface before the configuration transaction starts. The mutation
-        // guard above is rechecked immediately before this quiescence boundary on the MainActor,
-        // so an already-busy configuration update never leaves the Desktop Glass surface closed.
         panelCoordinator.closeAll()
 
         let result = await model.restoreConfigurationBackup(id: backup.id)
@@ -405,6 +501,7 @@ private struct SchneeGlassSettingsView: View {
             panelCoordinator.showAll()
             recoveryMessage = "Configuration restored. Connected folders and files were not changed."
             await refreshBackups()
+            await pendingCopyRecoveryModel.refresh()
 
         case .restoredNeedsRestart:
             recoveryMessage = "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
@@ -433,6 +530,44 @@ private struct SchneeGlassGlobalShortcutRecorderView: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
+private func pendingCopyRecoveryDescription(
+    for item: PendingCopyRecoveryCenterItem
+) -> String {
+    switch item.state {
+    case .configurationMissing:
+        return "The original Glass configuration is missing. SchneeGlass will keep the recovery metadata and will not guess where the file belongs."
+
+    case .destinationUnavailable:
+        return "The destination folder cannot currently be accessed. Reconnect it before attempting cleanup."
+
+    case let .assessed(disposition):
+        switch disposition {
+        case .metadataOnly:
+            return "Only recovery metadata remains. Discarding it does not modify a connected folder."
+        case let .stagingPresent(verification):
+            if verification.resourceIdentity == .matchesRecordedIdentity {
+                return "An incomplete SchneeGlass-owned staging file remains and its resource identity still matches the recorded operation."
+            }
+            return "A staging-like item remains, but ownership cannot be proven. SchneeGlass will not delete it."
+        case .finalPresent:
+            return "A final user-visible file exists. It is preserved; only recovery metadata may be discarded explicitly."
+        case let .stagingAndFinalPresent(staging, _):
+            if staging.resourceIdentity == .matchesRecordedIdentity {
+                return "Both staging and final files exist. The final file is preserved; only the proven app-owned staging file may be removed explicitly."
+            }
+            return "Both staging and final files exist, but staging ownership cannot be proven. SchneeGlass will not delete either file."
+        case .invalidRecord:
+            return "Recovery metadata is invalid. No mutation action is offered."
+        case .destinationMismatch:
+            return "The recovery record does not match the destination Glass. No mutation action is offered."
+        case .destinationUnavailable:
+            return "The destination folder cannot currently be inspected."
+        case .unexpectedFileType:
+            return "An unexpected filesystem item exists at a recovery path. SchneeGlass will not mutate it."
+        }
+    }
+}
+
 @MainActor
 private func confirmConfigurationBackupRestore(createdAt: Date) -> Bool {
     let confirmation = NSAlert()
@@ -440,6 +575,28 @@ private func confirmConfigurationBackupRestore(createdAt: Date) -> Bool {
     confirmation.informativeText = "Restore the SchneeGlass configuration from \(createdAt.formatted(date: .abbreviated, time: .standard)). SchneeGlass will preserve the current configuration before replacing it. Connected folders and their files will not be moved, renamed, deleted, or replaced."
     confirmation.alertStyle = .warning
     confirmation.addButton(withTitle: "Restore Configuration")
+    confirmation.addButton(withTitle: "Cancel")
+    return confirmation.runModal() == .alertFirstButtonReturn
+}
+
+@MainActor
+private func confirmPendingCopyMetadataDiscard(filename: String) -> Bool {
+    let confirmation = NSAlert()
+    confirmation.messageText = "Discard Recovery Metadata?"
+    confirmation.informativeText = "Discard SchneeGlass recovery metadata for \(filename). This action does not delete, rename, move, or overwrite the final file or any incomplete staging file."
+    confirmation.alertStyle = .informational
+    confirmation.addButton(withTitle: "Discard Metadata")
+    confirmation.addButton(withTitle: "Cancel")
+    return confirmation.runModal() == .alertFirstButtonReturn
+}
+
+@MainActor
+private func confirmOwnedStagingRemoval(filename: String) -> Bool {
+    let confirmation = NSAlert()
+    confirmation.messageText = "Remove Incomplete Copy?"
+    confirmation.informativeText = "Remove only the SchneeGlass-owned incomplete staging file associated with \(filename). SchneeGlass will revalidate the operation ID, file type, destination, and filesystem resource identity immediately before deletion. The final user-visible file will not be deleted or overwritten."
+    confirmation.alertStyle = .warning
+    confirmation.addButton(withTitle: "Remove Incomplete Copy")
     confirmation.addButton(withTitle: "Cancel")
     return confirmation.runModal() == .alertFirstButtonReturn
 }
