@@ -1,3 +1,4 @@
+import AppKit
 import SchneeGlassPresentation
 import SwiftUI
 
@@ -51,18 +52,128 @@ struct SchneeGlassApp: App {
                     Button("Show All Glasses") {
                         panelCoordinator?.showAll()
                     }
+                    .disabled(model.glasses.isEmpty)
 
                     Button("Hide All Glasses") {
                         panelCoordinator?.hideAll()
                     }
+                    .disabled(model.glasses.isEmpty)
+
+                    Divider()
+
+                    Button("Reset Glass Positions…") {
+                        if let panelCoordinator {
+                            requestGlassPositionReset(coordinator: panelCoordinator)
+                        }
+                    }
+                    .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
                 }
             }
+        }
+
+        if case let .ready(model) = bootstrapState,
+           let panelCoordinator
+        {
+            MenuBarExtra("SchneeGlass", systemImage: "square.grid.2x2") {
+                SchneeGlassMenuBarContent(
+                    model: model,
+                    panelCoordinator: panelCoordinator
+                )
+            }
+            .menuBarExtraStyle(.menu)
         }
 
         Settings {
             SchneeGlassSettingsBootstrapView()
         }
     }
+}
+
+private struct SchneeGlassMenuBarContent: View {
+    let model: SchneeGlassWorkspaceModel
+    let panelCoordinator: DesktopGlassPanelCoordinator
+
+    var body: some View {
+        Button("Add Glass…") {
+            Task {
+                await model.addGlass()
+            }
+        }
+        .disabled(model.isMutatingConfiguration)
+
+        Divider()
+
+        Button("Show All Glasses") {
+            panelCoordinator.showAll()
+        }
+        .disabled(model.glasses.isEmpty)
+
+        Button("Hide All Glasses") {
+            panelCoordinator.hideAll()
+        }
+        .disabled(model.glasses.isEmpty)
+
+        Divider()
+
+        Button("Reset Glass Positions…") {
+            requestGlassPositionReset(coordinator: panelCoordinator)
+        }
+        .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
+
+        Divider()
+
+        SettingsLink {
+            Text("Settings…")
+        }
+
+        Button("Quit SchneeGlass") {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+}
+
+@MainActor
+private func requestGlassPositionReset(coordinator: DesktopGlassPanelCoordinator) {
+    let confirmation = NSAlert()
+    confirmation.messageText = "Reset Glass Positions?"
+    confirmation.informativeText = "All Glass panels will be moved onto the current main display. Connected folders and their files will not be moved, renamed, or deleted."
+    confirmation.alertStyle = .informational
+    confirmation.addButton(withTitle: "Reset Positions")
+    confirmation.addButton(withTitle: "Cancel")
+
+    guard confirmation.runModal() == .alertFirstButtonReturn else {
+        return
+    }
+
+    Task { @MainActor in
+        let result = await coordinator.resetPositionsOnMainDisplay()
+        switch result {
+        case .updated, .noGlasses:
+            return
+        case .busy:
+            presentResetFailure(
+                message: "SchneeGlass is already updating its configuration. Try Reset Positions again after the current operation finishes."
+            )
+        case .noAvailableScreen:
+            presentResetFailure(
+                message: "SchneeGlass could not find an available display. No Glass positions were changed."
+            )
+        case .failed:
+            presentResetFailure(
+                message: "SchneeGlass could not reset Glass positions. No files or folders were changed."
+            )
+        }
+    }
+}
+
+@MainActor
+private func presentResetFailure(message: String) {
+    let alert = NSAlert()
+    alert.messageText = "Couldn’t Reset Glass Positions"
+    alert.informativeText = message
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
 }
 
 private struct SchneeGlassBootstrapFailureView: View {
