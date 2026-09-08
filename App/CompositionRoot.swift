@@ -8,9 +8,14 @@ import SchneeGlassPresentation
 @MainActor
 final class SchneeGlassCompositionRoot {
     let workspaceModel: SchneeGlassWorkspaceModel
+    let pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
 
-    private init(workspaceModel: SchneeGlassWorkspaceModel) {
+    private init(
+        workspaceModel: SchneeGlassWorkspaceModel,
+        pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
+    ) {
         self.workspaceModel = workspaceModel
+        self.pendingCopyRecoveryModel = pendingCopyRecoveryModel
     }
 
     static func make() throws -> SchneeGlassCompositionRoot {
@@ -32,7 +37,13 @@ final class SchneeGlassCompositionRoot {
         let snapshotReader = NativeFolderSnapshotReader()
         let dropPlanning = NativeDropPlanningAdapter()
         let pendingCopyStore = JSONPendingCopyStore(baseDirectory: fileOperationsDirectory)
-        let fileCopying = SafeFileCopyEngine(recoveryStore: pendingCopyStore)
+        let activityGate = FileOperationActivityGate()
+
+        let rawFileCopying = SafeFileCopyEngine(recoveryStore: pendingCopyStore)
+        let fileCopying = ActivityTrackedFileCopying(
+            delegate: rawFileCopying,
+            activityGate: activityGate
+        )
 
         let createGlassUseCase = CreateGlassUseCase(
             folderSelector: NativeFolderSelector(),
@@ -79,29 +90,51 @@ final class SchneeGlassCompositionRoot {
             fileCopying: fileCopying
         )
 
+        let workspaceModel = SchneeGlassWorkspaceModel(
+            createGlassUseCase: createGlassUseCase,
+            restoreApplicationUseCase: restoreApplicationUseCase,
+            removeGlassUseCase: removeGlassUseCase,
+            updateGlassPlacementUseCase: updateGlassPlacementUseCase,
+            resetGlassPositionsUseCase: resetGlassPositionsUseCase,
+            configurationRecoveryUseCase: configurationRecoveryUseCase,
+            fileActionUseCase: fileActionUseCase,
+            runtimeSessionFactory: runtimeSessionFactory
+        )
+
+        let recoveryInspector = PendingCopyRecoveryInspector()
+        let recoveryExecution = PendingCopyRecoveryExecutionUseCase(
+            pendingCopyStore: pendingCopyStore,
+            recoveryInspector: recoveryInspector,
+            ownedStagingCleaner: OwnedStagingRecoveryCleaner()
+        )
+        let recoveryCenterUseCase = PendingCopyRecoveryCenterUseCase(
+            pendingCopyStore: pendingCopyStore,
+            configurationStore: configurationStore,
+            accessController: accessController,
+            recoveryInspector: recoveryInspector,
+            recoveryExecution: recoveryExecution,
+            activityGate: activityGate
+        )
+        let pendingCopyRecoveryModel = PendingCopyRecoveryCenterModel(
+            workspaceModel: workspaceModel,
+            useCase: recoveryCenterUseCase
+        )
+
         return SchneeGlassCompositionRoot(
-            workspaceModel: SchneeGlassWorkspaceModel(
-                createGlassUseCase: createGlassUseCase,
-                restoreApplicationUseCase: restoreApplicationUseCase,
-                removeGlassUseCase: removeGlassUseCase,
-                updateGlassPlacementUseCase: updateGlassPlacementUseCase,
-                resetGlassPositionsUseCase: resetGlassPositionsUseCase,
-                configurationRecoveryUseCase: configurationRecoveryUseCase,
-                fileActionUseCase: fileActionUseCase,
-                runtimeSessionFactory: runtimeSessionFactory
-            )
+            workspaceModel: workspaceModel,
+            pendingCopyRecoveryModel: pendingCopyRecoveryModel
         )
     }
 }
 
 enum SchneeGlassBootstrapState {
-    case ready(SchneeGlassWorkspaceModel)
+    case ready(SchneeGlassCompositionRoot)
     case failed
 
     @MainActor
     static func resolve() -> SchneeGlassBootstrapState {
         do {
-            return .ready(try SchneeGlassCompositionRoot.make().workspaceModel)
+            return .ready(try SchneeGlassCompositionRoot.make())
         } catch {
             return .failed
         }
