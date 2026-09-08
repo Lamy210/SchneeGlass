@@ -246,6 +246,7 @@ Status: **IN PROGRESS**
 
 - macOS 26 / Xcode 26.6 toolchain verification
 - Swift Package tests
+- pull request時のAddressSanitizer package tests
 - Debug app build
 - Release app build
 - macOS 15 compatibility package tests / app build
@@ -260,12 +261,11 @@ Status: **IN PROGRESS**
 - formatting / lint gate
 - Periphery
 - CodeQL
-- ASan
 - TSan
 - Main Thread Checker
 - Integration / UI test plan
 
-導入はCI時間・false positive・無料枠を評価して個別PRで行う。
+Sanitizerや追加解析はCI時間・false positive・無料枠を評価して個別PRで導入する。AddressSanitizerは通常package testと同じcanonical runner上でPR時のみ実行し、追加runner起動を避ける。
 
 ### TASK-018 — Release Pipeline
 Status: **NOT STARTED**
