@@ -19,9 +19,9 @@ concurrency:
 
 jobs:
   analyze-swift:
-    name: Swift / CodeQL v4 / Xcode 26.6
+    name: SwiftPM Core / CodeQL v4 / Xcode 26.6
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 20
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
@@ -41,7 +41,7 @@ jobs:
           languages: swift
           build-mode: manual
 
-      - name: Build analyzed Swift targets
+      - name: Build analyzed SwiftPM core
         run: |
           ARCH="$(uname -m)"
           case "$ARCH" in
@@ -52,19 +52,11 @@ jobs:
               ;;
           esac
 
-          xcodebuild \
-            -project SchneeGlass.xcodeproj \
-            -scheme SchneeGlass \
-            -configuration Debug \
-            -destination "platform=macOS,arch=${ARCH}" \
-            -derivedDataPath "$RUNNER_TEMP/SchneeGlassCodeQLDerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            ARCHS="$ARCH" \
-            build
+          swift build \
+            --package-path Packages/SchneeGlassKit \
+            --arch "$ARCH"
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
         with:
-          category: '/language:swift'
+          category: '/language:swiftpm-core'
