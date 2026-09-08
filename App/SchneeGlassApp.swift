@@ -414,9 +414,13 @@ private struct SchneeGlassSettingsView: View {
                                 }
 
                                 if item.actions.contains(.reconnectDestination) {
-                                    Text("Destination reconnect required")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    Button("Reconnect Destination…") {
+                                        Task { @MainActor in
+                                            _ = await pendingCopyRecoveryModel.reconnectDestination(
+                                                operationID: item.id
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             .disabled(
@@ -446,7 +450,7 @@ private struct SchneeGlassSettingsView: View {
             }
 
             Section("Safety") {
-                Text("Configuration Recovery changes SchneeGlass configuration only. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery.")
+                Text("Configuration Recovery changes SchneeGlass configuration only. Reconnect Destination updates the saved security-scoped folder access after identity checks; it does not move, rename, delete, or overwrite folder contents. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery.")
                     .foregroundStyle(.secondary)
             }
         }
