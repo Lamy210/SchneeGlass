@@ -6,25 +6,52 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1 Bootstrap / Architecture phase**
+**v0.1 Core Feature Implementation / Recovery & Release Hardening**
 
-現在は、実装開始前提となるArchitecture・File Safety・Recovery・SPM Module Boundary・初期Domain Contract・CI Guardを構築しています。
+Bootstrap段階は完了し、現在の`main`には実macOS Appとv0.1の主要利用フローが接続されています。
 
-現時点で入っているもの:
+実装済み:
 
-- `Packages/SchneeGlassKit`
-  - Swift 6
-  - macOS 15+
-  - Compile-time Target Boundaries
-- Initial Domain / Application Contracts
-- Swift Testing Bootstrap Tests
-- App Sandbox Entitlement Baseline
-- Architecture Guard
-- File Mutation Allowlist Guard
-- Public Repository Safety Guard
-- GitHub Actions Bootstrap CI
+- Swift 6 / macOS 15+ / App SandboxのmacOS App Target
+- Compile-time Architecture Boundary
+- Security-scoped Folder Access
+- One-level Folder Snapshot / 500-item safety limit
+- FSEventsによるExternal Change Refresh
+- Multiple Glass / Runtime Session lifecycle
+- Glass作成・起動時復元・削除
+- Open / Reveal in Finder
+- Regular-file Safe Copy Drag & Drop
+  - source Move / Rename / Deleteなし
+  - silent overwriteなし
+  - staging + recovery metadata
+  - crash recovery inspection foundation
+- Atomic JSON Configuration Persistence
+  - valid backup最大5世代
+  - corrupt currentをsilent overwriteしない
+  - explicit configuration recovery
+- Desktop上の1 Glass = 1 `NSPanel`
+- move / resize placement persistence
+- off-screen frame recovery
+- Menu Bar controls
+- Reset Glass Positions
+- SettingsからのConfiguration Backup Recovery
+- User-customizable Global Show / Hide Shortcut
+- Public Repository / Architecture / File Safety CI guards
+- Xcode 26.6 Debug / Release build CI
+- macOS 15 compatibility build CI
+- unsigned CI app artifact生成
 
-macOS App Target自体は、利用可能なXcode環境で生成・検証後に追加します。未検証の`project.pbxproj`を手書きでCommitしません。
+v0.1で残っている主要項目:
+
+- Pending Copy Recovery Centerの実操作導線
+  - assessment表示
+  - safe action execution
+  - destination reconnect
+- Quality / Diagnostics CIの拡張
+- 配布用Signing / Notarization / Release Pipeline
+- 実装状況に合わせたドキュメント・manual QAの仕上げ
+
+詳細な進捗は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) を参照してください。
 
 ## Product Promise
 
@@ -38,7 +65,7 @@ Silent overwrite            = 0
 Unknown partial auto-delete = 0
 ```
 
-v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commitに限定します。
+v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。
 
 ## Architecture
 
@@ -52,6 +79,8 @@ SchneeGlassFileSystemAdapter
 SchneeGlassPersistenceAdapter
 SchneeGlassMacOSAdapter
 ```
+
+Concrete filesystem / persistence / macOS APIはAdapterへ閉じ、Presentationから直接触りません。
 
 詳細は [`ARCHITECTURE.md`](ARCHITECTURE.md) を参照してください。
 
@@ -73,7 +102,7 @@ Sample/Test Dataには架空値だけを使用します。
 
 詳細は [`SECURITY.md`](SECURITY.md) と [`AGENTS.md`](AGENTS.md) を参照してください。
 
-## Bootstrap Test
+## Development Verification
 
 ```bash
 swift test --package-path Packages/SchneeGlassKit
@@ -81,6 +110,8 @@ bash Scripts/verify-public-repo.sh
 bash Scripts/verify-architecture.sh
 bash Scripts/verify-file-safety.sh
 ```
+
+GitHub Actionsでは上記に加えて、macOS 15 compatibility buildとXcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact生成を継続検証します。
 
 ## Documentation
 
@@ -94,7 +125,7 @@ bash Scripts/verify-file-safety.sh
 
 ## v0.1 Scope
 
-予定:
+実装済み / 実装中:
 
 - Folder Glass
 - Multiple Glass
@@ -103,16 +134,17 @@ bash Scripts/verify-file-safety.sh
 - Regular-file Copy Drop
 - Security-scoped Folder Access
 - Config Persistence / Backup
-- Safe Mode / Recovery
+- Explicit Configuration Recovery
+- Pending Copy Recovery foundation
 - Window Position Recovery
 - Menu Bar
 - Global Show/Hide Shortcut
 
 対象外:
 
-- Move
-- Rename
-- Delete
+- User-owned source Move
+- User-owned source Rename
+- User-owned source Delete
 - Folder Recursive Copy
 - Deep Drop
 - Git Integration
