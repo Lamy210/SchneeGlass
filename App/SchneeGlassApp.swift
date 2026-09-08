@@ -369,29 +369,36 @@ private struct SchneeGlassSettingsView: View {
         isRestoringBackup = true
         defer { isRestoringBackup = false }
 
+        // Remove the old panel surface before the configuration transaction starts. This
+        // synchronously cancels move/resize debounce tasks and prevents new panel interactions
+        // from creating stale placement writes while recovery is suspended on persistence I/O.
+        panelCoordinator.closeAll()
+
         let result = await model.restoreConfigurationBackup(id: backup.id)
         switch result {
         case .restored:
-            // Cancel any move/resize debounce tasks that were created by the old workspace before
-            // they can retry against the newly restored configuration.
-            panelCoordinator.closeAll()
             panelCoordinator.sync()
             panelCoordinator.showAll()
             recoveryMessage = "Configuration restored. Connected folders and files were not changed."
             await refreshBackups()
 
         case .restoredNeedsRestart:
-            panelCoordinator.closeAll()
             recoveryMessage = "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
             await refreshBackups()
 
         case .busy:
+            panelCoordinator.sync()
+            panelCoordinator.showAll()
             recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
 
         case .copyInProgress:
+            panelCoordinator.sync()
+            panelCoordinator.showAll()
             recoveryMessage = "Wait for the current file copy to finish before restoring configuration."
 
         case .failed:
+            panelCoordinator.sync()
+            panelCoordinator.showAll()
             recoveryMessage = "SchneeGlass couldn't restore that backup. The current configuration was left unchanged."
         }
     }
