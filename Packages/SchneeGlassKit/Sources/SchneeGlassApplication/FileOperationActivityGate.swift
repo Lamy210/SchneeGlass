@@ -49,6 +49,10 @@ public actor FileOperationActivityGate {
     public func hasActiveCopies() -> Bool {
         activeCopyCount > 0
     }
+
+    public func hasActiveRecoveryMutation() -> Bool {
+        recoveryMutationActive
+    }
 }
 
 /// FileCopying decorator that makes Recovery/Copy exclusion enforceable below Presentation.
