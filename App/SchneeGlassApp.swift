@@ -386,13 +386,17 @@ private struct SchneeGlassSettingsView: View {
         guard !isRestoringBackup else {
             return
         }
+        guard !model.isMutatingConfiguration else {
+            recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+            return
+        }
 
         isRestoringBackup = true
         defer { isRestoringBackup = false }
 
-        // Remove the old panel surface before the configuration transaction starts. This
-        // synchronously cancels move/resize debounce tasks and prevents new panel interactions
-        // from creating stale placement writes while recovery is suspended on persistence I/O.
+        // Remove the old panel surface before the configuration transaction starts. The mutation
+        // guard above is rechecked immediately before this quiescence boundary on the MainActor,
+        // so an already-busy configuration update never leaves the Desktop Glass surface closed.
         panelCoordinator.closeAll()
 
         let result = await model.restoreConfigurationBackup(id: backup.id)
