@@ -32,7 +32,7 @@ bash Scripts/verify-release-metadata.sh "v${RELEASE_VERSION}"
 bash Scripts/verify-production-release-preflight.sh
 
 RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
-OUTPUT_DIR="${RELEASE_OUTPUT_DIR:-$ROOT/release-output}"
+OUTPUT_DIR="$ROOT/release-output"
 KEYCHAIN_PATH="$RUNNER_TEMP/SchneeGlassRelease.keychain-db"
 P12_PATH="$RUNNER_TEMP/DeveloperID.p12"
 API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
@@ -70,6 +70,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+[[ "$OUTPUT_DIR" == "$ROOT/release-output" ]] \
+  || fail "refusing to clean unexpected release output path: $OUTPUT_DIR"
 rm -rf "$ARCHIVE_PATH" "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/evidence"
 
