@@ -34,6 +34,8 @@ public enum PendingCopyRecoveryCenterError: Error, Hashable, Sendable {
     case recordMissing
     case configurationMissing
     case destinationUnavailable
+    case copyInProgress
+    case recoveryInProgress
     case mutationFailed
 }
 
@@ -43,22 +45,32 @@ public actor PendingCopyRecoveryCenterUseCase {
     private let accessController: any FolderAccessControlling
     private let recoveryInspector: any PendingCopyRecoveryInspecting
     private let recoveryExecution: PendingCopyRecoveryExecutionUseCase
+    private let activityGate: FileOperationActivityGate
 
     public init(
         pendingCopyStore: any PendingCopyRecording,
         configurationStore: any ConfigurationPersisting,
         accessController: any FolderAccessControlling,
         recoveryInspector: any PendingCopyRecoveryInspecting,
-        recoveryExecution: PendingCopyRecoveryExecutionUseCase
+        recoveryExecution: PendingCopyRecoveryExecutionUseCase,
+        activityGate: FileOperationActivityGate
     ) {
         self.pendingCopyStore = pendingCopyStore
         self.configurationStore = configurationStore
         self.accessController = accessController
         self.recoveryInspector = recoveryInspector
         self.recoveryExecution = recoveryExecution
+        self.activityGate = activityGate
     }
 
     public func loadItems() async throws -> [PendingCopyRecoveryCenterItem] {
+        if await activityGate.hasActiveCopies() {
+            throw PendingCopyRecoveryCenterError.copyInProgress
+        }
+        if await activityGate.hasActiveRecoveryMutation() {
+            throw PendingCopyRecoveryCenterError.recoveryInProgress
+        }
+
         let records: [PendingCopyRecord]
         do {
             records = try await pendingCopyStore.records()
@@ -130,6 +142,28 @@ public actor PendingCopyRecoveryCenterUseCase {
     }
 
     public func executeMutation(
+        action: PendingCopyRecoveryAction,
+        operationID: UUID
+    ) async throws {
+        switch await activityGate.beginRecoveryMutation() {
+        case .granted:
+            break
+        case .copyInProgress:
+            throw PendingCopyRecoveryCenterError.copyInProgress
+        case .recoveryInProgress:
+            throw PendingCopyRecoveryCenterError.recoveryInProgress
+        }
+
+        do {
+            try await executeMutationWithLease(action: action, operationID: operationID)
+            await activityGate.endRecoveryMutation()
+        } catch {
+            await activityGate.endRecoveryMutation()
+            throw error
+        }
+    }
+
+    private func executeMutationWithLease(
         action: PendingCopyRecoveryAction,
         operationID: UUID
     ) async throws {
