@@ -9,18 +9,31 @@ public struct GlassWorkspaceEntry: Identifiable, Hashable, Sendable {
     public let title: String
     public var contentState: GlassContentState
     public var interactionState: InteractionState
+    public var placement: GlassPlacement?
+    public let showOnAllSpaces: Bool
 
     public init(
         id: GlassID,
         title: String,
         contentState: GlassContentState,
-        interactionState: InteractionState = .idle
+        interactionState: InteractionState = .idle,
+        placement: GlassPlacement? = nil,
+        showOnAllSpaces: Bool = false
     ) {
         self.id = id
         self.title = title
         self.contentState = contentState
         self.interactionState = interactionState
+        self.placement = placement
+        self.showOnAllSpaces = showOnAllSpaces
     }
+}
+
+public enum GlassPlacementPersistenceResult: Hashable, Sendable {
+    case updated
+    case busy
+    case missing
+    case failed
 }
 
 @MainActor
@@ -35,6 +48,7 @@ public final class SchneeGlassWorkspaceModel {
     private let createGlassUseCase: CreateGlassUseCase
     private let restoreApplicationUseCase: RestoreApplicationUseCase
     private let removeGlassUseCase: RemoveGlassUseCase
+    private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
     private let fileActionUseCase: WorkspaceFileActionUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
@@ -45,12 +59,14 @@ public final class SchneeGlassWorkspaceModel {
         createGlassUseCase: CreateGlassUseCase,
         restoreApplicationUseCase: RestoreApplicationUseCase,
         removeGlassUseCase: RemoveGlassUseCase,
+        updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
         fileActionUseCase: WorkspaceFileActionUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
         self.createGlassUseCase = createGlassUseCase
         self.restoreApplicationUseCase = restoreApplicationUseCase
         self.removeGlassUseCase = removeGlassUseCase
+        self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
         self.fileActionUseCase = fileActionUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
@@ -77,7 +93,9 @@ public final class SchneeGlassWorkspaceModel {
                     GlassWorkspaceEntry(
                         id: failure.glassID,
                         title: failure.title,
-                        contentState: Self.contentState(for: failure.reason)
+                        contentState: Self.contentState(for: failure.reason),
+                        placement: failure.placement,
+                        showOnAllSpaces: failure.showOnAllSpaces
                     )
                 )
             }
@@ -90,7 +108,9 @@ public final class SchneeGlassWorkspaceModel {
                         GlassWorkspaceEntry(
                             id: seed.configuration.id,
                             title: seed.configuration.title,
-                            contentState: .failed(.unexpected)
+                            contentState: .failed(.unexpected),
+                            placement: seed.configuration.placement,
+                            showOnAllSpaces: seed.configuration.showOnAllSpaces
                         )
                     )
                 }
@@ -159,6 +179,36 @@ public final class SchneeGlassWorkspaceModel {
         }
     }
 
+    public func persistPlacement(
+        glassID: GlassID,
+        placement: GlassPlacement
+    ) async -> GlassPlacementPersistenceResult {
+        guard !isMutatingConfiguration else {
+            return .busy
+        }
+
+        isMutatingConfiguration = true
+        defer { isMutatingConfiguration = false }
+
+        do {
+            let updated = try await updateGlassPlacementUseCase.execute(
+                glassID: glassID,
+                placement: placement
+            )
+            guard updated else {
+                return .missing
+            }
+
+            if let index = glasses.firstIndex(where: { $0.id == glassID }) {
+                glasses[index].placement = placement
+            }
+            return .updated
+        } catch {
+            userMessage = "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+            return .failed
+        }
+    }
+
     public func planDrop(
         glassID: GlassID,
         sourceURLs: [URL]
@@ -197,8 +247,6 @@ public final class SchneeGlassWorkspaceModel {
             return false
         }
 
-        // Re-plan immediately before mutation. Hover-time plans are display-only
-        // and must never authorize a copy after filesystem state has changed.
         let freshPlan = await session.planDrop(sourceURLs: sourceURLs)
         guard case let .copy(copyPlan) = freshPlan else {
             switch freshPlan {
@@ -304,7 +352,9 @@ public final class SchneeGlassWorkspaceModel {
                 GlassWorkspaceEntry(
                     id: glassID,
                     title: seed.configuration.title,
-                    contentState: .loading
+                    contentState: .loading,
+                    placement: seed.configuration.placement,
+                    showOnAllSpaces: seed.configuration.showOnAllSpaces
                 )
             )
 
