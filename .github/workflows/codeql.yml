@@ -1,0 +1,70 @@
+name: CodeQL Swift Analysis
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 18 * * 2'
+  pull_request:
+    paths:
+      - '.github/workflows/codeql.yml'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: codeql-swift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-swift:
+    name: Swift / CodeQL v4 / Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: swift
+          build-mode: manual
+
+      - name: Build analyzed Swift targets
+        run: |
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            arm64|x86_64) ;;
+            *)
+              echo "Unsupported runner architecture for CodeQL build: $ARCH" >&2
+              exit 1
+              ;;
+          esac
+
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Debug \
+            -destination "platform=macOS,arch=${ARCH}" \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassCodeQLDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            ARCHS="$ARCH" \
+            build
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:swift'
