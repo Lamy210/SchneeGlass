@@ -19,6 +19,11 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassFileSystemAdapter/OwnedStagingRecoveryCleaner.swift"* ]] \
+     && [[ "$text" == *".removeItem("* ]]; then
+    continue
+  fi
+
   if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ConfigurationBackupRotator.swift"* ]] \
      && [[ "$text" == *".removeItem("* ]]; then
     continue
