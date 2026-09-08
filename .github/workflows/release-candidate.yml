@@ -1,6 +1,12 @@
 name: Release Candidate Validation
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-candidate.yml'
+      - 'Scripts/verify-release-metadata.sh'
+      - 'SchneeGlass.xcodeproj/project.pbxproj'
+      - 'RELEASE.md'
   workflow_dispatch:
     inputs:
       version:
