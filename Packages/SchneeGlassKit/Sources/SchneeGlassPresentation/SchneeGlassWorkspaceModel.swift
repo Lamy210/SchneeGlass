@@ -43,6 +43,19 @@ public enum GlassPositionResetResult: Hashable, Sendable {
     case failed
 }
 
+public enum ConfigurationBackupListingResult: Hashable, Sendable {
+    case loaded([ConfigurationBackupDescriptor])
+    case failed
+}
+
+public enum ConfigurationBackupRestoreResult: Hashable, Sendable {
+    case restored
+    case restoredNeedsRestart
+    case busy
+    case copyInProgress
+    case failed
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -57,6 +70,7 @@ public final class SchneeGlassWorkspaceModel {
     private let removeGlassUseCase: RemoveGlassUseCase
     private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
     private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
+    private let configurationRecoveryUseCase: ConfigurationRecoveryUseCase
     private let fileActionUseCase: WorkspaceFileActionUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
@@ -69,6 +83,7 @@ public final class SchneeGlassWorkspaceModel {
         removeGlassUseCase: RemoveGlassUseCase,
         updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
         resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
+        configurationRecoveryUseCase: ConfigurationRecoveryUseCase,
         fileActionUseCase: WorkspaceFileActionUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
@@ -77,6 +92,7 @@ public final class SchneeGlassWorkspaceModel {
         self.removeGlassUseCase = removeGlassUseCase
         self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
         self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
+        self.configurationRecoveryUseCase = configurationRecoveryUseCase
         self.fileActionUseCase = fileActionUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
@@ -97,42 +113,57 @@ public final class SchneeGlassWorkspaceModel {
 
         do {
             let result = try await restoreApplicationUseCase.execute()
-
-            for failure in result.failures {
-                upsert(
-                    GlassWorkspaceEntry(
-                        id: failure.glassID,
-                        title: failure.title,
-                        contentState: Self.contentState(for: failure.reason),
-                        placement: failure.placement,
-                        showOnAllSpaces: failure.showOnAllSpaces
-                    )
-                )
-            }
-
-            for seed in result.seeds {
-                do {
-                    try await activate(seed)
-                } catch {
-                    upsert(
-                        GlassWorkspaceEntry(
-                            id: seed.configuration.id,
-                            title: seed.configuration.title,
-                            contentState: .failed(.unexpected),
-                            placement: seed.configuration.placement,
-                            showOnAllSpaces: seed.configuration.showOnAllSpaces
-                        )
-                    )
-                }
-            }
-
-            if result.refreshedConfigurationSavePending {
-                userMessage = "Some refreshed folder permissions could not be saved. Your current Glasses remain available for this session."
-            } else if !result.failures.isEmpty {
-                userMessage = "Some Glasses couldn't reconnect. Other Glasses were restored normally."
-            }
+            await applyRestoreResult(result)
         } catch {
             userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
+        }
+    }
+
+    public func loadConfigurationBackups() async -> ConfigurationBackupListingResult {
+        do {
+            return .loaded(try await configurationRecoveryUseCase.availableBackups())
+        } catch {
+            return .failed
+        }
+    }
+
+    public func restoreConfigurationBackup(
+        id: String
+    ) async -> ConfigurationBackupRestoreResult {
+        guard !isMutatingConfiguration else {
+            return .busy
+        }
+        guard !hasActiveCopy else {
+            return .copyInProgress
+        }
+
+        isMutatingConfiguration = true
+        isRestoring = true
+        userMessage = nil
+        var backupWasRestored = false
+        defer {
+            isRestoring = false
+            isMutatingConfiguration = false
+        }
+
+        do {
+            _ = try await configurationRecoveryUseCase.restoreBackup(id: id)
+            backupWasRestored = true
+
+            await deactivateAllSessions()
+            glasses.removeAll(keepingCapacity: false)
+
+            let result = try await restoreApplicationUseCase.execute()
+            await applyRestoreResult(result)
+            return .restored
+        } catch {
+            if backupWasRestored {
+                userMessage = "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
+                return .restoredNeedsRestart
+            }
+
+            userMessage = "SchneeGlass couldn't restore that configuration backup. The current configuration was left unchanged."
+            return .failed
         }
     }
 
@@ -372,6 +403,48 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func shutdown() async {
+        await deactivateAllSessions()
+    }
+
+    private func applyRestoreResult(_ result: ApplicationRestoreResult) async {
+        for failure in result.failures {
+            upsert(
+                GlassWorkspaceEntry(
+                    id: failure.glassID,
+                    title: failure.title,
+                    contentState: Self.contentState(for: failure.reason),
+                    placement: failure.placement,
+                    showOnAllSpaces: failure.showOnAllSpaces
+                )
+            )
+        }
+
+        for seed in result.seeds {
+            do {
+                try await activate(seed)
+            } catch {
+                upsert(
+                    GlassWorkspaceEntry(
+                        id: seed.configuration.id,
+                        title: seed.configuration.title,
+                        contentState: .failed(.unexpected),
+                        placement: seed.configuration.placement,
+                        showOnAllSpaces: seed.configuration.showOnAllSpaces
+                    )
+                )
+            }
+        }
+
+        if result.refreshedConfigurationSavePending {
+            userMessage = "Some refreshed folder permissions could not be saved. Your current Glasses remain available for this session."
+        } else if !result.failures.isEmpty {
+            userMessage = "Some Glasses couldn't reconnect. Other Glasses were restored normally."
+        } else {
+            userMessage = nil
+        }
+    }
+
+    private func deactivateAllSessions() async {
         let activeSessions = Array(sessions.values)
         stateTasks.values.forEach { $0.cancel() }
         stateTasks.removeAll(keepingCapacity: false)
@@ -429,6 +502,15 @@ public final class SchneeGlassWorkspaceModel {
             return
         }
         glasses[index].interactionState = state
+    }
+
+    private var hasActiveCopy: Bool {
+        glasses.contains { entry in
+            if case .copying = entry.interactionState {
+                return true
+            }
+            return false
+        }
     }
 
     private func isCopying(glassID: GlassID) -> Bool {
