@@ -163,8 +163,12 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
 
         try createDirectories()
         try preserveOrBackupCurrentBeforeExplicitRestore()
-        try backupData.write(to: configurationURL, options: .atomic)
+
+        // Complete fallible backup housekeeping before replacing the current configuration. Once
+        // the atomic replacement succeeds, this method must not report failure for work that is
+        // unrelated to the committed configuration state.
         try rotateBackups()
+        try backupData.write(to: configurationURL, options: .atomic)
         return backupEnvelope.glasses
     }
 
