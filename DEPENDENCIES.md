@@ -10,28 +10,29 @@ Apple Platform API
 → mature third-party OSS
 ```
 
-## 1. Bootstrap状態
+## 1. Runtime Dependencies
 
-現時点の`SchneeGlassKit`にはExternal Runtime Dependencyをまだ追加していません。
-
-理由:
-
-- Architecture / Domain / Application Contractを先に安定させる
-- Dependency導入前でもPackage/Test/CIが成立することを確認する
-- Runtime dependencyが本当に必要なFeatureまで導入を遅らせる
-
-## 2. v0.1 Runtime Candidates
-
-### KeyboardShortcuts
+### KeyboardShortcuts 3.0.1
 
 用途:
 
-- User-customizable Global Keyboard Shortcut
+- User-customizable Global Show/Hide Shortcut
+- Shortcut recorder UI
+- Sandbox-compatible global hotkey registration
 
-初期Pin候補:
+導入対象:
 
 ```text
-3.0.1
+SchneeGlassMacOSAdapter only
+```
+
+Domain / Application / Presentationへ`KeyboardShortcuts`型を漏らしません。
+
+Pin:
+
+```text
+exact 3.0.1
+revision 49c3fc04ea827f816df67843bfcc57286b47ff06
 ```
 
 採用タイミング:
@@ -40,10 +41,28 @@ Apple Platform API
 
 採用理由:
 
-- macOS Global ShortcutとRecorder UIを自前実装する価値が低い
-- Sandbox対応
+- macOS global shortcutとconflict-aware recorder UIを自前実装する価値が低い
+- Sandbox / Mac App Store compatible
 - Swift Package Manager対応
-- Swift 6対応
+- Swift 6.3 Release build crash修正を含む3.0.1を採用
+- transitive package dependencyなし
+- MIT License
+
+Security / Privacy:
+
+- Accessibility Permissionを要求しない
+- Full Disk Accessを要求しない
+- Network entitlementを追加しない
+- user keyboard input全体を監視するglobal event monitorは使用しない
+- 登録済みshortcut eventだけを扱う
+
+Removal Strategy:
+
+- `SchneeGlassMacOSAdapter`のshortcut adapterとsettings recorderを削除
+- `Package.swift`のproduct/package dependencyを削除
+- `Package.resolved` pinを削除
+
+## 2. v0.1 Runtime Candidates
 
 ### swift-async-algorithms
 
