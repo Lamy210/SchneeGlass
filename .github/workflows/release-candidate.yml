@@ -1,0 +1,104 @@
+name: Release Candidate Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Expected X.Y.Z version. Leave empty to validate the project version only.'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release-candidate:
+    name: Unsigned Release Candidate / Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Validate release metadata
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            bash Scripts/verify-release-metadata.sh "$GITHUB_REF_NAME"
+          elif [[ -n "${REQUESTED_VERSION:-}" ]]; then
+            bash Scripts/verify-release-metadata.sh "v${REQUESTED_VERSION}"
+          else
+            bash Scripts/verify-release-metadata.sh
+          fi
+
+      - name: Resolve release version
+        id: release
+        run: |
+          SETTINGS="$(xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Release \
+            -showBuildSettings)"
+          VERSION="$(printf '%s\n' "$SETTINGS" \
+            | sed -n 's/^[[:space:]]*MARKETING_VERSION = //p' \
+            | head -n 1)"
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Swift package tests
+        run: swift test --package-path Packages/SchneeGlassKit
+
+      - name: Build unsigned Release candidate
+        run: |
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassReleaseDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Verify unsigned app baseline
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassReleaseDerivedData/Build/Products/Release/SchneeGlass.app"
+          test -d "$APP"
+          test -f "$APP/Contents/MacOS/SchneeGlass"
+          plutil -lint "$APP/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = 'io.github.lamy210.schneeglass'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = '${{ steps.release.outputs.version }}'
+          plutil -lint App/SchneeGlass.entitlements
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' App/SchneeGlass.entitlements)" = 'true'
+
+      - name: Package release candidate and integrity manifest
+        run: |
+          VERSION='${{ steps.release.outputs.version }}'
+          APP="$RUNNER_TEMP/SchneeGlassReleaseDerivedData/Build/Products/Release/SchneeGlass.app"
+          ARCHIVE="SchneeGlass-${VERSION}-unsigned.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ARCHIVE"
+          shasum -a 256 "$ARCHIVE" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+
+      - name: Upload validated unsigned release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchneeGlass-${{ steps.release.outputs.version }}-unsigned-release-candidate
+          path: |
+            SchneeGlass-${{ steps.release.outputs.version }}-unsigned.zip
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
