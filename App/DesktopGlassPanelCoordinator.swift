@@ -28,6 +28,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
 
     private let model: SchneeGlassWorkspaceModel
     private var panels: [GlassID: PanelRecord] = [:]
+    private var isStopped = false
 
     init(model: SchneeGlassWorkspaceModel) {
         self.model = model
@@ -38,16 +39,19 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        for record in panels.values {
-            record.persistenceTask?.cancel()
-        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationWillTerminate(_:)),
+            name: NSApplication.willTerminateNotification,
+            object: nil
+        )
     }
 
     func sync() {
+        guard !isStopped else {
+            return
+        }
+
         let entriesByID = Dictionary(uniqueKeysWithValues: model.glasses.map { ($0.id, $0) })
 
         for glassID in panels.keys where entriesByID[glassID] == nil {
@@ -68,6 +72,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func showAll() {
+        guard !isStopped else {
+            return
+        }
         sync()
         for record in panels.values {
             record.panel.orderFrontRegardless()
@@ -75,6 +82,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func hideAll() {
+        guard !isStopped else {
+            return
+        }
         for record in panels.values {
             record.panel.orderOut(nil)
         }
@@ -90,8 +100,18 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         }
     }
 
+    func stop() {
+        guard !isStopped else {
+            return
+        }
+        isStopped = true
+        NotificationCenter.default.removeObserver(self)
+        closeAll()
+    }
+
     func windowDidMove(_ notification: Notification) {
-        guard let panel = notification.object as? DesktopGlassPanel,
+        guard !isStopped,
+              let panel = notification.object as? DesktopGlassPanel,
               !panel.suppressPlacementPersistence
         else {
             return
@@ -100,7 +120,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func windowDidEndLiveResize(_ notification: Notification) {
-        guard let panel = notification.object as? DesktopGlassPanel,
+        guard !isStopped,
+              let panel = notification.object as? DesktopGlassPanel,
               !panel.suppressPlacementPersistence
         else {
             return
@@ -119,6 +140,11 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     @objc
     private func screenParametersDidChange(_ notification: Notification) {
         sync()
+    }
+
+    @objc
+    private func applicationWillTerminate(_ notification: Notification) {
+        stop()
     }
 
     private func createPanel(
@@ -230,7 +256,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             }
 
             for attempt in 0..<6 {
-                guard !Task.isCancelled else {
+                guard !Task.isCancelled, !isStopped else {
                     return
                 }
 
