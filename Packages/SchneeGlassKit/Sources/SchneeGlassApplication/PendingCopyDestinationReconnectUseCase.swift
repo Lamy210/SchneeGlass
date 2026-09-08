@@ -47,7 +47,6 @@ public actor PendingCopyDestinationReconnectUseCase {
     }
 
     /// Returns `false` when the user cancels folder selection.
-    @MainActor
     public func execute(operationID: UUID) async throws -> Bool {
         let preflight = try await loadCurrentState(operationID: operationID)
 
