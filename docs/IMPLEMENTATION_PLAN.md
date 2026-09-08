@@ -74,9 +74,10 @@ Status: **DONE for current v0.1 flows**
 - Drop planning / authorized copy execution
 - placement persistence / reset
 - configuration recovery use case
+- Pending Copy recovery / reconnect / read-only inspection use cases
 - fake / spy ports for application tests
 
-追加UseCaseは新しいRecovery / Release要件に合わせて個別追加する。
+追加UseCaseは新しいRelease / post-v0.1要件に合わせて個別追加する。
 
 ---
 
@@ -116,7 +117,7 @@ Status: **DONE for regular-file v0.1 scope**
 - perform-time re-plan
 
 ### TASK-008 — Recovery Metadata Store
-Status: **DONE — Recovery UI execution remains under TASK-011**
+Status: **DONE**
 
 - `PendingCopyRecord`
 - atomic JSON metadata persistence
@@ -152,9 +153,9 @@ Status: **DONE**
 - unsafe backup identifier rejection
 
 ### TASK-011 — Startup / Recovery Coordinator
-Status: **IN PROGRESS**
+Status: **DONE for v0.1**
 
-完了済み:
+完了内容:
 
 - startup best-effort Glass restore
 - per-Glass restore failure isolation
@@ -162,15 +163,22 @@ Status: **IN PROGRESS**
 - explicit Configuration Backup Recovery UI
 - recovery中のconfiguration mutation / copy guards
 - Desktop panel quiescence during configuration recovery
-- Pending Copy recovery assessment / action planning foundation
-
-残り:
-
 - Pending Copy Recovery Center UI
-- safe recovery action execution
-- owned staging cleanupの再検証付きexplicit execution
-- destination reconnect flow
-- ambiguous / unsafe stateのmanual-inspection UX
+- fresh recovery assessment / pure action planning
+- stale UI assessmentをmutation authorityにしないexplicit execution
+- ownership proof再検証付きapp-owned staging cleanup
+- Copy / Recovery mutationのApplication-level相互排他
+- destination reconnect
+  - folder picker後のrecord/config再load
+  - fingerprint identity validation
+  - stale reconnect rejection
+  - security-scoped access validation
+- read-only manual inspection
+  - `Show Incomplete Copy`
+  - `Show Final File`
+  - Finder表示直前のfresh assessment / action再判定
+- ambiguous / ownership-unproven stateではauto-deleteしない
+- final user-visible fileのRecovery mutation禁止
 
 ---
 
@@ -200,6 +208,7 @@ Status: **DONE**
 - Open
 - Reveal in Finder
 - Remove Glass without source mutation
+- Recovery manual inspection in Finder
 
 ### TASK-015 — Menu Bar / Global Shortcut
 Status: **DONE**
@@ -286,14 +295,12 @@ Status: **IN PROGRESS**
 現時点の優先順位:
 
 ```text
-1. Pending Copy Recovery Center / safe action execution
-2. Recovery destination reconnect
-3. Quality / Diagnostics gap review
-4. Release Pipeline
-5. Final docs + manual QA
+1. Quality / Diagnostics gap review
+2. Release Pipeline
+3. Final docs + manual QA
 ```
 
-Release機能より先にRecoveryを閉じる。v0.1の最優先原則は、障害時にもuser-owned fileを自動破壊しないこと。
+Recoveryのv0.1必須導線は完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
 
 ---
 
