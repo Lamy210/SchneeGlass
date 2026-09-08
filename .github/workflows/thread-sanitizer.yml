@@ -1,0 +1,41 @@
+name: Thread Sanitizer Diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/thread-sanitizer.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '37 17 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: thread-sanitizer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  thread-sanitizer:
+    name: Swift Package Tests / ThreadSanitizer
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: ThreadSanitizer package tests
+        run: |
+          swift test \
+            --package-path Packages/SchneeGlassKit \
+            --sanitize=thread \
+            --scratch-path "$RUNNER_TEMP/SchneeGlassKit-TSan"
