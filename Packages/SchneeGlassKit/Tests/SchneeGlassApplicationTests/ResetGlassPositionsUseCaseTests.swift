@@ -101,6 +101,29 @@ func resetPositionsRejectsStaleWorkspaceWithoutWriting() async throws {
 }
 
 @Test
+func resetPositionsRejectsPersistedGlassMissingFromWorkspaceSnapshot() async throws {
+    let first = try resetPositionConfiguration(title: "Projects", x: 100, y: 120)
+    let second = try resetPositionConfiguration(title: "Downloads", x: 500, y: 520)
+    let store = ResetPositionsConfigurationStore(loaded: [first, second])
+    let useCase = ResetGlassPositionsUseCase(configurationStore: store)
+
+    do {
+        _ = try await useCase.execute(
+            placements: [
+                first.id: try GlassPlacement(x: 40, y: 600),
+            ]
+        )
+        Issue.record("Expected configurationChanged")
+    } catch let error as ResetGlassPositionsError {
+        #expect(error == .configurationChanged)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await store.savedValues().isEmpty)
+}
+
+@Test
 func resetPositionsWithNoChangesDoesNotCreateAnotherVersion() async throws {
     let persisted = try resetPositionConfiguration(x: 100, y: 120)
     let store = ResetPositionsConfigurationStore(loaded: [persisted])
