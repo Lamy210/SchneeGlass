@@ -4,6 +4,14 @@ import SchneeGlassMacOSAdapter
 import SchneeGlassPresentation
 import SwiftUI
 
+enum DesktopGlassPositionResetResult: Hashable, Sendable {
+    case updated
+    case noGlasses
+    case busy
+    case noAvailableScreen
+    case failed
+}
+
 @MainActor
 final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     private final class DesktopGlassPanel: NSPanel {
@@ -87,6 +95,50 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         }
         for record in panels.values {
             record.panel.orderOut(nil)
+        }
+    }
+
+    func resetPositionsOnMainDisplay() async -> DesktopGlassPositionResetResult {
+        guard !isStopped else {
+            return .failed
+        }
+        guard !model.glasses.isEmpty else {
+            return .noGlasses
+        }
+        guard !model.isMutatingConfiguration else {
+            return .busy
+        }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+            return .noAvailableScreen
+        }
+
+        let items = model.glasses.map {
+            GlassPlacementResetItem(id: $0.id, currentPlacement: $0.placement)
+        }
+        let planned: [GlassID: GlassPlacement]
+        do {
+            planned = try GlassPlacementResetPlanner.plan(
+                items: items,
+                visibleFrame: screen.visibleFrame,
+                displayHint: screen.localizedName
+            )
+        } catch {
+            return .failed
+        }
+
+        cancelPendingPlacementPersistence()
+
+        switch await model.resetGlassPositions(placements: planned) {
+        case .updated:
+            sync()
+            showAll()
+            return .updated
+        case .noGlasses:
+            return .noGlasses
+        case .busy:
+            return .busy
+        case .failed:
+            return .failed
         }
     }
 
@@ -223,6 +275,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         record.persistenceTask?.cancel()
         record.panel.delegate = nil
         record.panel.close()
+    }
+
+    private func cancelPendingPlacementPersistence() {
+        for glassID in Array(panels.keys) {
+            guard var record = panels[glassID] else {
+                continue
+            }
+            record.persistenceTask?.cancel()
+            record.persistenceTask = nil
+            panels[glassID] = record
+        }
     }
 
     private func schedulePlacementPersistence(

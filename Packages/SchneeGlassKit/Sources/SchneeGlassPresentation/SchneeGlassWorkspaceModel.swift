@@ -36,6 +36,13 @@ public enum GlassPlacementPersistenceResult: Hashable, Sendable {
     case failed
 }
 
+public enum GlassPositionResetResult: Hashable, Sendable {
+    case updated
+    case noGlasses
+    case busy
+    case failed
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -49,6 +56,7 @@ public final class SchneeGlassWorkspaceModel {
     private let restoreApplicationUseCase: RestoreApplicationUseCase
     private let removeGlassUseCase: RemoveGlassUseCase
     private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
+    private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
     private let fileActionUseCase: WorkspaceFileActionUseCase
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
@@ -60,6 +68,7 @@ public final class SchneeGlassWorkspaceModel {
         restoreApplicationUseCase: RestoreApplicationUseCase,
         removeGlassUseCase: RemoveGlassUseCase,
         updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
+        resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
         fileActionUseCase: WorkspaceFileActionUseCase,
         runtimeSessionFactory: GlassRuntimeSessionFactory
     ) {
@@ -67,6 +76,7 @@ public final class SchneeGlassWorkspaceModel {
         self.restoreApplicationUseCase = restoreApplicationUseCase
         self.removeGlassUseCase = removeGlassUseCase
         self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
+        self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
         self.fileActionUseCase = fileActionUseCase
         self.runtimeSessionFactory = runtimeSessionFactory
     }
@@ -205,6 +215,38 @@ public final class SchneeGlassWorkspaceModel {
             return .updated
         } catch {
             userMessage = "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+            return .failed
+        }
+    }
+
+    public func resetGlassPositions(
+        placements: [GlassID: GlassPlacement]
+    ) async -> GlassPositionResetResult {
+        guard !glasses.isEmpty else {
+            return .noGlasses
+        }
+        guard !isMutatingConfiguration else {
+            return .busy
+        }
+        guard Set(placements.keys) == Set(glasses.map(\.id)) else {
+            userMessage = "SchneeGlass couldn't reset positions because the workspace changed. No files or folders were changed."
+            return .failed
+        }
+
+        isMutatingConfiguration = true
+        defer { isMutatingConfiguration = false }
+
+        do {
+            _ = try await resetGlassPositionsUseCase.execute(placements: placements)
+            for index in glasses.indices {
+                if let placement = placements[glasses[index].id] {
+                    glasses[index].placement = placement
+                }
+            }
+            userMessage = nil
+            return .updated
+        } catch {
+            userMessage = "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
             return .failed
         }
     }
