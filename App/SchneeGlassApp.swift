@@ -1,4 +1,5 @@
 import AppKit
+import SchneeGlassApplication
 import SchneeGlassPresentation
 import SwiftUI
 
@@ -80,7 +81,10 @@ struct SchneeGlassApp: App {
         .menuBarExtraStyle(.menu)
 
         Settings {
-            SchneeGlassSettingsBootstrapView()
+            SchneeGlassSettingsBootstrapView(
+                bootstrapState: bootstrapState,
+                panelCoordinator: panelCoordinator
+            )
         }
     }
 }
@@ -225,15 +229,181 @@ private struct SchneeGlassBootstrapFailureView: View {
 }
 
 private struct SchneeGlassSettingsBootstrapView: View {
+    let bootstrapState: SchneeGlassBootstrapState
+    let panelCoordinator: DesktopGlassPanelCoordinator?
+
+    @ViewBuilder
+    var body: some View {
+        if case let .ready(model) = bootstrapState,
+           let panelCoordinator
+        {
+            SchneeGlassSettingsView(
+                model: model,
+                panelCoordinator: panelCoordinator
+            )
+        } else {
+            Form {
+                Section("Recovery") {
+                    Text("Recovery is unavailable because SchneeGlass could not prepare its application support location.")
+                        .foregroundStyle(.secondary)
+
+                    Text("No folders or files were changed.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .frame(width: 480)
+            .padding()
+        }
+    }
+}
+
+private struct SchneeGlassSettingsView: View {
+    let model: SchneeGlassWorkspaceModel
+    let panelCoordinator: DesktopGlassPanelCoordinator
+
+    @State private var backups: [ConfigurationBackupDescriptor] = []
+    @State private var isLoadingBackups = false
+    @State private var isRestoringBackup = false
+    @State private var recoveryMessage: String?
+
     var body: some View {
         Form {
-            Section("SchneeGlass") {
-                Text("Settings and Recovery controls will be connected as the next v0.1 slices are completed.")
+            Section("Recovery") {
+                Text("Restore an earlier SchneeGlass configuration without moving, renaming, deleting, or replacing files in connected folders.")
+                    .foregroundStyle(.secondary)
+
+                if isLoadingBackups {
+                    ProgressView("Loading configuration backups…")
+                } else if backups.isEmpty {
+                    Text("No valid configuration backups are available.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(backups) { backup in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(backup.createdAt.formatted(date: .abbreviated, time: .standard))
+                                Text("Configuration backup")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Button("Restore…") {
+                                guard confirmConfigurationBackupRestore(createdAt: backup.createdAt) else {
+                                    return
+                                }
+
+                                Task { @MainActor in
+                                    await restore(backup)
+                                }
+                            }
+                            .disabled(model.isMutatingConfiguration || isRestoringBackup)
+                        }
+                    }
+                }
+
+                HStack {
+                    Button("Refresh Backups") {
+                        Task { @MainActor in
+                            await refreshBackups()
+                        }
+                    }
+                    .disabled(isLoadingBackups || isRestoringBackup)
+
+                    if isRestoringBackup {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Restoring configuration…")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let recoveryMessage {
+                    Text(recoveryMessage)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Safety") {
+                Text("Recovery changes SchneeGlass configuration only. Connected folders remain the source of truth and their files are not modified by configuration recovery.")
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 440)
+        .frame(width: 520)
         .padding()
+        .task {
+            await refreshBackups()
+        }
     }
+
+    @MainActor
+    private func refreshBackups() async {
+        guard !isLoadingBackups else {
+            return
+        }
+
+        isLoadingBackups = true
+        defer { isLoadingBackups = false }
+
+        switch await model.loadConfigurationBackups() {
+        case let .loaded(loadedBackups):
+            backups = loadedBackups
+            if recoveryMessage == "SchneeGlass couldn't read its configuration backups. No configuration was changed." {
+                recoveryMessage = nil
+            }
+        case .failed:
+            backups = []
+            recoveryMessage = "SchneeGlass couldn't read its configuration backups. No configuration was changed."
+        }
+    }
+
+    @MainActor
+    private func restore(_ backup: ConfigurationBackupDescriptor) async {
+        guard !isRestoringBackup else {
+            return
+        }
+
+        isRestoringBackup = true
+        defer { isRestoringBackup = false }
+
+        let result = await model.restoreConfigurationBackup(id: backup.id)
+        switch result {
+        case .restored:
+            // Cancel any move/resize debounce tasks that were created by the old workspace before
+            // they can retry against the newly restored configuration.
+            panelCoordinator.closeAll()
+            panelCoordinator.sync()
+            panelCoordinator.showAll()
+            recoveryMessage = "Configuration restored. Connected folders and files were not changed."
+            await refreshBackups()
+
+        case .restoredNeedsRestart:
+            panelCoordinator.closeAll()
+            recoveryMessage = "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
+            await refreshBackups()
+
+        case .busy:
+            recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+
+        case .copyInProgress:
+            recoveryMessage = "Wait for the current file copy to finish before restoring configuration."
+
+        case .failed:
+            recoveryMessage = "SchneeGlass couldn't restore that backup. The current configuration was left unchanged."
+        }
+    }
+}
+
+@MainActor
+private func confirmConfigurationBackupRestore(createdAt: Date) -> Bool {
+    let confirmation = NSAlert()
+    confirmation.messageText = "Restore Configuration Backup?"
+    confirmation.informativeText = "Restore the SchneeGlass configuration from \(createdAt.formatted(date: .abbreviated, time: .standard)). SchneeGlass will preserve the current configuration before replacing it. Connected folders and their files will not be moved, renamed, deleted, or replaced."
+    confirmation.alertStyle = .warning
+    confirmation.addButton(withTitle: "Restore Configuration")
+    confirmation.addButton(withTitle: "Cancel")
+    return confirmation.runModal() == .alertFirstButtonReturn
 }
