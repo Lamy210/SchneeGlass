@@ -111,8 +111,9 @@ private func centerUseCase(
     configurations: [GlassConfiguration],
     access: RecoveryCenterAccessController,
     inspector: RecoveryCenterInspector,
-    cleaner: RecoveryCenterCleaner = RecoveryCenterCleaner()
-) -> (PendingCopyRecoveryCenterUseCase, RecoveryCenterStore) {
+    cleaner: RecoveryCenterCleaner = RecoveryCenterCleaner(),
+    activityGate: FileOperationActivityGate = FileOperationActivityGate()
+) -> (PendingCopyRecoveryCenterUseCase, RecoveryCenterStore, FileOperationActivityGate) {
     let store = RecoveryCenterStore(records: [record])
     let execution = PendingCopyRecoveryExecutionUseCase(
         pendingCopyStore: store,
@@ -125,9 +126,11 @@ private func centerUseCase(
             configurationStore: RecoveryCenterConfigurationStore(configurations: configurations),
             accessController: access,
             recoveryInspector: inspector,
-            recoveryExecution: execution
+            recoveryExecution: execution,
+            activityGate: activityGate
         ),
-        store
+        store,
+        activityGate
     )
 }
 
@@ -137,7 +140,7 @@ func recoveryCenterListingUsesShortLivedAccess() async throws {
     let record = centerRecord(glassID: glassID)
     let access = RecoveryCenterAccessController()
     let inspector = RecoveryCenterInspector(disposition: .metadataOnly)
-    let (useCase, _) = centerUseCase(
+    let (useCase, _, _) = centerUseCase(
         record: record,
         configurations: [try centerConfiguration(glassID: glassID)],
         access: access,
@@ -160,7 +163,7 @@ func recoveryCenterListingOffersReconnectWhenDestinationUnavailable() async thro
     let record = centerRecord(glassID: glassID)
     let access = RecoveryCenterAccessController(shouldFail: true)
     let inspector = RecoveryCenterInspector(disposition: .metadataOnly)
-    let (useCase, _) = centerUseCase(
+    let (useCase, _, _) = centerUseCase(
         record: record,
         configurations: [try centerConfiguration(glassID: glassID)],
         access: access,
@@ -179,7 +182,7 @@ func recoveryCenterListingDoesNotGuessWhenConfigurationMissing() async throws {
     let record = centerRecord(glassID: GlassID())
     let access = RecoveryCenterAccessController()
     let inspector = RecoveryCenterInspector(disposition: .metadataOnly)
-    let (useCase, _) = centerUseCase(
+    let (useCase, _, _) = centerUseCase(
         record: record,
         configurations: [],
         access: access,
@@ -199,7 +202,7 @@ func recoveryCenterMutationReloadsRecordAndReleasesAccess() async throws {
     let record = centerRecord(glassID: glassID)
     let access = RecoveryCenterAccessController()
     let inspector = RecoveryCenterInspector(disposition: .metadataOnly)
-    let (useCase, store) = centerUseCase(
+    let (useCase, store, _) = centerUseCase(
         record: record,
         configurations: [try centerConfiguration(glassID: glassID)],
         access: access,
@@ -223,7 +226,7 @@ func recoveryCenterMutationReleasesAccessOnCleanupFailure() async throws {
         resourceIdentity: .matchesRecordedIdentity
     )
     let inspector = RecoveryCenterInspector(disposition: .stagingPresent(verification))
-    let (useCase, _) = centerUseCase(
+    let (useCase, _, _) = centerUseCase(
         record: record,
         configurations: [try centerConfiguration(glassID: glassID)],
         access: access,
@@ -244,4 +247,44 @@ func recoveryCenterMutationReleasesAccessOnCleanupFailure() async throws {
     }
 
     #expect(await access.releaseCount() == 1)
+}
+
+@Test
+func recoveryCenterRejectsListingAndMutationWhileCopyIsActive() async throws {
+    let glassID = GlassID()
+    let record = centerRecord(glassID: glassID)
+    let gate = FileOperationActivityGate()
+    #expect(await gate.beginCopy())
+
+    let access = RecoveryCenterAccessController()
+    let inspector = RecoveryCenterInspector(disposition: .metadataOnly)
+    let (useCase, store, _) = centerUseCase(
+        record: record,
+        configurations: [try centerConfiguration(glassID: glassID)],
+        access: access,
+        inspector: inspector,
+        activityGate: gate
+    )
+
+    do {
+        _ = try await useCase.loadItems()
+        Issue.record("Expected copyInProgress")
+    } catch let error as PendingCopyRecoveryCenterError {
+        #expect(error == .copyInProgress)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    do {
+        try await useCase.executeMutation(action: .discardMetadata, operationID: record.operationID)
+        Issue.record("Expected copyInProgress")
+    } catch let error as PendingCopyRecoveryCenterError {
+        #expect(error == .copyInProgress)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await store.removals().isEmpty)
+    #expect(await access.acquisitionCount() == 0)
+    await gate.endCopy()
 }
