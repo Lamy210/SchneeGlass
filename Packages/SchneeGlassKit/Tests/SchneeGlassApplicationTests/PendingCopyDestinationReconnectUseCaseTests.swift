@@ -128,6 +128,7 @@ private func reconnectRecord(glassID: GlassID) -> PendingCopyRecord {
     )
 }
 
+@MainActor
 private func reconnectUseCase(
     record: PendingCopyRecord,
     configurationStore: ReconnectConfigurationStore,
