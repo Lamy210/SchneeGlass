@@ -38,6 +38,8 @@ final class SchneeGlassCompositionRoot {
         let dropPlanning = NativeDropPlanningAdapter()
         let pendingCopyStore = JSONPendingCopyStore(baseDirectory: fileOperationsDirectory)
         let activityGate = FileOperationActivityGate()
+        let folderSelector = NativeFolderSelector()
+        let sourceCreator = SecurityScopedFolderSourceFactory()
 
         let rawFileCopying = SafeFileCopyEngine(recoveryStore: pendingCopyStore)
         let fileCopying = ActivityTrackedFileCopying(
@@ -46,8 +48,8 @@ final class SchneeGlassCompositionRoot {
         )
 
         let createGlassUseCase = CreateGlassUseCase(
-            folderSelector: NativeFolderSelector(),
-            sourceCreator: SecurityScopedFolderSourceFactory(),
+            folderSelector: folderSelector,
+            sourceCreator: sourceCreator,
             placementProvider: NativeInitialGlassPlacementProvider(),
             configurationStore: configurationStore,
             accessController: accessController,
@@ -115,9 +117,18 @@ final class SchneeGlassCompositionRoot {
             recoveryExecution: recoveryExecution,
             activityGate: activityGate
         )
+        let reconnectUseCase = PendingCopyDestinationReconnectUseCase(
+            pendingCopyStore: pendingCopyStore,
+            configurationStore: configurationStore,
+            folderSelector: folderSelector,
+            sourceCreator: sourceCreator,
+            accessController: accessController,
+            activityGate: activityGate
+        )
         let pendingCopyRecoveryModel = PendingCopyRecoveryCenterModel(
             workspaceModel: workspaceModel,
-            useCase: recoveryCenterUseCase
+            useCase: recoveryCenterUseCase,
+            reconnectUseCase: reconnectUseCase
         )
 
         return SchneeGlassCompositionRoot(
