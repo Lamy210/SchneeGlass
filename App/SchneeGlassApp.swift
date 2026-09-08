@@ -1,5 +1,6 @@
 import AppKit
 import SchneeGlassApplication
+import SchneeGlassMacOSAdapter
 import SchneeGlassPresentation
 import SwiftUI
 
@@ -8,14 +9,22 @@ import SwiftUI
 struct SchneeGlassApp: App {
     private let bootstrapState: SchneeGlassBootstrapState
     private let panelCoordinator: DesktopGlassPanelCoordinator?
+    private let globalVisibilityShortcutController: SchneeGlassGlobalVisibilityShortcutController?
 
     init() {
         let state = SchneeGlassBootstrapState.resolve()
         self.bootstrapState = state
+
         if case let .ready(model) = state {
-            self.panelCoordinator = DesktopGlassPanelCoordinator(model: model)
+            let coordinator = DesktopGlassPanelCoordinator(model: model)
+            self.panelCoordinator = coordinator
+            self.globalVisibilityShortcutController = SchneeGlassGlobalVisibilityShortcutController {
+                [weak coordinator] in
+                coordinator?.toggleAllVisibility()
+            }
         } else {
             self.panelCoordinator = nil
+            self.globalVisibilityShortcutController = nil
         }
     }
 
@@ -53,12 +62,12 @@ struct SchneeGlassApp: App {
                     Button("Show All Glasses") {
                         panelCoordinator?.showAll()
                     }
-                    .disabled(model.glasses.isEmpty)
+                    .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
                     Button("Hide All Glasses") {
                         panelCoordinator?.hideAll()
                     }
-                    .disabled(model.glasses.isEmpty)
+                    .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
                     Divider()
 
@@ -136,12 +145,12 @@ private struct SchneeGlassMenuBarContent: View {
         Button("Show All Glasses") {
             panelCoordinator.showAll()
         }
-        .disabled(model.glasses.isEmpty)
+        .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
         Button("Hide All Glasses") {
             panelCoordinator.hideAll()
         }
-        .disabled(model.glasses.isEmpty)
+        .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
         Divider()
 
@@ -269,6 +278,18 @@ private struct SchneeGlassSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Global Shortcut") {
+                HStack(spacing: 16) {
+                    Text("Show / Hide All Glasses")
+                    Spacer()
+                    SchneeGlassGlobalShortcutRecorderView()
+                }
+
+                Text("No shortcut is assigned by default. Choose a shortcut to toggle all Desktop Glasses from anywhere without granting Accessibility permission.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Recovery") {
                 Text("Restore an earlier SchneeGlass configuration without moving, renaming, deleting, or replacing files in connected folders.")
                     .foregroundStyle(.secondary)
@@ -377,7 +398,6 @@ private struct SchneeGlassSettingsView: View {
         let result = await model.restoreConfigurationBackup(id: backup.id)
         switch result {
         case .restored:
-            panelCoordinator.sync()
             panelCoordinator.showAll()
             recoveryMessage = "Configuration restored. Connected folders and files were not changed."
             await refreshBackups()
@@ -387,21 +407,26 @@ private struct SchneeGlassSettingsView: View {
             await refreshBackups()
 
         case .busy:
-            panelCoordinator.sync()
             panelCoordinator.showAll()
             recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
 
         case .copyInProgress:
-            panelCoordinator.sync()
             panelCoordinator.showAll()
             recoveryMessage = "Wait for the current file copy to finish before restoring configuration."
 
         case .failed:
-            panelCoordinator.sync()
             panelCoordinator.showAll()
             recoveryMessage = "SchneeGlass couldn't restore that backup. The current configuration was left unchanged."
         }
     }
+}
+
+private struct SchneeGlassGlobalShortcutRecorderView: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        SchneeGlassGlobalVisibilityShortcutController.makeRecorderView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 @MainActor
