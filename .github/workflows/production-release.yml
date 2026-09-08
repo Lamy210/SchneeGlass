@@ -53,6 +53,35 @@ jobs:
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
 
+      - name: Credential-free signing fails closed
+        run: |
+          rm -rf release-output
+          LOG="$RUNNER_TEMP/production-release-fail-closed.log"
+
+          set +e
+          (
+            export RELEASE_VERSION='0.0.0'
+            unset DEVELOPER_ID_P12_BASE64
+            unset DEVELOPER_ID_P12_PASSWORD
+            unset APPLE_TEAM_ID
+            unset APPSTORE_CONNECT_KEY_ID
+            unset APPSTORE_CONNECT_ISSUER_ID
+            unset APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+            bash Scripts/build-notarized-release.sh
+          ) >"$LOG" 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            cat "$LOG"
+            echo 'Production signing unexpectedly succeeded without credentials.' >&2
+            exit 1
+          fi
+
+          grep -F 'required release environment value is missing: DEVELOPER_ID_P12_BASE64' "$LOG" >/dev/null
+          test ! -e release-output
+          rm -f "$LOG"
+
       - name: Requested version matches project
         if: github.event_name == 'workflow_dispatch'
         env:
