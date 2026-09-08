@@ -44,6 +44,9 @@ jobs:
       - name: Release metadata guard
         run: bash Scripts/verify-release-metadata.sh
 
+      - name: Production release preflight
+        run: bash Scripts/verify-production-release-preflight.sh
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
