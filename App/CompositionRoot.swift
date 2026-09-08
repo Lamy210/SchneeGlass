@@ -63,6 +63,10 @@ final class SchneeGlassCompositionRoot {
             configurationStore: configurationStore
         )
 
+        let configurationRecoveryUseCase = ConfigurationRecoveryUseCase(
+            recoveryProvider: configurationStore
+        )
+
         let fileActionUseCase = WorkspaceFileActionUseCase(
             actor: NSWorkspaceFileActionAdapter()
         )
@@ -82,6 +86,7 @@ final class SchneeGlassCompositionRoot {
                 removeGlassUseCase: removeGlassUseCase,
                 updateGlassPlacementUseCase: updateGlassPlacementUseCase,
                 resetGlassPositionsUseCase: resetGlassPositionsUseCase,
+                configurationRecoveryUseCase: configurationRecoveryUseCase,
                 fileActionUseCase: fileActionUseCase,
                 runtimeSessionFactory: runtimeSessionFactory
             )
