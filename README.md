@@ -6,9 +6,9 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1 Core Feature Implementation / Recovery & Release Hardening**
+**v0.1 Core Feature / Recovery Complete / Quality & Release Hardening**
 
-Bootstrap段階は完了し、現在の`main`には実macOS Appとv0.1の主要利用フローが接続されています。
+Bootstrap段階とv0.1必須Recovery導線は完了し、現在の`main`には実macOS Appと主要利用・障害復旧フローが接続されています。
 
 実装済み:
 
@@ -23,8 +23,17 @@ Bootstrap段階は完了し、現在の`main`には実macOS Appとv0.1の主要�
 - Regular-file Safe Copy Drag & Drop
   - source Move / Rename / Deleteなし
   - silent overwriteなし
-  - staging + recovery metadata
-  - crash recovery inspection foundation
+  - app-owned staging + recovery metadata
+  - partial-success / crash recovery semantics
+- Pending Copy Recovery Center
+  - fresh filesystem assessment / action planning
+  - stale UI stateをmutation authorityにしないexplicit execution
+  - ownership proof再検証付きapp-owned staging cleanup
+  - Copy / Recovery mutationの相互排他
+  - identity検証付きDestination Reconnect
+  - stale reconnect rejection
+  - `Show Incomplete Copy` / `Show Final File`によるread-only manual inspection
+  - ambiguous / ownership-unproven stateではauto-deleteしない
 - Atomic JSON Configuration Persistence
   - valid backup最大5世代
   - corrupt currentをsilent overwriteしない
@@ -43,13 +52,10 @@ Bootstrap段階は完了し、現在の`main`には実macOS Appとv0.1の主要�
 
 v0.1で残っている主要項目:
 
-- Pending Copy Recovery Centerの実操作導線
-  - assessment表示
-  - safe action execution
-  - destination reconnect
 - Quality / Diagnostics CIの拡張
 - 配布用Signing / Notarization / Release Pipeline
-- 実装状況に合わせたドキュメント・manual QAの仕上げ
+- release/install documentation
+- manual QAの仕上げ
 
 詳細な進捗は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) を参照してください。
 
@@ -65,7 +71,7 @@ Silent overwrite            = 0
 Unknown partial auto-delete = 0
 ```
 
-v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。
+v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。RecoveryのFinder inspectionとDestination Reconnectはuser-owned file内容を変更しません。
 
 ## Architecture
 
@@ -135,7 +141,9 @@ GitHub Actionsでは上記に加えて、macOS 15 compatibility buildとXcode 26
 - Security-scoped Folder Access
 - Config Persistence / Backup
 - Explicit Configuration Recovery
-- Pending Copy Recovery foundation
+- Pending Copy Recovery Center / Explicit Safe Recovery
+- Recovery Destination Reconnect
+- Read-only Recovery Manual Inspection
 - Window Position Recovery
 - Menu Bar
 - Global Show/Hide Shortcut
