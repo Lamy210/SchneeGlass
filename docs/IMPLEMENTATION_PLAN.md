@@ -253,6 +253,7 @@ Status: **IN PROGRESS**
 - Public Repository Guard
 - Architecture Guard
 - File Safety Guard
+- release metadata guard
 - app bundle / Sandbox baseline verification
 - unsigned CI artifact
 
@@ -268,17 +269,32 @@ Status: **IN PROGRESS**
 Sanitizerや追加解析はCI時間・false positive・無料枠を評価して個別PRで導入する。AddressSanitizerは通常package testと同じcanonical runner上でPR時のみ実行し、追加runner起動を避ける。
 
 ### TASK-018 — Release Pipeline
-Status: **NOT STARTED**
+Status: **IN PROGRESS**
+
+実装済み:
+
+- strict `X.Y.Z` marketing version policy
+- positive integer build number policy
+- Debug / Release metadata consistency guard
+- `vX.Y.Z` tag / project version validation
+- unsigned Release Candidate workflow
+- unsigned app version / Sandbox baseline verification
+- SHA-256 artifact manifest + self-verification
+- immutable bad-release / rollback policy
+- ADR-0006: v0.1はDeveloper ID direct distributionを採用
+- App Sandbox / Hardened Runtimeをproductionでも維持
 
 残り:
 
-- versioning policy
-- signed archive
-- Developer ID / App Store distribution strategy
-- notarization
-- release artifact integrity
-- credential injection through secret store
-- rollback / bad release handling
+- protected release environment / secret contract
+- temporary keychainへのDeveloper ID certificate import
+- Developer ID signed Release build/export
+- post-sign `codesign` / entitlement verification
+- `notarytool` submission + accepted-state verification
+- notarization ticket staple / validate
+- Gatekeeper assessment
+- immutable GitHub Release publication
+- signed artifact manual QA
 
 ### TASK-019 — Documentation
 Status: **IN PROGRESS**
@@ -296,8 +312,8 @@ Status: **IN PROGRESS**
 
 ```text
 1. Quality / Diagnostics gap review
-2. Release Pipeline
-3. Final docs + manual QA
+2. Developer ID signing / notarization pipeline
+3. Final docs + signed-artifact manual QA
 ```
 
 Recoveryのv0.1必須導線は完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
