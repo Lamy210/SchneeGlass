@@ -71,20 +71,46 @@ struct SchneeGlassApp: App {
             }
         }
 
-        if case let .ready(model) = bootstrapState,
-           let panelCoordinator
-        {
-            MenuBarExtra("SchneeGlass", systemImage: "square.grid.2x2") {
-                SchneeGlassMenuBarContent(
-                    model: model,
-                    panelCoordinator: panelCoordinator
-                )
-            }
-            .menuBarExtraStyle(.menu)
+        MenuBarExtra("SchneeGlass", systemImage: "square.grid.2x2") {
+            SchneeGlassMenuBarBootstrapContent(
+                bootstrapState: bootstrapState,
+                panelCoordinator: panelCoordinator
+            )
         }
+        .menuBarExtraStyle(.menu)
 
         Settings {
             SchneeGlassSettingsBootstrapView()
+        }
+    }
+}
+
+private struct SchneeGlassMenuBarBootstrapContent: View {
+    let bootstrapState: SchneeGlassBootstrapState
+    let panelCoordinator: DesktopGlassPanelCoordinator?
+
+    @ViewBuilder
+    var body: some View {
+        if case let .ready(model) = bootstrapState,
+           let panelCoordinator
+        {
+            SchneeGlassMenuBarContent(
+                model: model,
+                panelCoordinator: panelCoordinator
+            )
+        } else {
+            Text("SchneeGlass couldn't start")
+                .disabled(true)
+
+            Divider()
+
+            SettingsLink {
+                Text("Settings…")
+            }
+
+            Button("Quit SchneeGlass") {
+                NSApplication.shared.terminate(nil)
+            }
         }
     }
 }
