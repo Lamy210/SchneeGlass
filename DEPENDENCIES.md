@@ -12,7 +12,7 @@ Apple Platform API
 
 ## 1. Runtime Dependencies
 
-### KeyboardShortcuts 3.0.1
+### KeyboardShortcuts 2.4.0
 
 用途:
 
@@ -31,8 +31,8 @@ Domain / Application / Presentationへ`KeyboardShortcuts`型を漏らしませ�
 Pin:
 
 ```text
-exact 3.0.1
-revision 49c3fc04ea827f816df67843bfcc57286b47ff06
+exact 2.4.0
+revision 1aef85578fdd4f9eaeeb8d53b7b4fc31bf08fe27
 ```
 
 採用タイミング:
@@ -44,9 +44,16 @@ revision 49c3fc04ea827f816df67843bfcc57286b47ff06
 - macOS global shortcutとconflict-aware recorder UIを自前実装する価値が低い
 - Sandbox / Mac App Store compatible
 - Swift Package Manager対応
-- Swift 6.3 Release build crash修正を含む3.0.1を採用
+- `swift-tools-version: 6.1`で、SchneeGlassのmacOS 15 compatibility runner（Xcode 16.4 / Swift 6.1.2）と互換
+- 2.x系最新の2.4.0は`removeHandler()`を備え、lifecycle cleanupを明示できる
 - transitive package dependencyなし
 - MIT License
+
+3.xを採用しない理由:
+
+- KeyboardShortcuts 3.0.0以降は`swift-tools-version: 6.2`
+- SchneeGlassはmacOS 15 compatibility CIでSwift 6.1.2を継続検証するため、現時点では解決不能
+- compatibility baselineを上げるまでは2.4.0を維持する
 
 Security / Privacy:
 
