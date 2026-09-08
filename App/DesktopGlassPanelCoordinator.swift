@@ -36,6 +36,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
 
     private let model: SchneeGlassWorkspaceModel
     private var panels: [GlassID: PanelRecord] = [:]
+    private var visibilityMode: DesktopGlassVisibilityMode = .shown
+    private var isPanelCreationSuppressed = false
     private var isStopped = false
 
     init(model: SchneeGlassWorkspaceModel) {
@@ -72,6 +74,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             }
 
             if panels[entry.id] == nil {
+                guard !isPanelCreationSuppressed else {
+                    continue
+                }
                 createPanel(for: entry, placement: placement)
             } else {
                 updatePanel(for: entry, placement: placement)
@@ -80,9 +85,12 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func showAll() {
-        guard !isStopped else {
+        guard !isStopped, !model.isMutatingConfiguration else {
             return
         }
+
+        isPanelCreationSuppressed = false
+        visibilityMode = .shown
         sync()
         for record in panels.values {
             record.panel.orderFrontRegardless()
@@ -90,11 +98,29 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     func hideAll() {
-        guard !isStopped else {
+        guard !isStopped, !model.isMutatingConfiguration else {
             return
         }
+
+        visibilityMode = .hidden
         for record in panels.values {
             record.panel.orderOut(nil)
+        }
+    }
+
+    func toggleAllVisibility() {
+        guard !isStopped,
+              !model.isMutatingConfiguration,
+              !model.glasses.isEmpty
+        else {
+            return
+        }
+
+        switch visibilityMode.toggled(hasGlasses: true) {
+        case .shown:
+            showAll()
+        case .hidden:
+            hideAll()
         }
     }
 
@@ -142,7 +168,14 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Removes the current Desktop Glass surface and prevents `sync()` from recreating panels
+    /// until `showAll()` explicitly resumes presentation.
+    ///
+    /// Recovery uses this as a quiescence boundary before configuration replacement so an
+    /// observation-driven `sync()` cannot recreate interactive panels while the transaction is
+    /// suspended on persistence I/O.
     func closeAll() {
+        isPanelCreationSuppressed = true
         let records = Array(panels.values)
         panels.removeAll(keepingCapacity: false)
         for record in records {
@@ -214,7 +247,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         )
 
         panels[entry.id] = PanelRecord(panel: panel, persistenceTask: nil)
-        panel.orderFront(nil)
+        if visibilityMode.presentsPanels {
+            panel.orderFront(nil)
+        }
     }
 
     private func updatePanel(
