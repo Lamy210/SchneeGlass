@@ -21,6 +21,12 @@ let package = Package(
             ]
         )
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/sindresorhus/KeyboardShortcuts",
+            exact: "2.4.0"
+        )
+    ],
     targets: [
         .target(name: "SchneeGlassDomain"),
         .target(
@@ -51,7 +57,14 @@ let package = Package(
         ),
         .target(
             name: "SchneeGlassMacOSAdapter",
-            dependencies: ["SchneeGlassApplication", "SchneeGlassDomain"]
+            dependencies: [
+                "SchneeGlassApplication",
+                "SchneeGlassDomain",
+                .product(
+                    name: "KeyboardShortcuts",
+                    package: "KeyboardShortcuts"
+                )
+            ]
         ),
         .testTarget(
             name: "SchneeGlassDomainTests",

@@ -10,28 +10,29 @@ Apple Platform API
 → mature third-party OSS
 ```
 
-## 1. Bootstrap状態
+## 1. Runtime Dependencies
 
-現時点の`SchneeGlassKit`にはExternal Runtime Dependencyをまだ追加していません。
-
-理由:
-
-- Architecture / Domain / Application Contractを先に安定させる
-- Dependency導入前でもPackage/Test/CIが成立することを確認する
-- Runtime dependencyが本当に必要なFeatureまで導入を遅らせる
-
-## 2. v0.1 Runtime Candidates
-
-### KeyboardShortcuts
+### KeyboardShortcuts 2.4.0
 
 用途:
 
-- User-customizable Global Keyboard Shortcut
+- User-customizable Global Show/Hide Shortcut
+- Shortcut recorder UI
+- Sandbox-compatible global hotkey registration
 
-初期Pin候補:
+導入対象:
 
 ```text
-3.0.1
+SchneeGlassMacOSAdapter only
+```
+
+Domain / Application / Presentationへ`KeyboardShortcuts`型を漏らしません。
+
+Pin:
+
+```text
+exact 2.4.0
+revision 1aef85578fdd4f9eaeeb8d53b7b4fc31bf08fe27
 ```
 
 採用タイミング:
@@ -40,10 +41,35 @@ Apple Platform API
 
 採用理由:
 
-- macOS Global ShortcutとRecorder UIを自前実装する価値が低い
-- Sandbox対応
+- macOS global shortcutとconflict-aware recorder UIを自前実装する価値が低い
+- Sandbox / Mac App Store compatible
 - Swift Package Manager対応
-- Swift 6対応
+- `swift-tools-version: 6.1`で、SchneeGlassのmacOS 15 compatibility runner（Xcode 16.4 / Swift 6.1.2）と互換
+- 2.x系最新の2.4.0は`removeHandler()`を備え、lifecycle cleanupを明示できる
+- transitive package dependencyなし
+- MIT License
+
+3.xを採用しない理由:
+
+- KeyboardShortcuts 3.0.0以降は`swift-tools-version: 6.2`
+- SchneeGlassはmacOS 15 compatibility CIでSwift 6.1.2を継続検証するため、現時点では解決不能
+- compatibility baselineを上げるまでは2.4.0を維持する
+
+Security / Privacy:
+
+- Accessibility Permissionを要求しない
+- Full Disk Accessを要求しない
+- Network entitlementを追加しない
+- user keyboard input全体を監視するglobal event monitorは使用しない
+- 登録済みshortcut eventだけを扱う
+
+Removal Strategy:
+
+- `SchneeGlassMacOSAdapter`のshortcut adapterとsettings recorderを削除
+- `Package.swift`のproduct/package dependencyを削除
+- `Package.resolved` pinを削除
+
+## 2. v0.1 Runtime Candidates
 
 ### swift-async-algorithms
 
