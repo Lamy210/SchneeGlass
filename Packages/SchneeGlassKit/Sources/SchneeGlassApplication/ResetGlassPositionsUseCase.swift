@@ -35,9 +35,11 @@ public actor ResetGlassPositionsUseCase {
         }
 
         let persistedIDs = Set(configurations.map(\.id))
-        guard Set(placements.keys).isSubset(of: persistedIDs) else {
-            // The workspace snapshot and persisted configuration no longer agree. Refuse to
-            // partially apply a recovery layout and let the caller retry from fresh state.
+        guard Set(placements.keys) == persistedIDs else {
+            // Reset is an all-Glass recovery operation. If either the workspace snapshot or the
+            // persisted configuration contains a Glass the other side does not know about, the
+            // snapshot is stale. Refuse to save a partial recovery layout and let the caller retry
+            // from freshly restored state.
             throw ResetGlassPositionsError.configurationChanged
         }
 
