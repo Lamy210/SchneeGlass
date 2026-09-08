@@ -4,6 +4,13 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '17 18 * * 2'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Packages/SchneeGlassKit/Sources/**/*.swift'
+      - 'Packages/SchneeGlassKit/Package.swift'
+      - '.github/workflows/codeql.yml'
   pull_request:
     paths:
       - '.github/workflows/codeql.yml'
@@ -21,7 +28,7 @@ jobs:
   analyze-swift:
     name: SwiftPM Core / CodeQL v4 / Xcode 26.6
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
@@ -52,9 +59,18 @@ jobs:
               ;;
           esac
 
-          swift build \
-            --package-path Packages/SchneeGlassKit \
-            --arch "$ARCH"
+          # Security-sensitive first-party core only. The macOS shortcut adapter is
+          # excluded here because it pulls KeyboardShortcuts and makes Swift CodeQL
+          # tracing disproportionately expensive. Bootstrap CI still compiles it.
+          for TARGET in \
+            SchneeGlassPresentation \
+            SchneeGlassFileSystemAdapter \
+            SchneeGlassPersistenceAdapter; do
+            swift build \
+              --package-path Packages/SchneeGlassKit \
+              --arch "$ARCH" \
+              --target "$TARGET"
+          done
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
