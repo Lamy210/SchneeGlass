@@ -286,7 +286,8 @@ public final class SchneeGlassWorkspaceModel {
         glassID: GlassID,
         sourceURLs: [URL]
     ) async -> DropPlan {
-        guard let session = sessions[glassID],
+        guard !isMutatingConfiguration,
+              let session = sessions[glassID],
               !isCopying(glassID: glassID)
         else {
             let rejection = DropPlan.reject(.destinationUnavailable)
@@ -313,7 +314,8 @@ public final class SchneeGlassWorkspaceModel {
         glassID: GlassID,
         sourceURLs: [URL]
     ) async -> Bool {
-        guard let session = sessions[glassID],
+        guard !isMutatingConfiguration,
+              let session = sessions[glassID],
               !isCopying(glassID: glassID)
         else {
             updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
