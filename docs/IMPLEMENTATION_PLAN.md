@@ -2,19 +2,22 @@
 
 このドキュメントは `ARCHITECTURE.md` の設計を実装順へ落としたものです。
 
+StatusはRepositoryの実装とmerged PRを基準に更新します。古い計画上の`NOT STARTED`を根拠に重複実装しないこと。
+
 ## Phase 0 — Architecture Baseline
 
 ### TASK-000 — 設計Baseline
 
-Status: **DONE on `bootstrap/architecture-baseline`**
+Status: **DONE**
 
-- Architecture
-- Security
-- Testing
+主な完了内容:
+
+- Architecture / Security / Testing policy
 - Dependency policy
 - Agent rules
 - Tech debt policy
 - ADR baseline
+- Compile-time package boundaries
 
 ---
 
@@ -22,42 +25,21 @@ Status: **DONE on `bootstrap/architecture-baseline`**
 
 ### TASK-001 — Project / Package Bootstrap
 
-Status: **IN PROGRESS**
+Status: **DONE**
 
-完了済み:
+完了内容:
 
 - `Packages/SchneeGlassKit/Package.swift`
 - macOS 15 platform declaration
 - Swift 6 language mode
 - SPM architecture targets
-- App Sandbox entitlement baseline
-- Domain/Application contract skeleton
-- Initial Swift Testing tests
-- Architecture guard
-- File mutation allowlist guard
-- Public repository guard
-- Bootstrap GitHub Actions CI
-
-未完了:
-
-- Xcode macOS App target
-- Local package linkage from App target
-- `CODE_SIGN_ENTITLEMENTS` linkage
-- App target Debug/Release build verification
-
-Xcode Projectは、使用可能なXcode環境で生成・検証してからCommitする。
-未検証の`project.pbxproj`を手書きでCommitしない。
-
-Completion Criteria:
-
-```text
-SPM tests PASS
-Architecture guard PASS
-File safety guard PASS
-Public repo guard PASS
-App target Debug build PASS
-App target Release build PASS
-```
+- `SchneeGlass.xcodeproj`
+- Local package linkage
+- App Sandbox entitlement linkage
+- Debug / Release app build verification
+- macOS 15 compatibility build
+- unsigned CI app artifact
+- Architecture / File Safety / Public Repository guards
 
 ---
 
@@ -65,102 +47,171 @@ App target Release build PASS
 
 ### TASK-002 — Domain Contracts
 
-Status: **STARTED**
+Status: **DONE for v0.1 scope**
 
-初期実装済み:
+実装済み:
 
-- `GlassID`
-- `ResourceFingerprint`
-- `FolderSource`
-- `GlassPlacement`
-- `GlassConfiguration`
-- `FileIdentity`
-- `FolderIdentity`
-- `FileKind`
-- `GlassItem`
-- `FolderSnapshot`
-- `StorageCapabilities`
-- `DropCandidate`
-- `DestinationDescriptor`
-- `CopyItemPlan`
-- `CopyBatchPlan`
-- `DropPlan`
-- `DropRejection`
-
-残り:
-
-- File classification implementation
-- DropPlanner
-- Production-level error mapping
-- Additional invariant tests
+- Glass / Folder / File identity models
+- `GlassPlacement` / `GlassConfiguration`
+- one-level `FolderSnapshot`
+- File classification
+- Drop / Copy plan models
+- collision and destination capability modeling
+- v0.1 invariants and failure-state tests
 
 ### TASK-003 — Application Ports / Use Cases
 
-Status: **STARTED**
+Status: **DONE for current v0.1 flows**
 
-初期Contract済み:
+実装済み:
 
-- `FolderAccessHandle`
-- `AuthorizedCopyBatchRequest`
-- `CopyBatchResult`
-- `CopyProgress`
-- `GlassContentState`
-- `InteractionState`
-- Application Ports
+- Folder access / event / snapshot ports
+- Create Glass orchestration
+- Runtime Session lifecycle
+- startup restore
+- Remove Glass
+- Open / Reveal boundary
+- Drop planning / authorized copy execution
+- placement persistence / reset
+- configuration recovery use case
+- fake / spy ports for application tests
 
-残り:
-
-- Use Case implementation
-- Runtime session orchestration
-- Fake ports for application tests
+追加UseCaseは新しいRecovery / Release要件に合わせて個別追加する。
 
 ---
 
 ## Phase 3 — macOS / Filesystem Adapters
 
 ### TASK-004 — Security Scoped Access
-Status: NOT STARTED
+Status: **DONE**
+
+- acquire / release lifecycle
+- stale bookmark refresh
+- resource replacement detection
+- failure cleanup
 
 ### TASK-005 — Folder Snapshot Reader
-Status: NOT STARTED
+Status: **DONE**
+
+- direct-child only
+- hidden item filtering
+- 500-item display limit
+- symlink / alias / package / directory / regular classification
 
 ### TASK-006 — File Event Hub
-Status: NOT STARTED
+Status: **DONE for v0.1**
+
+- FSEvents subscription lifecycle
+- changed / requiresFullRescan / rootChanged abstraction
+- explicit stop
+- Runtime Session refresh integration
 
 ### TASK-007 — Drop Planner
-Status: NOT STARTED
+Status: **DONE for regular-file v0.1 scope**
+
+- read-only native inspection
+- pure DropPlanner
+- collision / same-directory / cloud-placeholder rejection
+- case-sensitivity handling
+- perform-time re-plan
 
 ### TASK-008 — Recovery Metadata Store
-Status: NOT STARTED
+Status: **DONE — Recovery UI execution remains under TASK-011**
+
+- `PendingCopyRecord`
+- atomic JSON metadata persistence
+- scoped remove
+- ownership metadata
+- recovery assessment foundation
 
 ### TASK-009 — Safe File Copy Engine
-Status: NOT STARTED
+Status: **DONE for regular-file v0.1 scope**
+
+- sequential copy
+- preflight before mutation
+- app-owned staging
+- size verification
+- internal staging commit
+- no overwrite
+- partial-success semantics
+- fault-injection / real-filesystem safety tests
 
 ---
 
 ## Phase 4 — Persistence / Recovery
 
 ### TASK-010 — Configuration Store
-Status: NOT STARTED
+Status: **DONE**
+
+- schema-versioned Codable JSON
+- atomic write
+- valid backup最大5世代
+- corrupt/future currentを通常saveで上書きしない
+- explicit backup restore
+- corrupt current preserve
+- unsafe backup identifier rejection
 
 ### TASK-011 — Startup / Recovery Coordinator
-Status: NOT STARTED
+Status: **IN PROGRESS**
+
+完了済み:
+
+- startup best-effort Glass restore
+- per-Glass restore failure isolation
+- stale bookmark refresh
+- explicit Configuration Backup Recovery UI
+- recovery中のconfiguration mutation / copy guards
+- Desktop panel quiescence during configuration recovery
+- Pending Copy recovery assessment / action planning foundation
+
+残り:
+
+- Pending Copy Recovery Center UI
+- safe recovery action execution
+- owned staging cleanupの再検証付きexplicit execution
+- destination reconnect flow
+- ambiguous / unsafe stateのmanual-inspection UX
 
 ---
 
 ## Phase 5 — macOS UI
 
 ### TASK-012 — Windowing
-Status: NOT STARTED
+Status: **DONE for v0.1**
+
+- 1 Glass = 1 `NSPanel`
+- placement persistence
+- multi-display recovery
+- reset positions
+- show-on-all-spaces handling
 
 ### TASK-013 — Glass Presentation
-Status: NOT STARTED
+Status: **DONE for v0.1 core**
+
+- Workspace preview
+- Desktop Glass surface
+- loading / empty / unavailable / failure states
+- file listing
+- D&D copy interaction / progress feedback
 
 ### TASK-014 — Open / Finder Integration
-Status: NOT STARTED
+Status: **DONE**
+
+- Open
+- Reveal in Finder
+- Remove Glass without source mutation
 
 ### TASK-015 — Menu Bar / Global Shortcut
-Status: NOT STARTED
+Status: **DONE**
+
+- Menu Bar entry
+- Add / Show All / Hide All
+- Reset Glass Positions
+- Settings / Quit
+- user-customizable Global Show / Hide Shortcut
+- no default shortcut occupation
+- no Accessibility permission requirement
+- hidden-state preservation across workspace sync
 
 ---
 
@@ -168,30 +219,81 @@ Status: NOT STARTED
 
 ### TASK-016 — Static Architecture / Safety Gates
 
-Status: **BASELINE DONE**
+Status: **ACTIVE BASELINE**
 
-実装追加に合わせてallowlistと検査項目を拡張する。
+実装済み:
+
+- Public Repository Guard
+- Architecture Guard
+- File Safety mutation allowlist
+
+新しいmutation APIを追加する場合は同一PRでallowlist rationaleとSafety Testを更新する。
 
 ### TASK-017 — CI / Diagnostics
 
-Status: **BOOTSTRAP CI DONE / FULL CI NOT STARTED**
+Status: **IN PROGRESS**
 
-追加予定:
+現在のCI:
 
-- swift-format
-- SwiftLint
+- macOS 26 / Xcode 26.6 toolchain verification
+- Swift Package tests
+- Debug app build
+- Release app build
+- macOS 15 compatibility package tests / app build
+- Public Repository Guard
+- Architecture Guard
+- File Safety Guard
+- app bundle / Sandbox baseline verification
+- unsigned CI artifact
+
+追加候補:
+
+- formatting / lint gate
 - Periphery
 - CodeQL
 - ASan
 - TSan
 - Main Thread Checker
-- Integration test plan
+- Integration / UI test plan
+
+導入はCI時間・false positive・無料枠を評価して個別PRで行う。
 
 ### TASK-018 — Release Pipeline
-Status: NOT STARTED
+Status: **NOT STARTED**
+
+残り:
+
+- versioning policy
+- signed archive
+- Developer ID / App Store distribution strategy
+- notarization
+- release artifact integrity
+- credential injection through secret store
+- rollback / bad release handling
 
 ### TASK-019 — Documentation
-Status: IN PROGRESS
+Status: **IN PROGRESS**
+
+- README / implementation status同期
+- Recovery UX documentation
+- release / install documentation
+- manual QA checklist
+
+---
+
+## v0.1 Next Order
+
+現時点の優先順位:
+
+```text
+1. Pending Copy Recovery Center / safe action execution
+2. Recovery destination reconnect
+3. Quality / Diagnostics gap review
+4. Release Pipeline
+5. Final docs + manual QA
+```
+
+Release機能より先にRecoveryを閉じる。v0.1の最優先原則は、障害時にもuser-owned fileを自動破壊しないこと。
 
 ---
 
@@ -205,6 +307,7 @@ UI -> concrete filesystem adapter 禁止
 User-owned source destructive mutation 禁止
 Security-scoped acquire/release balance
 Unknown data auto-delete 禁止
+Silent recovery rollback 禁止
 ```
 
 Architectureを変更する必要がある場合は、実装で先に回避せずADRを追加して判断する。
