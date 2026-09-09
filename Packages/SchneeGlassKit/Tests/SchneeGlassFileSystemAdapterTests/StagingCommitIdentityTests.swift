@@ -42,7 +42,12 @@ private actor IdentityUnavailableCopyEnvironment: CopyFileSystemAccessing, Stagi
         nil
     }
 
-    func commit(stagingURL: URL, finalURL: URL) async throws {
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) async throws {
+        _ = authorization
         commitCalls += 1
     }
 
