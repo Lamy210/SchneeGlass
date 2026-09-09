@@ -49,6 +49,7 @@ public final class FileURLDropDestinationView: NSView {
     private var validationToken = UUID()
     private var currentSignature: String?
     private var currentOperation: NSDragOperation = []
+    private var didDispatchPerform = false
 
     init(
         onPlan: @escaping @MainActor ([URL]) async -> Bool,
@@ -85,6 +86,7 @@ public final class FileURLDropDestinationView: NSView {
     }
 
     public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        didDispatchPerform = false
         updateValidation(for: sender)
         return currentOperation
     }
@@ -116,6 +118,7 @@ public final class FileURLDropDestinationView: NSView {
         validationTask = nil
         currentOperation = []
         currentSignature = nil
+        didDispatchPerform = true
 
         let perform = onPerform
         Task { @MainActor in
@@ -125,14 +128,15 @@ public final class FileURLDropDestinationView: NSView {
     }
 
     public override func draggingEnded(_ sender: any NSDraggingInfo) {
-        finishDraggingSession()
+        let performWasDispatched = didDispatchPerform
+        didDispatchPerform = false
+        finishDraggingSession(performWasDispatched: performWasDispatched)
     }
 
-    /// A drag can end without first exiting this view (for example, user cancellation while the
-    /// pointer is still over the Glass). Always notify the workspace so hover/drop-valid UI cannot
-    /// remain stale after AppKit has ended the session.
-    func finishDraggingSession() {
-        resetValidation(notifyExit: true)
+    /// A cancelled drag can end without first exiting this view. Notify the workspace only when no
+    /// perform callback was dispatched; successful Drop execution owns its own interaction state.
+    func finishDraggingSession(performWasDispatched: Bool) {
+        resetValidation(notifyExit: !performWasDispatched)
     }
 
     func updateCallbacks(
