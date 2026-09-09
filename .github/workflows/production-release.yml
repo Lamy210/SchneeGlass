@@ -17,6 +17,7 @@ on:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
+      - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-production-release-preflight.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
 
@@ -51,6 +52,7 @@ jobs:
           bash -n Scripts/verify-production-release-preflight.sh
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/record-release-bundle-metadata.sh
+          bash -n Scripts/verify-release-evidence.sh
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
@@ -84,9 +86,9 @@ jobs:
           test ! -e release-output
           rm -f "$LOG"
 
-      - name: Signed bundle metadata recorder fixture
+      - name: Release evidence schema fixture
         run: |
-          FIXTURE="$RUNNER_TEMP/release-bundle-metadata-fixture"
+          FIXTURE="$RUNNER_TEMP/release-evidence-fixture"
           rm -rf "$FIXTURE"
           mkdir -p "$FIXTURE/SchneeGlass.app/Contents"
 
@@ -108,16 +110,38 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "$FIXTURE/SchneeGlass.app" \
             "$FIXTURE/SchneeGlass-0.0.0.zip"
-          printf 'version=0.0.0\n' > "$FIXTURE/RELEASE_EVIDENCE.txt"
+
+          cat > "$FIXTURE/RELEASE_EVIDENCE.txt" <<'EOF'
+          schema_version=1
+          version=0.0.0
+          notarization_id=12345678-1234-1234-1234-1234567890ab
+          notarization_status=Accepted
+          codesign=verified
+          stapler=validated
+          gatekeeper=accepted
+          EOF
 
           bash Scripts/record-release-bundle-metadata.sh \
             0.0.0 \
             "$FIXTURE/SchneeGlass-0.0.0.zip" \
             "$FIXTURE/RELEASE_EVIDENCE.txt"
 
-          grep -Fx 'bundle_identifier=io.github.lamy210.schneeglass' "$FIXTURE/RELEASE_EVIDENCE.txt"
-          grep -Fx 'bundle_version=0.0.0' "$FIXTURE/RELEASE_EVIDENCE.txt"
-          grep -Fx 'bundle_build=1' "$FIXTURE/RELEASE_EVIDENCE.txt"
+          echo 'commit_sha=0123456789abcdef0123456789abcdef01234567' >> "$FIXTURE/RELEASE_EVIDENCE.txt"
+
+          bash Scripts/verify-release-evidence.sh \
+            "$FIXTURE/RELEASE_EVIDENCE.txt" \
+            0.0.0 \
+            0123456789abcdef0123456789abcdef01234567
+
+          printf 'unknown_key=forbidden\n' >> "$FIXTURE/RELEASE_EVIDENCE.txt"
+          if bash Scripts/verify-release-evidence.sh \
+            "$FIXTURE/RELEASE_EVIDENCE.txt" \
+            0.0.0 \
+            0123456789abcdef0123456789abcdef01234567; then
+            echo 'Release evidence validator unexpectedly accepted an unknown key.' >&2
+            exit 1
+          fi
+
           rm -rf "$FIXTURE"
 
       - name: Requested version matches project
@@ -156,11 +180,26 @@ jobs:
       - name: Build signed and notarized release candidate
         run: bash Scripts/build-notarized-release.sh
 
+      - name: Initialize release evidence schema
+        run: |
+          EVIDENCE='release-output/RELEASE_EVIDENCE.txt'
+          test -f "$EVIDENCE"
+          ! grep -q '^schema_version=' "$EVIDENCE"
+          TEMP="$RUNNER_TEMP/RELEASE_EVIDENCE.txt"
+          {
+            echo 'schema_version=1'
+            cat "$EVIDENCE"
+          } > "$TEMP"
+          mv "$TEMP" "$EVIDENCE"
+
       - name: Record and verify signed bundle metadata
         run: bash Scripts/record-release-bundle-metadata.sh "$RELEASE_VERSION"
 
       - name: Record signed source commit
         run: echo "commit_sha=$GITHUB_SHA" >> release-output/RELEASE_EVIDENCE.txt
+
+      - name: Validate complete release evidence
+        run: bash Scripts/verify-release-evidence.sh release-output/RELEASE_EVIDENCE.txt "$RELEASE_VERSION" "$GITHUB_SHA"
 
       - name: Upload signed notarized candidate for manual QA
         uses: actions/upload-artifact@v4
