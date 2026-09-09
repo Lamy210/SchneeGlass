@@ -150,11 +150,6 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             {
                 return .absent
             }
-            if cocoa.domain == NSPOSIXErrorDomain,
-               cocoa.code == Int(ENOENT)
-            {
-                return .absent
-            }
             return .unavailable
         }
     }
