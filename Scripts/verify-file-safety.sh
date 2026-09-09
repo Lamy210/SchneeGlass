@@ -34,12 +34,23 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassPOSIXSupport/PhysicalStateStore.swift"* ]] \
+     && { [[ "$text" == *"O_CREAT"* ]] \
+          || [[ "$text" == *"mkdirat("* ]] \
+          || [[ "$text" == *"renameat("* ]] \
+          || [[ "$text" == *"unlinkat("* ]]; }; then
+    continue
+  fi
+
   echo "File safety violation: ${file#$ROOT/}:$line:$text" >&2
   violations=1
 done < <(
   {
     grep -RInE '\.(removeItem|moveItem|replaceItem)\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])unlink\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])unlinkat\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])renameat\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])mkdirat\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])fcopyfile\(' "$SRC" --include='*.swift' || true
     grep -RInE 'O_CREAT' "$SRC" --include='*.swift' || true
   } | sort -u
