@@ -32,6 +32,16 @@ public struct PhysicalStateStore: Sendable {
         self.rootURL = rootURL.standardizedFileURL
     }
 
+    public func ensureDirectory(_ directoryComponents: [String]) throws {
+        guard let directoryDescriptor = try openDirectoryChain(
+            components: directoryComponents,
+            create: true
+        ) else {
+            throw PhysicalStateStoreError.ioFailure(ENOENT)
+        }
+        close(directoryDescriptor)
+    }
+
     public func readRegularFile(
         in directoryComponents: [String] = [],
         named filename: String
@@ -181,7 +191,7 @@ public struct PhysicalStateStore: Sendable {
             }
         }
 
-        return names
+        return names.sorted()
     }
 
     public func removeRegularFile(
@@ -295,7 +305,7 @@ public struct PhysicalStateStore: Sendable {
                 return open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
             }
             if descriptor >= 0 {
-                return (descriptor, missing.reversed())
+                return (descriptor, Array(missing.reversed()))
             }
 
             let observedErrno = errno
