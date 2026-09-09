@@ -48,7 +48,7 @@ enum PendingCopyFileIdentity {
                     bytes.baseAddress,
                     bytes.count,
                     0,
-                    0
+                    XATTR_CREATE
                 )
             }
         }
