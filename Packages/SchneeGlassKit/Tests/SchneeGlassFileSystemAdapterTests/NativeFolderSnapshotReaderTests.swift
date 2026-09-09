@@ -134,3 +134,49 @@ func snapshotPreservesUnicodeFilenames() async throws {
         #expect(actual.contains(filename))
     }
 }
+
+@Test
+func snapshotPerformanceBaselineAtDisplayLimit() async throws {
+    guard ProcessInfo.processInfo.environment["SCHNEEGLASS_PERFORMANCE_BASELINE"] == "1" else {
+        return
+    }
+
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    for index in 0...NativeFolderSnapshotReader.maximumDisplayedItems {
+        let file = root.appendingPathComponent(String(format: "file-%04d.txt", index))
+        let created = FileManager.default.createFile(atPath: file.path, contents: Data())
+        #expect(created)
+    }
+
+    let reader = NativeFolderSnapshotReader()
+    let access = makeAccessHandle(for: root)
+    let processInfo = ProcessInfo.processInfo
+    var durations: [TimeInterval] = []
+
+    for generation in 1...3 {
+        let startedAt = processInfo.systemUptime
+        let snapshot = try await reader.snapshot(
+            for: access,
+            generation: UInt64(generation)
+        )
+        let duration = processInfo.systemUptime - startedAt
+        durations.append(duration)
+
+        #expect(snapshot.items.count == NativeFolderSnapshotReader.maximumDisplayedItems)
+        #expect(snapshot.isTruncated)
+    }
+
+    let worst = durations.max() ?? .infinity
+    let average = durations.reduce(0, +) / Double(durations.count)
+    print(
+        String(
+            format: "SCHNEEGLASS_PERF_RESULT snapshot_500 average=%.6fs worst=%.6fs limit=0.500000s",
+            average,
+            worst
+        )
+    )
+
+    #expect(worst < 0.5)
+}
