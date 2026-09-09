@@ -93,17 +93,18 @@ func backupDirectorySymlinkBlocksSaveBeforeCurrentConfigurationChanges() async t
     let store = JSONConfigurationStore(baseDirectory: root)
     try await store.save([try makeTopologyConfiguration("Version A")])
 
-    let currentURL = root
-        .appendingPathComponent("Configuration", isDirectory: true)
-        .appendingPathComponent("config.json", isDirectory: false)
+    let configurationDirectory = root.appendingPathComponent("Configuration", isDirectory: true)
+    let currentURL = configurationDirectory.appendingPathComponent("config.json", isDirectory: false)
     let before = try Data(contentsOf: currentURL)
 
     let externalBackups = root.appendingPathComponent("external-backups", isDirectory: true)
     try fileManager.createDirectory(at: externalBackups, withIntermediateDirectories: true)
+    let backupsPath = configurationDirectory.appendingPathComponent("Backups", isDirectory: true)
+    if fileManager.fileExists(atPath: backupsPath.path) {
+        try fileManager.removeItem(at: backupsPath)
+    }
     try fileManager.createSymbolicLink(
-        at: root
-            .appendingPathComponent("Configuration", isDirectory: true)
-            .appendingPathComponent("Backups", isDirectory: true),
+        at: backupsPath,
         withDestinationURL: externalBackups
     )
 
