@@ -12,16 +12,45 @@ Intentional Simplificationには必ず理由とRevisit Triggerを付けます。
 
 FSEvents受信後、差分PatchではなくFolder直下Snapshotを再構築する設計。
 
+v0.1の表示上限は500 itemsで、`.github/workflows/snapshot-performance.yml`により対象変更PR・manual dispatch・weekly scheduleでperformance baselineを継続測定する。
+
+Baseline testは501 direct-child filesを作成し、500-item truncation状態を3回snapshotする。`ProcessInfo.systemUptime`のmonotonic clockを使用し、worst latencyが`0.5s`未満であることをregression ceilingとして検証する。
+
+PR #39導入時のGitHub-hosted macOS 26 / Xcode 26.6 runner実測では、最終runが以下だった。
+
+```text
+average = 0.055926s
+worst   = 0.059213s
+ceiling = 0.500000s
+```
+
 ### Reason
 
-v0.1ではCorrectnessとRecovery容易性を優先するため。
+v0.1では差分Patchの複雑性よりCorrectness、Recovery容易性、最終filesystem stateとの収束を優先するため。
+
+### Impact
+
+Folder changeごとにdirect-child metadataを再取得するため、item数・storage latency・metadata取得コストが増えるとUI refresh latencyへ影響する可能性がある。
 
 ### Revisit Trigger
 
 ```text
-500-item snapshotがPerformance Baselineを継続的に超える
+500-item snapshotが0.5s baseline ceilingを継続的に超える
 または
 実測でUI responsivenessへ影響する
+```
+
+単発のshared CI runner jitterだけでは即座に設計変更せず、複数runと実機挙動を確認する。
+
+### Exit Criteria
+
+差分更新へ移行する場合でも、以下を維持できること。
+
+```text
+final FolderSnapshot == filesystem source of truth
+startup/event raceで変更を取りこぼさない
+recovery時にfull rescan可能
+複雑化に見合う実測改善がある
 ```
 
 ---
