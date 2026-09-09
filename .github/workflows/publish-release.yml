@@ -1,0 +1,115 @@
+name: Publish Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact X.Y.Z version to publish.'
+        required: true
+        type: string
+      candidate_run_id:
+        description: 'Successful Production Release Candidate workflow run ID.'
+        required: true
+        type: string
+      confirm_manual_qa:
+        description: 'Confirm docs/MANUAL_QA.md passed for this exact signed candidate.'
+        required: true
+        default: false
+        type: boolean
+      confirm_immutable_releases:
+        description: 'Confirm repository Settings > Releases > Enable release immutability is enabled.'
+        required: true
+        default: false
+        type: boolean
+      confirm_publish:
+        description: 'Publish the public GitHub Release.'
+        required: true
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - '.github/workflows/publish-release.yml'
+      - 'Scripts/publish-notarized-release.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release-publication
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Release Publication / Credential-free Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Required tooling
+        run: |
+          command -v bash
+          command -v git
+          command -v gh
+          command -v shasum
+
+      - name: Shell syntax
+        run: bash -n Scripts/publish-notarized-release.sh
+
+      - name: Publication script fails closed without explicit inputs
+        run: |
+          LOG="$RUNNER_TEMP/release-promotion-fail-closed.log"
+          set +e
+          (
+            unset RELEASE_VERSION
+            unset CANDIDATE_RUN_ID
+            unset CONFIRM_MANUAL_QA
+            unset CONFIRM_IMMUTABLE_RELEASES
+            unset CONFIRM_PUBLISH
+            bash Scripts/publish-notarized-release.sh
+          ) >"$LOG" 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            cat "$LOG"
+            echo 'Release publication unexpectedly succeeded without explicit inputs.' >&2
+            exit 1
+          fi
+
+          grep -F 'required promotion environment value is missing: RELEASE_VERSION' "$LOG" >/dev/null
+          rm -f "$LOG"
+
+  publish:
+    name: Promote Signed Candidate to Immutable GitHub Release
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.confirm_manual_qa &&
+      inputs.confirm_immutable_releases &&
+      inputs.confirm_publish &&
+      github.ref == 'refs/heads/main'
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-release
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+      CONFIRM_MANUAL_QA: ${{ inputs.confirm_manual_qa }}
+      CONFIRM_IMMUTABLE_RELEASES: ${{ inputs.confirm_immutable_releases }}
+      CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+
+    steps:
+      - name: Checkout main release control plane
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Publish validated notarized candidate
+        run: bash Scripts/publish-notarized-release.sh
