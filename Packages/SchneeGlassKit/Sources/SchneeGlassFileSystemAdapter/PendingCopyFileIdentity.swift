@@ -58,6 +58,18 @@ enum PendingCopyFileIdentity {
         return token
     }
 
+    /// Removes only a proof inherited through `COPYFILE_ALL` from a staging inode that the app
+    /// just created with `O_EXCL`. This is deliberately separate from `createToken`: an existing
+    /// proof on an arbitrary path must never be reissued or overwritten.
+    static func removeInheritedTokenFromAppOwnedStaging(
+        onFileDescriptor descriptor: Int32
+    ) -> Bool {
+        let result = attributeName.withCString { name in
+            fremovexattr(descriptor, name, 0)
+        }
+        return result == 0 || errno == ENOATTR
+    }
+
     static func token(
         at url: URL,
         fileManager: FileManager

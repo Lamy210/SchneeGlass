@@ -10,6 +10,7 @@ enum SourceFileLeaseError: Error, Hashable, Sendable {
     case permissionDenied
     case insufficientSpace
     case collision
+    case stagingIdentityPreparationFailed
     case copyFailed(Int32)
 }
 
@@ -229,6 +230,16 @@ public actor SourceFileLeaseRegistry {
         // pinned descriptor again before the caller is allowed to create staging ownership proof
         // or commit the result. A mismatch leaves the partial staging file uncommitted for Recovery.
         try Self.verifyUnchanged(lease)
+
+        // COPYFILE_ALL intentionally preserves user metadata, including xattrs. If the source is a
+        // file previously committed by SchneeGlass, it can carry an old pending-copy proof. Strip
+        // only that app-owned proof from the exact staging descriptor that this operation created;
+        // the verifier will then mint a new immutable proof for this staging operation.
+        guard PendingCopyFileIdentity.removeInheritedTokenFromAppOwnedStaging(
+            onFileDescriptor: destinationDescriptor
+        ) else {
+            throw SourceFileLeaseError.stagingIdentityPreparationFailed
+        }
     }
 
     func releasePrepared(tokens: [UUID]) {
@@ -420,6 +431,8 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
             return .insufficientSpace
         case .collision:
             return .collision
+        case .stagingIdentityPreparationFailed:
+            return .verificationFailed
         case .copyFailed:
             return .unexpected
         }
