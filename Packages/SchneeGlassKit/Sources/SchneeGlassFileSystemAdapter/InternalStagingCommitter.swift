@@ -5,11 +5,25 @@ public enum StagingCommitError: Error, Hashable, Sendable {
     case crossDirectoryCommit
     case collision
     case stagingMissing
+    case unexpectedFileType
+    case sizeMismatch
+    case resourceIdentityUnavailable
+    case resourceIdentityMismatch
+    case coordinationFailed
     case commitFailed
 }
 
+struct StagingCommitAuthorization: Hashable, Sendable {
+    let expectedSize: Int64
+    let expectedResourceIdentifier: String
+}
+
 protocol StagingCommitting: Sendable {
-    func commit(stagingURL: URL, finalURL: URL) async throws
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) async throws
 }
 
 public actor InternalStagingCommitter: StagingCommitting {
@@ -26,11 +40,16 @@ public actor InternalStagingCommitter: StagingCommitting {
         self.fileManager = fileManager
     }
 
-    public func commit(stagingURL: URL, finalURL: URL) throws {
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) throws {
         let staging = stagingURL.standardizedFileURL
         let final = finalURL.standardizedFileURL
+        let destinationDirectory = final.deletingLastPathComponent().standardizedFileURL
 
-        guard staging.deletingLastPathComponent() == final.deletingLastPathComponent() else {
+        guard staging.deletingLastPathComponent() == destinationDirectory else {
             throw StagingCommitError.crossDirectoryCommit
         }
 
@@ -38,21 +57,59 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.invalidStagingFile
         }
 
-        guard fileManager.fileExists(atPath: staging.path) else {
-            throw StagingCommitError.stagingMissing
-        }
+        let fileManager = self.fileManager
+        var coordinationError: NSError?
+        var operationError: StagingCommitError?
 
-        guard !fileManager.fileExists(atPath: final.path) else {
-            throw StagingCommitError.collision
-        }
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        coordinator.coordinate(
+            writingItemAt: staging,
+            options: .forMoving,
+            writingItemAt: destinationDirectory,
+            options: [],
+            error: &coordinationError
+        ) { coordinatedStaging, coordinatedDirectory in
+            let coordinatedDestination = coordinatedDirectory
+                .standardizedFileURL
+                .appendingPathComponent(final.lastPathComponent, isDirectory: false)
+                .standardizedFileURL
 
-        do {
-            try fileManager.moveItem(at: staging, to: final)
-        } catch {
-            if fileManager.fileExists(atPath: final.path) {
-                throw StagingCommitError.collision
+            do {
+                try Self.revalidateOwnedStaging(
+                    at: coordinatedStaging,
+                    expectedDestination: coordinatedDirectory.standardizedFileURL,
+                    expectedFilename: staging.lastPathComponent,
+                    authorization: authorization,
+                    fileManager: fileManager
+                )
+
+                guard !fileManager.fileExists(atPath: coordinatedDestination.path) else {
+                    throw StagingCommitError.collision
+                }
+
+                do {
+                    try fileManager.moveItem(
+                        at: coordinatedStaging,
+                        to: coordinatedDestination
+                    )
+                } catch {
+                    if fileManager.fileExists(atPath: coordinatedDestination.path) {
+                        throw StagingCommitError.collision
+                    }
+                    throw StagingCommitError.commitFailed
+                }
+            } catch let error as StagingCommitError {
+                operationError = error
+            } catch {
+                operationError = .commitFailed
             }
-            throw StagingCommitError.commitFailed
+        }
+
+        if let operationError {
+            throw operationError
+        }
+        if coordinationError != nil {
+            throw StagingCommitError.coordinationFailed
         }
     }
 
@@ -69,5 +126,73 @@ public actor InternalStagingCommitter: StagingCommitting {
 
         let operationID = String(filename[start..<end])
         return UUID(uuidString: operationID) != nil
+    }
+
+    private static func revalidateOwnedStaging(
+        at url: URL,
+        expectedDestination: URL,
+        expectedFilename: String,
+        authorization: StagingCommitAuthorization,
+        fileManager: FileManager
+    ) throws {
+        let candidate = url.standardizedFileURL
+        guard candidate.deletingLastPathComponent() == expectedDestination,
+              candidate.lastPathComponent == expectedFilename
+        else {
+            throw StagingCommitError.invalidStagingFile
+        }
+
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try fileManager.attributesOfItem(atPath: candidate.path)
+        } catch {
+            if Self.isMissingFileError(error) {
+                throw StagingCommitError.stagingMissing
+            }
+            throw StagingCommitError.commitFailed
+        }
+
+        guard attributes[.type] as? FileAttributeType == .typeRegular else {
+            throw StagingCommitError.unexpectedFileType
+        }
+
+        guard let observedSize = (attributes[.size] as? NSNumber)?.int64Value,
+              observedSize == authorization.expectedSize
+        else {
+            throw StagingCommitError.sizeMismatch
+        }
+
+        let values: URLResourceValues
+        do {
+            values = try candidate.resourceValues(forKeys: [
+                .isAliasFileKey,
+                .isPackageKey,
+                .fileResourceIdentifierKey,
+            ])
+        } catch {
+            throw StagingCommitError.commitFailed
+        }
+
+        guard values.isAliasFile != true,
+              values.isPackage != true
+        else {
+            throw StagingCommitError.unexpectedFileType
+        }
+
+        guard let observedIdentity = values.fileResourceIdentifier.map({ String(describing: $0) }) else {
+            throw StagingCommitError.resourceIdentityUnavailable
+        }
+        guard observedIdentity == authorization.expectedResourceIdentifier else {
+            throw StagingCommitError.resourceIdentityMismatch
+        }
+    }
+
+    private static func isMissingFileError(_ error: Error) -> Bool {
+        let cocoa = error as NSError
+        guard cocoa.domain == NSCocoaErrorDomain else {
+            return false
+        }
+        return cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
+            || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
     }
 }
