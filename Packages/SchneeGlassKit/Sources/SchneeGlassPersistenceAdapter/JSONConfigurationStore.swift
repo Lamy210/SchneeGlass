@@ -60,6 +60,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
 
     public func save(_ configurations: [GlassConfiguration]) async throws {
         let newData = try validatedEncodedData(configurations)
+        try ensureStorageDirectories()
 
         let currentData: Data?
         do {
@@ -219,6 +220,16 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             throw DecodingFailure.unsupportedSchema(envelope.schemaVersion)
         }
         return envelope
+    }
+
+    private func ensureStorageDirectories() throws {
+        do {
+            try stateStore.ensureDirectory(Self.configurationDirectory)
+            try stateStore.ensureDirectory(Self.backupDirectory)
+            try stateStore.ensureDirectory(Self.preservedDirectory)
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
     }
 
     private func writeBackup(data: Data) throws {
