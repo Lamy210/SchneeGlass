@@ -36,6 +36,7 @@ on:
       - '.github/workflows/publish-release.yml'
       - 'Scripts/publish-notarized-release.sh'
       - 'Scripts/verify-production-candidate-run.sh'
+      - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
 
 permissions:
@@ -66,6 +67,7 @@ jobs:
         run: |
           bash -n Scripts/publish-notarized-release.sh
           bash -n Scripts/verify-production-candidate-run.sh
+          bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/verify-release-evidence.sh
 
       - name: Production candidate run policy fixture
@@ -92,6 +94,35 @@ jobs:
             echo 'Candidate validator unexpectedly accepted a lookalike workflow path.' >&2
             exit 1
           fi
+
+      - name: Monotonic build history fixture
+        run: |
+          FIXTURE="$RUNNER_TEMP/release-build-history-fixture"
+          rm -rf "$FIXTURE"
+          mkdir -p "$FIXTURE/history/one" "$FIXTURE/history/two"
+
+          cat > "$FIXTURE/current.txt" <<'EOF'
+          schema_version=1
+          bundle_build=5
+          EOF
+          cat > "$FIXTURE/history/one/RELEASE_EVIDENCE.txt" <<'EOF'
+          schema_version=1
+          bundle_build=1
+          EOF
+          cat > "$FIXTURE/history/two/RELEASE_EVIDENCE.txt" <<'EOF'
+          schema_version=1
+          bundle_build=4
+          EOF
+
+          bash Scripts/verify-release-build-history.sh "$FIXTURE/current.txt" "$FIXTURE/history"
+
+          sed -i 's/bundle_build=5/bundle_build=4/' "$FIXTURE/current.txt"
+          if bash Scripts/verify-release-build-history.sh "$FIXTURE/current.txt" "$FIXTURE/history"; then
+            echo 'Build history validator unexpectedly accepted a reused build number.' >&2
+            exit 1
+          fi
+
+          rm -rf "$FIXTURE"
 
       - name: Publication script fails closed without explicit inputs
         run: |
