@@ -110,7 +110,9 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         descriptors.reserveCapacity(urls.count)
 
         for url in urls where Self.isBackupFilename(url.lastPathComponent) {
-            guard let createdAt = Self.backupCreatedAt(from: url.lastPathComponent) else {
+            guard Self.isPhysicalRegularFile(url, fileManager: fileManager),
+                  let createdAt = Self.backupCreatedAt(from: url.lastPathComponent)
+            else {
                 continue
             }
 
@@ -124,7 +126,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
                     )
                 )
             } catch {
-                // Corrupt backups are intentionally not surfaced as restorable candidates.
+                // Corrupt or unreadable backups are intentionally not surfaced as restorable candidates.
             }
         }
 
@@ -144,7 +146,9 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         }
 
         let backupURL = backupDirectoryURL.appendingPathComponent(id, isDirectory: false)
-        guard fileManager.fileExists(atPath: backupURL.path) else {
+        guard Self.isPhysicalRegularFile(backupURL, fileManager: fileManager) else {
+            // A directory, symlink, package, or other non-regular entry is never a configuration
+            // backup even if its filename matches the backup grammar.
             throw ConfigurationPersistenceError.backupNotFound
         }
 
@@ -256,7 +260,10 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
         )
-        .filter { Self.isBackupFilename($0.lastPathComponent) }
+        .filter {
+            Self.isBackupFilename($0.lastPathComponent)
+                && Self.isPhysicalRegularFile($0, fileManager: fileManager)
+        }
         .sorted { lhs, rhs in
             let lhsDate = Self.backupCreatedAt(from: lhs.lastPathComponent) ?? .distantPast
             let rhsDate = Self.backupCreatedAt(from: rhs.lastPathComponent) ?? .distantPast
@@ -274,6 +281,18 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             backups.dropFirst(Self.maximumBackupCount),
             fileManager: fileManager
         )
+    }
+
+    private static func isPhysicalRegularFile(
+        _ url: URL,
+        fileManager: FileManager
+    ) -> Bool {
+        do {
+            let attributes = try fileManager.attributesOfItem(atPath: url.standardizedFileURL.path)
+            return attributes[.type] as? FileAttributeType == .typeRegular
+        } catch {
+            return false
+        }
     }
 
     private static func mapCurrentFailure(_ failure: DecodingFailure) -> ConfigurationPersistenceError {
