@@ -19,11 +19,22 @@ struct StagingCommitAuthorization: Hashable, Sendable {
 }
 
 protocol StagingCommitting: Sendable {
+    func commit(stagingURL: URL, finalURL: URL) async throws
     func commit(
         stagingURL: URL,
         finalURL: URL,
         authorization: StagingCommitAuthorization
     ) async throws
+}
+
+extension StagingCommitting {
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) async throws {
+        try await commit(stagingURL: stagingURL, finalURL: finalURL)
+    }
 }
 
 public actor InternalStagingCommitter: StagingCommitting {
@@ -38,6 +49,23 @@ public actor InternalStagingCommitter: StagingCommitting {
 
     init(fileManager: FileManager) {
         self.fileManager = fileManager
+    }
+
+    func commit(stagingURL: URL, finalURL: URL) throws {
+        let staging = stagingURL.standardizedFileURL
+        guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
+            throw StagingCommitError.invalidStagingFile
+        }
+
+        let authorization = try Self.currentAuthorization(
+            at: staging,
+            fileManager: fileManager
+        )
+        try commit(
+            stagingURL: staging,
+            finalURL: finalURL,
+            authorization: authorization
+        )
     }
 
     func commit(
@@ -126,6 +154,54 @@ public actor InternalStagingCommitter: StagingCommitting {
 
         let operationID = String(filename[start..<end])
         return UUID(uuidString: operationID) != nil
+    }
+
+    private static func currentAuthorization(
+        at url: URL,
+        fileManager: FileManager
+    ) throws -> StagingCommitAuthorization {
+        let candidate = url.standardizedFileURL
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try fileManager.attributesOfItem(atPath: candidate.path)
+        } catch {
+            if Self.isMissingFileError(error) {
+                throw StagingCommitError.stagingMissing
+            }
+            throw StagingCommitError.commitFailed
+        }
+
+        guard attributes[.type] as? FileAttributeType == .typeRegular else {
+            throw StagingCommitError.unexpectedFileType
+        }
+        guard let size = (attributes[.size] as? NSNumber)?.int64Value else {
+            throw StagingCommitError.sizeMismatch
+        }
+
+        let values: URLResourceValues
+        do {
+            values = try candidate.resourceValues(forKeys: [
+                .isAliasFileKey,
+                .isPackageKey,
+                .fileResourceIdentifierKey,
+            ])
+        } catch {
+            throw StagingCommitError.commitFailed
+        }
+
+        guard values.isAliasFile != true,
+              values.isPackage != true
+        else {
+            throw StagingCommitError.unexpectedFileType
+        }
+        guard let identity = values.fileResourceIdentifier.map({ String(describing: $0) }) else {
+            throw StagingCommitError.resourceIdentityUnavailable
+        }
+
+        return StagingCommitAuthorization(
+            expectedSize: size,
+            expectedResourceIdentifier: identity
+        )
     }
 
     private static func revalidateOwnedStaging(
