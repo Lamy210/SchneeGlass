@@ -200,7 +200,9 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
     }
 }
 
-public actor SafeFileCopyEngine: FileCopying {
+/// Internal Safe Copy orchestration. Production composition must enter through
+/// `PinnedSourceFileCopying` so source and staging identity are both descriptor-bound.
+actor SafeFileCopyEngine: FileCopying {
     private struct PreparedItem: Sendable {
         let plan: CopyItemPlan
         let sourceSize: Int64
@@ -217,7 +219,7 @@ public actor SafeFileCopyEngine: FileCopying {
     private let committer: any StagingCommitting
     private let recoveryStore: any PendingCopyRecording
 
-    public init(recoveryStore: any PendingCopyRecording) {
+    init(recoveryStore: any PendingCopyRecording) {
         self.fileSystem = FoundationCopyFileSystemAccessor()
         self.committer = InternalStagingCommitter()
         self.recoveryStore = recoveryStore
@@ -233,7 +235,7 @@ public actor SafeFileCopyEngine: FileCopying {
         self.recoveryStore = recoveryStore
     }
 
-    public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+    func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
         switch await preflight(request) {
         case let .failed(index, failure):
             return CopyBatchResult(
