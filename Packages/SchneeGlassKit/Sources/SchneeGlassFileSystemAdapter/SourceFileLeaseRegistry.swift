@@ -206,7 +206,7 @@ public actor SourceFileLeaseRegistry {
         operationID: UUID,
         expectedSourceURL: URL,
         to stagingURL: URL
-    ) throws {
+    ) throws -> PreparedPendingCopyStaging {
         guard let token = tokenByOperationID[operationID],
               let lease = leases[token],
               lease.operationID == operationID,
@@ -258,19 +258,20 @@ public actor SourceFileLeaseRegistry {
         }
 
         // A writer can modify an already-open inode while fcopyfile is reading it. Verify the same
-        // pinned descriptor again before the caller is allowed to create staging ownership proof
-        // or commit the result. A mismatch leaves the partial staging file uncommitted for Recovery.
+        // pinned descriptor again before this exact destination inode receives ownership proof.
         try Self.verifyUnchanged(lease)
 
-        // COPYFILE_ALL intentionally preserves user metadata, including xattrs. If the source is a
-        // file previously committed by SchneeGlass, it can carry an old pending-copy proof. Strip
-        // only that app-owned proof from the exact staging descriptor that this operation created;
-        // the verifier will then mint a new immutable proof for this staging operation.
-        guard PendingCopyFileIdentity.removeInheritedTokenFromAppOwnedStaging(
-            onFileDescriptor: destinationDescriptor
+        // Keep the destination descriptor open while inherited proof is removed, the fresh proof is
+        // minted, and the path is revalidated against this exact inode. A same-path replacement can
+        // therefore never receive SchneeGlass recovery authority in the copy-to-verification gap.
+        guard let prepared = PendingCopyFileIdentity.prepareAppOwnedStaging(
+            onFileDescriptor: destinationDescriptor,
+            pathURL: staging
         ) else {
             throw SourceFileLeaseError.stagingIdentityPreparationFailed
         }
+
+        return prepared
     }
 
     func releasePrepared(tokens: [UUID]) {
@@ -383,12 +384,13 @@ public actor SourceFileLeaseRegistry {
     }
 }
 
-/// File-system accessor used only by the production pinned-source copy path. Destination checks and
-/// staging ownership proof remain delegated to the existing accessor; source metadata and copy bytes
-/// come exclusively from the lease registry.
+/// File-system accessor used only by the production pinned-source copy path. The exact staging
+/// inode's size and ownership proof are captured while its app-created descriptor is still open,
+/// then served from actor state to SafeFileCopyEngine without reopening the staging pathname.
 private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
     private let sourceLeases: SourceFileLeaseRegistry
     private let fallback: FoundationCopyFileSystemAccessor
+    private var preparedStagingByURL: [URL: PreparedPendingCopyStaging] = [:]
 
     init(sourceLeases: SourceFileLeaseRegistry) {
         self.sourceLeases = sourceLeases
@@ -415,27 +417,34 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
     }
 
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws {
-        guard let operationID = Self.operationID(fromStagingFilename: stagingURL.lastPathComponent) else {
+        let staging = stagingURL.standardizedFileURL
+        guard let operationID = Self.operationID(fromStagingFilename: staging.lastPathComponent) else {
             throw CopyFileSystemError.unexpected
         }
 
         do {
-            try await sourceLeases.copyBoundSource(
+            let prepared = try await sourceLeases.copyBoundSource(
                 operationID: operationID,
                 expectedSourceURL: sourceURL,
-                to: stagingURL
+                to: staging
             )
+            preparedStagingByURL[staging] = prepared
         } catch let error as SourceFileLeaseError {
             throw Self.map(error)
         }
     }
 
     func regularFileSize(at url: URL) async throws -> Int64 {
-        try await fallback.regularFileSize(at: url)
+        let staging = url.standardizedFileURL
+        guard let prepared = preparedStagingByURL[staging] else {
+            throw CopyFileSystemError.verificationFailed
+        }
+        return prepared.size
     }
 
     func resourceIdentifier(at url: URL) async -> String? {
-        await fallback.resourceIdentifier(at: url)
+        let staging = url.standardizedFileURL
+        return preparedStagingByURL.removeValue(forKey: staging)?.resourceIdentifier
     }
 
     private static func operationID(fromStagingFilename filename: String) -> UUID? {

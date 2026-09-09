@@ -1,6 +1,11 @@
 import Darwin
 import Foundation
 
+struct PreparedPendingCopyStaging: Hashable, Sendable {
+    let size: Int64
+    let resourceIdentifier: String?
+}
+
 /// Persistent ownership proof used only for app-created Pending Copy staging files.
 ///
 /// Filesystem inode metadata can be recycled quickly on APFS, so it is not sufficient as a
@@ -56,6 +61,39 @@ enum PendingCopyFileIdentity {
             return nil
         }
         return token
+    }
+
+    /// Finalizes the exact app-created staging inode while its `O_EXCL` descriptor is still open.
+    ///
+    /// The path is checked before and after proof creation. If another process unlinks/recreates the
+    /// staging pathname, the proof can only be written to the pinned original inode and this method
+    /// fails closed instead of claiming ownership of the replacement.
+    static func prepareAppOwnedStaging(
+        onFileDescriptor descriptor: Int32,
+        pathURL: URL
+    ) -> PreparedPendingCopyStaging? {
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG,
+              descriptorMatchesPath(descriptor, pathURL: pathURL),
+              removeInheritedTokenFromAppOwnedStaging(onFileDescriptor: descriptor)
+        else {
+            return nil
+        }
+
+        let resourceIdentifier = createToken(onFileDescriptor: descriptor)
+
+        guard descriptorMatchesPath(descriptor, pathURL: pathURL),
+              fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG
+        else {
+            return nil
+        }
+
+        return PreparedPendingCopyStaging(
+            size: Int64(metadata.st_size),
+            resourceIdentifier: resourceIdentifier
+        )
     }
 
     /// Removes only a proof inherited through `COPYFILE_ALL` from a staging inode that the app
