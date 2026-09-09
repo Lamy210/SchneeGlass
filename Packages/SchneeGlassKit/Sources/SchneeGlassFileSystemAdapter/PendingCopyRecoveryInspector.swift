@@ -127,7 +127,6 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             let values = try url.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
-                .fileResourceIdentifierKey,
             ])
 
             guard attributes[.type] as? FileAttributeType == .typeRegular,
@@ -138,7 +137,7 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             }
 
             let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            let resourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+            let resourceIdentifier = PendingCopyFileIdentity.token(from: attributes)
             return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
             let cocoa = error as NSError
