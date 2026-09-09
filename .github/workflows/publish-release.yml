@@ -35,6 +35,8 @@ on:
     paths:
       - '.github/workflows/publish-release.yml'
       - 'Scripts/publish-notarized-release.sh'
+      - 'Scripts/verify-production-candidate-run.sh'
+      - 'Scripts/verify-release-evidence.sh'
 
 permissions:
   contents: read
@@ -61,7 +63,35 @@ jobs:
           command -v shasum
 
       - name: Shell syntax
-        run: bash -n Scripts/publish-notarized-release.sh
+        run: |
+          bash -n Scripts/publish-notarized-release.sh
+          bash -n Scripts/verify-production-candidate-run.sh
+          bash -n Scripts/verify-release-evidence.sh
+
+      - name: Production candidate run policy fixture
+        run: |
+          SHA='0123456789abcdef0123456789abcdef01234567'
+
+          bash Scripts/verify-production-candidate-run.sh \
+            'Production Release Candidate' \
+            '.github/workflows/production-release.yml' \
+            'workflow_dispatch' \
+            'completed' \
+            'success' \
+            'main' \
+            "$SHA"
+
+          if bash Scripts/verify-production-candidate-run.sh \
+            'Production Release Candidate' \
+            '.github/workflows/lookalike-release.yml' \
+            'workflow_dispatch' \
+            'completed' \
+            'success' \
+            'main' \
+            "$SHA"; then
+            echo 'Candidate validator unexpectedly accepted a lookalike workflow path.' >&2
+            exit 1
+          fi
 
       - name: Publication script fails closed without explicit inputs
         run: |

@@ -80,23 +80,23 @@ trap cleanup EXIT
 rm -rf "$CANDIDATE_DIR"
 mkdir -p "$CANDIDATE_DIR"
 
-RUN_NAME="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.name')"
-RUN_EVENT="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.event')"
-RUN_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.status')"
-RUN_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.conclusion')"
-RUN_BRANCH="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.head_branch')"
-RUN_HEAD_SHA="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" --jq '.head_sha')"
+RUN_API="repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID"
+RUN_NAME="$(gh api "$RUN_API" --jq '.name')"
+RUN_PATH="$(gh api "$RUN_API" --jq '.path')"
+RUN_EVENT="$(gh api "$RUN_API" --jq '.event')"
+RUN_STATUS="$(gh api "$RUN_API" --jq '.status')"
+RUN_CONCLUSION="$(gh api "$RUN_API" --jq '.conclusion')"
+RUN_BRANCH="$(gh api "$RUN_API" --jq '.head_branch')"
+RUN_HEAD_SHA="$(gh api "$RUN_API" --jq '.head_sha')"
 
-[[ "$RUN_NAME" == 'Production Release Candidate' ]] \
-  || fail "candidate run belongs to unexpected workflow: $RUN_NAME"
-[[ "$RUN_EVENT" == 'workflow_dispatch' ]] \
-  || fail "candidate run must be workflow_dispatch"
-[[ "$RUN_STATUS" == 'completed' && "$RUN_CONCLUSION" == 'success' ]] \
-  || fail "candidate run is not completed successfully"
-[[ "$RUN_BRANCH" == 'main' ]] \
-  || fail "candidate run was not built from main"
-[[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] \
-  || fail "candidate run returned an invalid head SHA"
+bash Scripts/verify-production-candidate-run.sh \
+  "$RUN_NAME" \
+  "$RUN_PATH" \
+  "$RUN_EVENT" \
+  "$RUN_STATUS" \
+  "$RUN_CONCLUSION" \
+  "$RUN_BRANCH" \
+  "$RUN_HEAD_SHA"
 
 gh run download "$CANDIDATE_RUN_ID" \
   --repo "$GITHUB_REPOSITORY" \
@@ -111,32 +111,7 @@ test -f "$ARCHIVE" || fail "candidate archive is missing"
 test -f "$CHECKSUMS" || fail "SHA256SUMS is missing"
 test -f "$EVIDENCE" || fail "RELEASE_EVIDENCE.txt is missing"
 
-grep -Fx "version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
-  || fail "candidate evidence version mismatch"
-
-for key in bundle_identifier bundle_version bundle_build; do
-  COUNT="$(grep -c "^${key}=" "$EVIDENCE" || true)"
-  [[ "$COUNT" == "1" ]] || fail "candidate evidence must contain exactly one $key"
-done
-
-grep -Fx 'bundle_identifier=io.github.lamy210.schneeglass' "$EVIDENCE" >/dev/null \
-  || fail "candidate bundle identifier evidence mismatch"
-grep -Fx "bundle_version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
-  || fail "candidate signed bundle version evidence mismatch"
-BUNDLE_BUILD="$(sed -n 's/^bundle_build=//p' "$EVIDENCE")"
-[[ "$BUNDLE_BUILD" =~ ^[1-9][0-9]*$ ]] \
-  || fail "candidate signed bundle build evidence is invalid: $BUNDLE_BUILD"
-
-grep -Fx 'notarization_status=Accepted' "$EVIDENCE" >/dev/null \
-  || fail "candidate is not notarization Accepted"
-grep -Fx 'codesign=verified' "$EVIDENCE" >/dev/null \
-  || fail "candidate codesign evidence is missing"
-grep -Fx 'stapler=validated' "$EVIDENCE" >/dev/null \
-  || fail "candidate stapler evidence is missing"
-grep -Fx 'gatekeeper=accepted' "$EVIDENCE" >/dev/null \
-  || fail "candidate Gatekeeper evidence is missing"
-grep -Fx "commit_sha=$RUN_HEAD_SHA" "$EVIDENCE" >/dev/null \
-  || fail "candidate source commit evidence mismatch"
+bash Scripts/verify-release-evidence.sh "$EVIDENCE" "$RELEASE_VERSION" "$RUN_HEAD_SHA"
 
 grep -E "^[0-9a-fA-F]{64}  ${ARCHIVE_NAME}$" "$CHECKSUMS" >/dev/null \
   || fail "SHA256SUMS does not contain the expected release archive"
