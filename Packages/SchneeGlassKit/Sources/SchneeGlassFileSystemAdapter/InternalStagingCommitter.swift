@@ -193,7 +193,10 @@ public actor InternalStagingCommitter: StagingCommitting {
         else {
             throw StagingCommitError.unexpectedFileType
         }
-        guard let identity = PendingCopyFileIdentity.token(from: attributes) else {
+        guard let identity = try PendingCopyFileIdentity.token(
+            at: candidate,
+            fileManager: fileManager
+        ) else {
             throw StagingCommitError.resourceIdentityUnavailable
         }
 
@@ -253,7 +256,10 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.unexpectedFileType
         }
 
-        guard let observedIdentity = PendingCopyFileIdentity.token(from: attributes) else {
+        guard let observedIdentity = try PendingCopyFileIdentity.token(
+            at: candidate,
+            fileManager: fileManager
+        ) else {
             throw StagingCommitError.resourceIdentityUnavailable
         }
         guard observedIdentity == authorization.expectedResourceIdentifier else {
