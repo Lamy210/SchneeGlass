@@ -111,6 +111,48 @@ func ownedStagingCleanerRejectsResourceIdentityMismatchWithoutMutation() async t
 }
 
 @Test
+func ownedStagingCleanerRejectsRegularFileReplacementWithoutMutation() async throws {
+    let root = try makeRecoveryCleanupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let glassID = GlassID()
+    let operationID = UUID()
+    let stagingURL = root.appendingPathComponent(
+        ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+    )
+    let original = Data("staging".utf8)
+    let replacement = Data("replace".utf8)
+    #expect(original.count == replacement.count)
+
+    try original.write(to: stagingURL)
+    let recordedIdentity = try resourceIdentifier(of: stagingURL)
+    let record = makeOwnedStagingRecord(
+        glassID: glassID,
+        operationID: operationID,
+        stagingResourceIdentifier: recordedIdentity
+    )
+
+    try FileManager.default.removeItem(at: stagingURL)
+    try replacement.write(to: stagingURL)
+
+    let cleaner = OwnedStagingRecoveryCleaner()
+    do {
+        try await cleaner.removeOwnedStaging(
+            record: record,
+            destinationAccess: FolderAccessHandle(glassID: glassID, url: root)
+        )
+        Issue.record("Expected replacement to be rejected")
+    } catch let error as OwnedStagingRecoveryCleanupError {
+        #expect(error == .resourceIdentityUnavailable || error == .resourceIdentityMismatch)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(FileManager.default.fileExists(atPath: stagingURL.path))
+    #expect(try Data(contentsOf: stagingURL) == replacement)
+}
+
+@Test
 func ownedStagingCleanerRejectsMissingRecordedIdentityWithoutMutation() async throws {
     let root = try makeRecoveryCleanupRoot()
     defer { try? FileManager.default.removeItem(at: root) }
