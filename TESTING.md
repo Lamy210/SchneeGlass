@@ -240,6 +240,7 @@ Public Repository Guard
 Architecture Guard
 File Safety Guard
 Release Metadata Guard
+Production release credential-free preflight
 Swift Package Tests
 AddressSanitizer Package Tests
 Xcode project validation
@@ -260,7 +261,27 @@ Swift Package Tests + ThreadSanitizer
 
 通常のコードPRでは追加runnerを起動せず、workflow自身の変更PR・manual dispatch・weekly scheduleで検証します。
 
-### Release Candidate Validation
+### Scheduled / Manual / Default Branch — Swift CodeQL
+
+```text
+macOS 26 / Xcode 26.6
+github/codeql-action v4
+language = swift
+build-mode = manual
+first-party SwiftPM core targets
+SARIF upload
+```
+
+CodeQLはSwiftでbuild-mode `none`を使用せず、first-party coreを明示buildして解析します。第三者`KeyboardShortcuts`を含む`SchneeGlassMacOSAdapter`はCodeQL tracing対象から外し、通常Bootstrap CI / package tests / sanitizerでコンパイル検証します。
+
+実行条件:
+
+- CodeQL workflow自身を変更するPR
+- `main`上のSchneeGlassKit source / Package.swift変更
+- manual dispatch
+- weekly schedule
+
+### Unsigned Release Candidate Validation
 
 release関連PR、manual dispatch、`v*.*.*` tagで次を検証します。
 
@@ -277,12 +298,72 @@ Artifact upload
 
 unsigned artifactはproduction releaseではありません。
 
-### Remaining diagnostics candidates
+### Production Release Candidate
+
+`main`からのmanual dispatch + explicit confirmation + protected `production-release` environmentに限定します。
+
+Credential-free pathでは次をCIで固定します。
+
+```text
+production release preflight
+signing script shell syntax
+credential不足でfail-closed
+credential-free失敗時にrelease-outputを生成しない
+PRでは実signing jobをskip
+```
+
+実credentialを設定したproduction jobでは次をすべてPASSさせます。
+
+```text
+Developer ID temporary keychain import
+exact Developer ID identity / Team ID match
+signed Release archive
+codesign --verify --deep --strict
+Hardened Runtime / secure timestamp
+signed entitlements
+notarytool Accepted
+stapler staple / validate
+Gatekeeper assessment
+final SHA-256 manifest
+signed/notarized candidate artifact
+release evidence
+```
+
+### Production Release Publication
+
+Signed/notarized candidateを直接自動公開しません。Manual QA完了後、`Publish Production Release`を`main`から手動実行します。
+
+Publication jobは以下を再検証します。
+
+```text
+candidate workflow identity / event / branch / success
+candidate source commit SHA
+release evidence
+notarization / codesign / stapler / Gatekeeper state
+SHA256SUMS
+candidate commit is ancestor of current main
+pre-existing tag / release absence
+draft assets
+published release isImmutable == true
+```
+
+公開Releaseには少なくとも次を添付します。
+
+```text
+SchneeGlass-X.Y.Z.zip
+SHA256SUMS
+RELEASE_EVIDENCE.txt
+```
+
+mutable releaseを正式Releaseとして残してはいけません。
+
+### Additional diagnostics candidates
+
+以下はv0.1の現行Release blockerではありません。
 
 ```text
 formatting / lint
 Periphery
-CodeQL
 Main Thread Checker
 Integration / UI automation
 Performance baseline
@@ -309,6 +390,7 @@ CIでは完全に代替できない実ユーザー操作とartifact確認は [`d
 - Menu Bar / Global Shortcut
 - supported macOS baseline
 - signed production candidateのcodesign / notarization / stapling / Gatekeeper
+- quarantine付き配布相当artifactからのlaunch
 
 Manual QAが自動Safety testの代替になることも、自動testがManual QAの代替になることもありません。
 
@@ -330,5 +412,7 @@ Release blockerの代表例:
 - stale stateをauthorityにしたmutation
 - Sandbox / signing / notarization gate failure
 - supported baselineでのlaunch failure
+- mutable production release
+- candidate source/evidence/checksum不一致
 
-Production releaseではDeveloper ID signing、notarization、stapling、Gatekeeper assessment、final SHA-256 manifest、Manual QAをすべて通過させます。
+Production releaseではDeveloper ID signing、notarization、stapling、Gatekeeper assessment、final SHA-256 manifest、Manual QA、immutable publicationをすべて通過させます。
