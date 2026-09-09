@@ -19,6 +19,11 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassFileSystemAdapter/PinnedDestinationStagingCommitter.swift"* ]] \
+     && [[ "$text" == *"renameatx_np("* ]]; then
+    continue
+  fi
+
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/OwnedStagingRecoveryCleaner.swift"* ]] \
      && [[ "$text" == *".removeItem("* ]]; then
     continue
@@ -45,6 +50,7 @@ done < <(
     grep -RInE '(^|[^[:alnum:]_])unlink\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])unlinkat\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])renameat\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])renameatx_np\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])mkdirat\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])fcopyfile\(' "$SRC" --include='*.swift' || true
     grep -RInE 'O_CREAT' "$SRC" --include='*.swift' || true
