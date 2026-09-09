@@ -1,0 +1,49 @@
+name: Snapshot Performance Baseline
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/snapshot-performance.yml'
+      - 'Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/NativeFolderSnapshotReader.swift'
+      - 'Packages/SchneeGlassKit/Tests/SchneeGlassFileSystemAdapterTests/NativeFolderSnapshotReaderTests.swift'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 18 * * 2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snapshot-performance:
+    name: 500-item Folder Snapshot / Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      SCHNEEGLASS_PERFORMANCE_BASELINE: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Measure 500-item direct-child snapshot
+        run: |
+          set -o pipefail
+          LOG="$RUNNER_TEMP/snapshot-performance.log"
+          swift test \
+            --package-path Packages/SchneeGlassKit \
+            --filter snapshotPerformanceBaselineAtDisplayLimit \
+            --scratch-path "$RUNNER_TEMP/SchneeGlassKit-Performance" \
+            2>&1 | tee "$LOG"
+
+          grep -F 'SCHNEEGLASS_PERF_RESULT snapshot_500' "$LOG"
