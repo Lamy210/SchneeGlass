@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassDomain
 import Testing
@@ -29,16 +30,26 @@ private func backupFilename(milliseconds: Int64) -> String {
     "backup-\(milliseconds)-\(UUID().uuidString.lowercased()).json"
 }
 
+private func setUserImmutable(_ url: URL, enabled: Bool) throws {
+    let flags = enabled ? UInt32(UF_IMMUTABLE) : UInt32(0)
+    let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+        guard let path else {
+            return Int32(-1)
+        }
+        return chflags(path, flags)
+    }
+    guard result == 0 else {
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
+
 @Test
 func failedBackupRotationDoesNotCommitNewCurrentConfiguration() async throws {
     let root = try makeCommitSemanticsRoot()
     var blockedBackupURL: URL?
     defer {
         if let blockedBackupURL {
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o700],
-                ofItemAtPath: blockedBackupURL.path
-            )
+            try? setUserImmutable(blockedBackupURL, enabled: false)
         }
         try? FileManager.default.removeItem(at: root)
     }
@@ -50,17 +61,16 @@ func failedBackupRotationDoesNotCommitNewCurrentConfiguration() async throws {
 
     let backupDirectory = root.appendingPathComponent("Configuration/Backups", isDirectory: true)
 
+    // Use a physical regular file so the new non-regular-entry filter still admits this fixture.
+    // UF_IMMUTABLE makes the oldest backup impossible to unlink while leaving the parent directory
+    // writable, allowing save() to create its fresh backup before rotation fails.
     let blocked = backupDirectory.appendingPathComponent(
         backupFilename(milliseconds: 1),
-        isDirectory: true
+        isDirectory: false
     )
     blockedBackupURL = blocked
-    try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: false)
-    try Data("owned-by-test".utf8).write(to: blocked.appendingPathComponent("child"))
-    try FileManager.default.setAttributes(
-        [.posixPermissions: 0o500],
-        ofItemAtPath: blocked.path
-    )
+    try Data("immutable-oldest-backup".utf8).write(to: blocked)
+    try setUserImmutable(blocked, enabled: true)
 
     for milliseconds in 2...5 {
         let backupURL = backupDirectory.appendingPathComponent(
