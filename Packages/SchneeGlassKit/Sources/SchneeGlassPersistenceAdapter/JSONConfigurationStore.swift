@@ -88,8 +88,11 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             try writeBackup(data: currentData)
         }
 
-        try newData.write(to: configurationURL, options: .atomic)
+        // Finish fallible backup housekeeping before replacing the current configuration. Once
+        // the atomic replacement succeeds, save must not report failure for unrelated cleanup
+        // after the committed configuration state has already changed.
         try rotateBackups()
+        try newData.write(to: configurationURL, options: .atomic)
     }
 
     public func availableBackups() async throws -> [ConfigurationBackupDescriptor] {
