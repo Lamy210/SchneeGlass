@@ -4,6 +4,7 @@ import SchneeGlassDomain
 public enum ConfigurationPersistenceError: Error, Hashable, Sendable {
     case corruptCurrent
     case unsupportedSchemaVersion(Int)
+    case unsafeStorageTopology
     case invalidBackupIdentifier
     case backupNotFound
     case corruptBackup
