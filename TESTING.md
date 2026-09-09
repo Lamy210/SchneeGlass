@@ -11,6 +11,7 @@ User-owned Move/Rename/Delete = 0
 Unknown partial auto-delete = 0
 Security scope leak = 0
 UI -> concrete filesystem mutation adapter = 0
+Owned metadata symlink traversal = 0
 ```
 
 Coverage率だけではRelease可否を決めません。
@@ -56,7 +57,7 @@ UI
 
 `Packages/SchneeGlassKit` に対してSwift Testingを使用します。
 
-Domain / Application / Adapterのcritical contractをpackage testsで固定し、real-filesystem testsはUUIDごとのisolated temporary rootを使用します。
+Domain / Application / Adapter / shared infrastructureのcritical contractをpackage testsで固定し、real-filesystem testsはUUIDごとのisolated temporary rootを使用します。
 
 通常実行:
 
@@ -109,15 +110,18 @@ swift test --package-path Packages/SchneeGlassKit
 
 検出対象:
 
-- Domain → SwiftUI/AppKit/CoreServices/GRDB import
-- Presentation → FileSystem/Persistence Concrete Adapter import
+- Domain → SwiftUI/AppKit/CoreServices/GRDB/`SchneeGlassPOSIXSupport` import
+- Presentation → FileSystem/Persistence Concrete Adapter / `SchneeGlassPOSIXSupport` import
+- `SchneeGlassPOSIXSupport` → Domain/Application/Presentation/Concrete Adapter import
 - Private CGS symbol
 - 無承認`@unchecked Sendable`
 - Swift source内のIssue番号なしTODO/FIXME
 
 ### File Safety Guard
 
-`removeItem` / `moveItem` / `replaceItem` 相当APIの利用場所をallowlist方式で検査します。
+user-visible mutationの`removeItem` / `moveItem` / `replaceItem`、source-copy authorityの`fcopyfile` / `O_CREAT`、owned metadata mutationの`mkdirat` / `renameat` / `unlinkat` / `O_CREAT`相当APIをallowlist方式で検査します。
+
+user-visible destination mutationは`SchneeGlassFileSystemAdapter`、SchneeGlass-owned metadata mutationは`SchneeGlassPOSIXSupport.PhysicalStateStore`へ限定します。
 
 新しいmutation APIやallowlist対象を追加する場合は、同一PRでSafety rationaleと実Filesystem testを追加します。
 
@@ -153,6 +157,11 @@ swift test --package-path Packages/SchneeGlassKit
 - unknown `.glass-*` safety
 - ownership identity mismatch
 - final user-visible file non-deletion
+- app-owned root symlink rejection
+- app-owned descendant directory symlink rejection
+- app-owned metadata leaf symlink/non-regular rejection
+- physical regular-file listing/removal
+- atomic owned-state round trip
 
 ---
 
@@ -160,7 +169,7 @@ swift test --package-path Packages/SchneeGlassKit
 
 FakeだけでSafetyを証明しません。
 
-Fault injectionとFoundation/FileManager/NSFileCoordinatorを使用したreal-filesystem testsを併用します。
+Fault injectionとFoundation/FileManager/NSFileCoordinator/POSIX primitiveを使用したreal-filesystem testsを併用します。
 
 対象fault例:
 
@@ -172,6 +181,7 @@ diskFull(afterBytes:)
 commitCollision
 cancelled
 unexpectedIO
+unsafeOwnedStateTopology
 ```
 
 ---
@@ -184,11 +194,13 @@ unexpectedIO
 config corruption
 backup rotation
 all backups corrupt
+unsafe configuration topology
 stale bookmark
 bookmark failure
 security-scope lifecycle
 offscreen window
 pending copy metadata
+unsafe pending-copy metadata topology
 ambiguous partial
 ownership mismatch
 stale recovery action
@@ -202,6 +214,8 @@ Recovery testでは次を特に固定します。
 - final user-visible fileを自動削除しない
 - Copy / Recovery mutationを同時実行しない
 - configuration restoreの結果と返却結果を一致させる
+- app-owned metadataのsymlink targetをread/writeしない
+- unsafe owned-state topologyではcurrent stateを変更せずfail-closedする
 
 ---
 
@@ -495,6 +509,7 @@ Release blockerの代表例:
 - user-owned Move/Rename/Delete
 - ownership proofなしのRecovery deletion
 - stale stateをauthorityにしたmutation
+- owned metadata symlink traversal / unsafe topology mutation
 - Sandbox / signing / notarization gate failure
 - supported baselineでのlaunch failure
 - mutable production release
