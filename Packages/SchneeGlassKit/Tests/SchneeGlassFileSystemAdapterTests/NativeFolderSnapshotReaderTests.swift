@@ -152,15 +152,16 @@ func snapshotPerformanceBaselineAtDisplayLimit() async throws {
 
     let reader = NativeFolderSnapshotReader()
     let access = makeAccessHandle(for: root)
+    let processInfo = ProcessInfo.processInfo
     var durations: [TimeInterval] = []
 
     for generation in 1...3 {
-        let startedAt = Date()
+        let startedAt = processInfo.systemUptime
         let snapshot = try await reader.snapshot(
             for: access,
             generation: UInt64(generation)
         )
-        let duration = Date().timeIntervalSince(startedAt)
+        let duration = processInfo.systemUptime - startedAt
         durations.append(duration)
 
         #expect(snapshot.items.count == NativeFolderSnapshotReader.maximumDisplayedItems)
