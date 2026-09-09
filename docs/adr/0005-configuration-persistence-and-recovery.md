@@ -53,21 +53,29 @@ This prevents an older or damaged process from destroying configuration that may
 
 SchneeGlass retains at most five app-owned backup generations.
 
-Backup deletion is isolated to `ConfigurationBackupRotator` and may operate only on files selected from the app-owned `Configuration/Backups` directory using the strict backup filename format.
+A backup entry is eligible only when both of these are true:
 
-This deletion boundary is explicitly allowlisted by the File Safety Guard. It does not authorize deletion of user files or arbitrary application-support paths.
+1. its filename matches the strict `backup-<timestamp>-<uuid>.json` grammar,
+2. the directory entry itself is a physical regular file.
+
+List and restore operations open candidate files with `O_NOFOLLOW`, verify the opened descriptor is a regular file with `fstat`, and read bytes from that same pinned descriptor. A symlink, directory, or entry replaced with a symlink is never followed as a backup source.
+
+Backup deletion is isolated to `ConfigurationBackupRotator`. Rotation uses POSIX `unlink` rather than recursive-capable `FileManager.removeItem`, so the mutation boundary can remove only a single directory entry and cannot recursively delete a directory if an entry changes type after selection. If a selected path is replaced by a symlink, unlink removes the symlink entry rather than following its target.
+
+The `unlink` call is explicitly allowlisted only for `ConfigurationBackupRotator` by the File Safety Guard. It does not authorize deletion of user files or arbitrary application-support paths, and reintroducing `FileManager.removeItem` in that boundary fails the guard.
 
 ### Recovery candidates
 
 Only backups that:
 
 1. match the strict app backup filename format,
-2. decode successfully,
-3. use a supported schema,
+2. are physical regular files opened without following symlinks,
+3. decode successfully,
+4. use a supported schema,
 
 are surfaced as recovery candidates.
 
-Corrupt backups remain non-restorable and are not silently selected.
+Corrupt, unreadable, replaced, or non-regular backup entries remain non-restorable and are not silently selected.
 
 ### Explicit restore
 
@@ -95,7 +103,8 @@ Advantages:
 - future-schema data is protected from older binaries,
 - explicit restore preserves potentially useful corrupt bytes,
 - backup rotation is bounded,
-- destructive application-metadata cleanup remains in a narrow auditable boundary.
+- backup reads and rotation do not follow symlink replacements,
+- destructive application-metadata cleanup remains in a narrow auditable non-recursive boundary.
 
 Trade-offs:
 
