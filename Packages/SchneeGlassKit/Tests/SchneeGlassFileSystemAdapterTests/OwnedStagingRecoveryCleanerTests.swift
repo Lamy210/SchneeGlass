@@ -35,11 +35,13 @@ private func makeOwnedStagingRecord(
 }
 
 private func resourceIdentifier(of url: URL) throws -> String {
-    let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    guard let identifier = values.fileResourceIdentifier else {
+    guard let identifier = try PendingCopyFileIdentity.token(
+        at: url,
+        fileManager: .default
+    ) else {
         throw OwnedStagingCleanerTestError.missingResourceIdentifier
     }
-    return String(describing: identifier)
+    return identifier
 }
 
 @Test
