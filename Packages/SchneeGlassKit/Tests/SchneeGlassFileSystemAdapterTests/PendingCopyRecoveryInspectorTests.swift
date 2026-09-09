@@ -130,7 +130,8 @@ func recoveryAssessmentDetectsStagingIdentityMismatch() async throws {
     let stagingRecord = makeRecoveryRecord(glassID: glassID)
     let staging = root.appendingPathComponent(stagingRecord.stagingFilename)
     try Data("payload".utf8).write(to: staging)
-    let observedIdentity = try #require(resourceIdentifier(for: staging))
+    let observedIdentityCandidate = try resourceIdentifier(for: staging)
+    let observedIdentity = try #require(observedIdentityCandidate)
     let recordedIdentity = "xattr-v1:\(UUID().uuidString.lowercased())"
     #expect(recordedIdentity != observedIdentity)
     let record = makeRecoveryRecord(
