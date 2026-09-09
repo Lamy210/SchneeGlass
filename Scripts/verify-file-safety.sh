@@ -29,12 +29,19 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift"* ]] \
+     && { [[ "$text" == *"fcopyfile("* ]] || [[ "$text" == *"O_CREAT"* ]]; }; then
+    continue
+  fi
+
   echo "File safety violation: ${file#$ROOT/}:$line:$text" >&2
   violations=1
 done < <(
   {
     grep -RInE '\.(removeItem|moveItem|replaceItem)\(' "$SRC" --include='*.swift' || true
     grep -RInE '(^|[^[:alnum:]_])unlink\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])fcopyfile\(' "$SRC" --include='*.swift' || true
+    grep -RInE 'O_CREAT' "$SRC" --include='*.swift' || true
   } | sort -u
 )
 

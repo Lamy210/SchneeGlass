@@ -88,6 +88,42 @@ Glass-owned staging fileのfinal commit Renameのみ、将来 `InternalStagingCo
 
 `Scripts/verify-file-safety.sh` がallowlist外のmutation APIをCIで検出します。
 
+### Source Copy Authority
+
+Drop planningでacceptedとなるregular-file sourceは、`SourceFileLeaseRegistry`が`O_NOFOLLOW`でopenし、open descriptorをactor内に保持します。
+
+```text
+Drop inspection
+→ O_NOFOLLOW open
+→ fstat regular-file validation
+→ DropPlanner operationIDへbind
+→ pinned FDからfcopyfile
+→ staging verification
+→ final commit
+```
+
+Copy時にsource pathを再openしてauthorityを取り直してはいけません。これによりplanning後に同じpathへ別fileが置かれた場合でも、そのreplacementを誤ってcopyしません。
+
+さらにcopy開始直前に、planning時のpinned descriptorと以下を比較します。
+
+```text
+size
+mtime (nanosecond)
+ctime (nanosecond)
+device / inode
+```
+
+同じphysical fileがin-place変更されていた場合はcopyをfail-closedにします。
+
+Source leaseは:
+
+- rejected planでは即release、
+- batch完了・preflight failure・not-attempted itemではrelease、
+- 未実行planでもTTL後にrelease、
+- user-owned sourceへxattrやその他metadataを書き込みません。
+
+DescriptorそのものをDomain/Application modelへ渡さず、actor外ではopaque token / operation IDだけを扱います。
+
 ## 5. Security-Scoped Access
 
 Folder accessはSecurity-Scoped Bookmarkを使用します。
@@ -104,6 +140,8 @@ resolve
 Acquire/Releaseを必ずbalanceします。
 
 Bookmark raw dataをLog/Issue/Test Fixtureへ出してはいけません。
+
+Drop sourceのpinned descriptorはSecurity-Scoped access中にopenし、その後のcopy authorityはopen済みdescriptorへ限定します。
 
 ## 6. Unknown Data Policy
 
