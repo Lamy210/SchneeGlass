@@ -40,3 +40,32 @@ func endingUnknownGlassDoesNotReleaseAnotherExecution() {
     gate.end(activeGlass)
     #expect(gate.begin(activeGlass))
 }
+
+@Test
+func newerHoverPlanningSupersedesOlderResultForSameGlass() {
+    var tracker = WorkspaceDropPlanningTracker()
+    let glassID = GlassID()
+
+    let older = tracker.begin(glassID)
+    let newer = tracker.begin(glassID)
+
+    #expect(!tracker.isCurrent(older, for: glassID))
+    #expect(tracker.isCurrent(newer, for: glassID))
+
+    tracker.finish(older, for: glassID)
+    #expect(tracker.isCurrent(newer, for: glassID))
+
+    tracker.finish(newer, for: glassID)
+    #expect(!tracker.isCurrent(newer, for: glassID))
+}
+
+@Test
+func invalidatingHoverPlanningMakesLateResultStale() {
+    var tracker = WorkspaceDropPlanningTracker()
+    let glassID = GlassID()
+    let token = tracker.begin(glassID)
+
+    tracker.invalidate(glassID)
+
+    #expect(!tracker.isCurrent(token, for: glassID))
+}
