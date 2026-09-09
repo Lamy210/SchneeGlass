@@ -35,7 +35,7 @@ private func makeOwnedStagingRecord(
 }
 
 private func resourceIdentifier(of url: URL) throws -> String {
-    guard let identifier = try PendingCopyFileIdentity.token(
+    guard let identifier = try PendingCopyFileIdentity.createToken(
         at: url,
         fileManager: .default
     ) else {
