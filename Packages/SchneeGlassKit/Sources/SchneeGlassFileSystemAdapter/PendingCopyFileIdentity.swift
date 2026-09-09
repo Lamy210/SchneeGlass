@@ -37,17 +37,6 @@ enum PendingCopyFileIdentity {
     }
 
     static func createToken(onFileDescriptor descriptor: Int32) -> String? {
-        // `COPYFILE_ALL` preserves xattrs. A source that was previously committed by SchneeGlass
-        // can therefore copy an older pending-copy proof into a newly-created staging inode. The
-        // staging inode is app-owned at this point, so discard only our app-specific inherited
-        // proof before creating the fresh nonce that authorizes this operation.
-        let removeResult = attributeName.withCString { name in
-            fremovexattr(descriptor, name, 0)
-        }
-        guard removeResult == 0 || errno == ENOATTR else {
-            return nil
-        }
-
         let token = "\(schema):\(UUID().uuidString.lowercased())"
         let data = Data(token.utf8)
 
@@ -67,6 +56,18 @@ enum PendingCopyFileIdentity {
             return nil
         }
         return token
+    }
+
+    /// Removes only a proof inherited through `COPYFILE_ALL` from a staging inode that the app
+    /// just created with `O_EXCL`. This is deliberately separate from `createToken`: an existing
+    /// proof on an arbitrary path must never be reissued or overwritten.
+    static func removeInheritedTokenFromAppOwnedStaging(
+        onFileDescriptor descriptor: Int32
+    ) -> Bool {
+        let result = attributeName.withCString { name in
+            fremovexattr(descriptor, name, 0)
+        }
+        return result == 0 || errno == ENOATTR
     }
 
     static func token(
