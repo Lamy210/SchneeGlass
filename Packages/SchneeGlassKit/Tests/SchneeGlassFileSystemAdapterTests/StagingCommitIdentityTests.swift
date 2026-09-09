@@ -104,12 +104,19 @@ private func makeIdentityCopyRequest(
     )
 }
 
-private func physicalIdentity(of url: URL) throws -> String {
-    let identity = try PendingCopyFileIdentity.token(
+private func createOwnershipToken(at url: URL) throws -> String {
+    let identity = try PendingCopyFileIdentity.createToken(
         at: url,
         fileManager: .default
     )
     return try #require(identity)
+}
+
+private func observedOwnershipToken(at url: URL) throws -> String? {
+    try PendingCopyFileIdentity.token(
+        at: url,
+        fileManager: .default
+    )
 }
 
 @Test
@@ -141,7 +148,7 @@ func copyFailsClosedWhenStagingResourceIdentityIsUnavailable() async throws {
 }
 
 @Test
-func pendingCopyPhysicalIdentitySurvivesSameFilesystemRename() throws {
+func pendingCopyOwnershipProofSurvivesSameFilesystemRename() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-identity-rename-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -150,16 +157,16 @@ func pendingCopyPhysicalIdentitySurvivesSameFilesystemRename() throws {
     let staging = root.appendingPathComponent("staging.partial")
     let final = root.appendingPathComponent("final.txt")
     try Data("payload".utf8).write(to: staging)
-    let before = try physicalIdentity(of: staging)
+    let before = try createOwnershipToken(at: staging)
 
     try FileManager.default.moveItem(at: staging, to: final)
-    let after = try physicalIdentity(of: final)
+    let after = try observedOwnershipToken(at: final)
 
     #expect(after == before)
 }
 
 @Test
-func pendingCopyPhysicalIdentityChangesWhenSamePathIsRecreated() throws {
+func pendingCopyOwnershipProofDoesNotSurviveSamePathRecreation() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-identity-replace-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -167,17 +174,16 @@ func pendingCopyPhysicalIdentityChangesWhenSamePathIsRecreated() throws {
 
     let candidate = root.appendingPathComponent("candidate.partial")
     try Data("original".utf8).write(to: candidate)
-    let originalIdentity = try physicalIdentity(of: candidate)
+    _ = try createOwnershipToken(at: candidate)
 
     try FileManager.default.removeItem(at: candidate)
     try Data("replaced".utf8).write(to: candidate)
-    let replacementIdentity = try physicalIdentity(of: candidate)
 
-    #expect(replacementIdentity != originalIdentity)
+    #expect(try observedOwnershipToken(at: candidate) == nil)
 }
 
 @Test
-func internalCommitterRejectsSameSizeStagingIdentityReplacement() async throws {
+func internalCommitterRejectsSameSizeStagingReplacementWithoutOwnershipProof() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-staging-identity-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -193,7 +199,7 @@ func internalCommitterRejectsSameSizeStagingIdentityReplacement() async throws {
     #expect(original.count == replacement.count)
 
     try original.write(to: staging)
-    let originalIdentity = try physicalIdentity(of: staging)
+    let originalIdentity = try createOwnershipToken(at: staging)
     let authorization = StagingCommitAuthorization(
         expectedSize: Int64(original.count),
         expectedResourceIdentifier: originalIdentity
@@ -209,7 +215,54 @@ func internalCommitterRejectsSameSizeStagingIdentityReplacement() async throws {
             finalURL: final,
             authorization: authorization
         )
-        Issue.record("Expected staging identity replacement to be rejected")
+        Issue.record("Expected staging replacement to be rejected")
+    } catch let error as StagingCommitError {
+        #expect(error == .resourceIdentityUnavailable)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(FileManager.default.fileExists(atPath: staging.path))
+    #expect(!FileManager.default.fileExists(atPath: final.path))
+    #expect(try Data(contentsOf: staging) == replacement)
+}
+
+@Test
+func internalCommitterRejectsSameSizeStagingReplacementWithDifferentOwnershipProof() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-staging-identity-mismatch-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let operationID = UUID()
+    let staging = root.appendingPathComponent(
+        ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+    )
+    let final = root.appendingPathComponent("payload.txt")
+    let original = Data("original".utf8)
+    let replacement = Data("replaced".utf8)
+    #expect(original.count == replacement.count)
+
+    try original.write(to: staging)
+    let originalIdentity = try createOwnershipToken(at: staging)
+    let authorization = StagingCommitAuthorization(
+        expectedSize: Int64(original.count),
+        expectedResourceIdentifier: originalIdentity
+    )
+
+    try FileManager.default.removeItem(at: staging)
+    try replacement.write(to: staging)
+    let replacementIdentity = try createOwnershipToken(at: staging)
+    #expect(replacementIdentity != originalIdentity)
+
+    let committer = InternalStagingCommitter()
+    do {
+        try await committer.commit(
+            stagingURL: staging,
+            finalURL: final,
+            authorization: authorization
+        )
+        Issue.record("Expected staging replacement to be rejected")
     } catch let error as StagingCommitError {
         #expect(error == .resourceIdentityMismatch)
     } catch {
