@@ -121,7 +121,6 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             values = try candidate.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
-                .fileResourceIdentifierKey,
             ])
         } catch {
             throw OwnedStagingRecoveryCleanupError.removalFailed
@@ -133,7 +132,7 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
-        guard let observedIdentity = values.fileResourceIdentifier.map({ String(describing: $0) }) else {
+        guard let observedIdentity = PendingCopyFileIdentity.token(from: attributes) else {
             throw OwnedStagingRecoveryCleanupError.resourceIdentityUnavailable
         }
         guard observedIdentity == recordedIdentity else {
