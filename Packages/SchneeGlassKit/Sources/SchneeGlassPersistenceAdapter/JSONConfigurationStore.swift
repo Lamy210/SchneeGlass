@@ -254,7 +254,6 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
 
         do {
             _ = try decodeEnvelope(currentData)
-            try writeBackup(data: currentData)
         } catch let failure as DecodingFailure {
             switch failure {
             case .corrupt:
@@ -265,6 +264,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
                     isDirectory: false
                 )
                 try currentData.write(to: preservedURL, options: .atomic)
+                return
             case let .unsupportedSchema(version):
                 // A newer/future schema is not corruption. An older app must never overwrite data
                 // it does not understand, even as part of an explicit backup restore.
@@ -273,6 +273,10 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         } catch {
             throw ConfigurationPersistenceError.corruptCurrent
         }
+
+        // The current configuration is valid and supported. Backup I/O failures are not corruption
+        // and therefore propagate unchanged while still blocking the restore before current mutation.
+        try writeBackup(data: currentData)
     }
 
     private func rotateBackups() throws {
