@@ -80,3 +80,27 @@ func newerPlanCannotSupersedeExecutionActiveSourceLease() async throws {
     await leases.releaseBound(operationIDs: [firstOperationID])
     #expect(await leases.activeLeaseCount() == 0)
 }
+
+@Test
+func newerPlanStillSupersedesUnconsumedSourceLease() async throws {
+    let root = try makeLeaseLifetimeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("payload.txt", isDirectory: false)
+    try Data("payload".utf8).write(to: source)
+
+    let leases = SourceFileLeaseRegistry()
+    let first = try await leases.prepareSource(at: source)
+    let firstOperationID = UUID()
+    try await leases.bind(token: first.token, operationID: firstOperationID)
+
+    let second = try await leases.prepareSource(at: source)
+    let secondOperationID = UUID()
+    try await leases.bind(token: second.token, operationID: secondOperationID)
+
+    #expect(await leases.activeLeaseCount() == 1)
+    #expect(await leases.boundSourceSize(at: source) == second.size)
+
+    await leases.releaseBound(operationIDs: [secondOperationID])
+    #expect(await leases.activeLeaseCount() == 0)
+}
