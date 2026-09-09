@@ -8,18 +8,22 @@ func dropExecutionGateSerializesOneGlassButNotDifferentGlasses() {
     let firstGlass = GlassID()
     let secondGlass = GlassID()
 
-    #expect(gate.begin(firstGlass))
+    let firstBegin = gate.begin(firstGlass)
+    #expect(firstBegin)
     #expect(gate.contains(firstGlass))
     #expect(gate.hasActiveExecution)
 
-    #expect(!gate.begin(firstGlass))
-    #expect(gate.begin(secondGlass))
+    let duplicateBegin = gate.begin(firstGlass)
+    let secondBegin = gate.begin(secondGlass)
+    #expect(!duplicateBegin)
+    #expect(secondBegin)
     #expect(gate.contains(secondGlass))
 
     gate.end(firstGlass)
     #expect(!gate.contains(firstGlass))
     #expect(gate.contains(secondGlass))
-    #expect(gate.begin(firstGlass))
+    let reacquiredFirst = gate.begin(firstGlass)
+    #expect(reacquiredFirst)
 
     gate.end(firstGlass)
     gate.end(secondGlass)
@@ -31,14 +35,17 @@ func endingUnknownGlassDoesNotReleaseAnotherExecution() {
     var gate = WorkspaceDropExecutionGate()
     let activeGlass = GlassID()
 
-    #expect(gate.begin(activeGlass))
+    let initialBegin = gate.begin(activeGlass)
+    #expect(initialBegin)
     gate.end(GlassID())
 
     #expect(gate.contains(activeGlass))
-    #expect(!gate.begin(activeGlass))
+    let duplicateBegin = gate.begin(activeGlass)
+    #expect(!duplicateBegin)
 
     gate.end(activeGlass)
-    #expect(gate.begin(activeGlass))
+    let reacquired = gate.begin(activeGlass)
+    #expect(reacquired)
 }
 
 @Test
