@@ -104,6 +104,15 @@ private func makeIdentityCopyRequest(
     )
 }
 
+private func physicalIdentity(of url: URL) throws -> String {
+    try #require(
+        PendingCopyFileIdentity.token(
+            at: url,
+            fileManager: .default
+        )
+    )
+}
+
 @Test
 func copyFailsClosedWhenStagingResourceIdentityIsUnavailable() async throws {
     let source = URL(fileURLWithPath: "/tmp/schneeglass-identity-source.txt")
@@ -133,6 +142,42 @@ func copyFailsClosedWhenStagingResourceIdentityIsUnavailable() async throws {
 }
 
 @Test
+func pendingCopyPhysicalIdentitySurvivesSameFilesystemRename() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-identity-rename-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let staging = root.appendingPathComponent("staging.partial")
+    let final = root.appendingPathComponent("final.txt")
+    try Data("payload".utf8).write(to: staging)
+    let before = try physicalIdentity(of: staging)
+
+    try FileManager.default.moveItem(at: staging, to: final)
+    let after = try physicalIdentity(of: final)
+
+    #expect(after == before)
+}
+
+@Test
+func pendingCopyPhysicalIdentityChangesWhenSamePathIsRecreated() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-identity-replace-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let candidate = root.appendingPathComponent("candidate.partial")
+    try Data("original".utf8).write(to: candidate)
+    let originalIdentity = try physicalIdentity(of: candidate)
+
+    try FileManager.default.removeItem(at: candidate)
+    try Data("replaced".utf8).write(to: candidate)
+    let replacementIdentity = try physicalIdentity(of: candidate)
+
+    #expect(replacementIdentity != originalIdentity)
+}
+
+@Test
 func internalCommitterRejectsSameSizeStagingIdentityReplacement() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-staging-identity-\(UUID().uuidString)", isDirectory: true)
@@ -149,10 +194,7 @@ func internalCommitterRejectsSameSizeStagingIdentityReplacement() async throws {
     #expect(original.count == replacement.count)
 
     try original.write(to: staging)
-    let originalValues = try staging.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    let originalIdentity = try #require(
-        originalValues.fileResourceIdentifier.map { String(describing: $0) }
-    )
+    let originalIdentity = try physicalIdentity(of: staging)
     let authorization = StagingCommitAuthorization(
         expectedSize: Int64(original.count),
         expectedResourceIdentifier: originalIdentity
