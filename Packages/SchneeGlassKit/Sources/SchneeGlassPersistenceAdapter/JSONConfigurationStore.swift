@@ -247,19 +247,32 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         do {
             currentData = try Data(contentsOf: configurationURL)
         } catch {
-            return
+            // Recovery must not overwrite current state that it could not read and therefore could
+            // not preserve. Treat the current configuration as unavailable/corrupt and fail closed.
+            throw ConfigurationPersistenceError.corruptCurrent
         }
 
-        if (try? decodeEnvelope(currentData)) != nil {
+        do {
+            _ = try decodeEnvelope(currentData)
             try writeBackup(data: currentData)
-            return
+        } catch let failure as DecodingFailure {
+            switch failure {
+            case .corrupt:
+                // Malformed but readable bytes may still be useful for manual recovery. Preserve
+                // them byte-for-byte before replacing current state with the explicitly selected backup.
+                let preservedURL = preservedDirectoryURL.appendingPathComponent(
+                    Self.makePreservedFilename(),
+                    isDirectory: false
+                )
+                try currentData.write(to: preservedURL, options: .atomic)
+            case let .unsupportedSchema(version):
+                // A newer/future schema is not corruption. An older app must never overwrite data
+                // it does not understand, even as part of an explicit backup restore.
+                throw ConfigurationPersistenceError.unsupportedSchemaVersion(version)
+            }
+        } catch {
+            throw ConfigurationPersistenceError.corruptCurrent
         }
-
-        let preservedURL = preservedDirectoryURL.appendingPathComponent(
-            Self.makePreservedFilename(),
-            isDirectory: false
-        )
-        try currentData.write(to: preservedURL, options: .atomic)
     }
 
     private func rotateBackups() throws {
