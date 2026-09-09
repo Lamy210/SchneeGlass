@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 SRC="$ROOT/Packages/SchneeGlassKit/Sources"
+APP="$ROOT/App"
 fail=0
 
 check_forbidden_imports() {
@@ -19,6 +20,11 @@ check_forbidden_imports "$SRC/SchneeGlassDomain" 'SwiftUI|AppKit|CoreServices|GR
 check_forbidden_imports "$SRC/FileDomain" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassPOSIXSupport'
 check_forbidden_imports "$SRC/SchneeGlassPresentation" 'SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassPOSIXSupport'
 check_forbidden_imports "$SRC/SchneeGlassPOSIXSupport" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassDomain|FileDomain|SchneeGlassApplication|SchneeGlassPresentation|SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassMacOSAdapter'
+
+if grep -RInE '\b(SourceFileLeaseRegistry|NativeDropPlanningAdapter|PinnedSourceFileCopying)\b' "$APP" --include='*.swift'; then
+  echo 'Architecture violation: App must compose native Drop planning/copying through PinnedDropCopyPipeline.' >&2
+  fail=1
+fi
 
 if grep -RInE '(^|[^A-Za-z0-9_])@unchecked[[:space:]]+Sendable' "$SRC" --include='*.swift'; then
   echo 'Architecture violation: @unchecked Sendable requires an approved ADR.' >&2
