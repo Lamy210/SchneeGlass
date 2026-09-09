@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassApplication
 
@@ -15,9 +16,9 @@ public enum OwnedStagingRecoveryCleanupError: Error, Hashable, Sendable {
 /// The only v0.1 recovery boundary allowed to delete a pending-copy staging file.
 ///
 /// The caller must have obtained explicit user intent, but that intent is not sufficient authority
-/// by itself. This adapter revalidates destination identity, exact record shape, physical file type,
-/// and the persisted staging resource identifier inside an `NSFileCoordinator` delete scope before
-/// calling `removeItem`.
+/// by itself. This adapter pins the current staging inode with `O_NOFOLLOW`, then revalidates the
+/// exact record shape, physical file type, path-to-FD identity, and persisted xattr ownership proof
+/// inside an `NSFileCoordinator` delete scope before calling `removeItem`.
 public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
     private let fileManager: FileManager
 
@@ -54,6 +55,20 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.invalidRecord
         }
 
+        guard let stagingDescriptor = Self.openReadOnlyNoFollow(stagingURL) else {
+            throw OwnedStagingRecoveryCleanupError.stagingMissing
+        }
+        defer { close(stagingDescriptor) }
+
+        try Self.revalidateOwnedStaging(
+            at: stagingURL,
+            expectedDestination: destination,
+            expectedFilename: record.stagingFilename,
+            recordedIdentity: recordedIdentity,
+            stagingDescriptor: stagingDescriptor,
+            fileManager: fileManager
+        )
+
         let fileManager = self.fileManager
         var coordinationError: NSError?
         var operationError: OwnedStagingRecoveryCleanupError?
@@ -70,8 +85,19 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
                     expectedDestination: destination,
                     expectedFilename: record.stagingFilename,
                     recordedIdentity: recordedIdentity,
+                    stagingDescriptor: stagingDescriptor,
                     fileManager: fileManager
                 )
+
+                // Keep the final check adjacent to the only permitted deletion call. A path that
+                // was unlinked/recreated after the descriptor was opened is rejected.
+                guard PendingCopyFileIdentity.descriptorMatchesPath(
+                    stagingDescriptor,
+                    pathURL: coordinatedURL
+                ) else {
+                    throw OwnedStagingRecoveryCleanupError.resourceIdentityMismatch
+                }
+
                 try fileManager.removeItem(at: coordinatedURL)
             } catch let error as OwnedStagingRecoveryCleanupError {
                 operationError = error
@@ -93,6 +119,7 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
         expectedDestination: URL,
         expectedFilename: String,
         recordedIdentity: String,
+        stagingDescriptor: Int32,
         fileManager: FileManager
     ) throws {
         let candidate = url.standardizedFileURL
@@ -100,6 +127,13 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
               candidate.lastPathComponent == expectedFilename
         else {
             throw OwnedStagingRecoveryCleanupError.invalidRecord
+        }
+
+        guard PendingCopyFileIdentity.descriptorMatchesPath(
+            stagingDescriptor,
+            pathURL: candidate
+        ) else {
+            throw OwnedStagingRecoveryCleanupError.resourceIdentityMismatch
         }
 
         let attributes: [FileAttributeKey: Any]
@@ -113,6 +147,13 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
         }
 
         guard attributes[.type] as? FileAttributeType == .typeRegular else {
+            throw OwnedStagingRecoveryCleanupError.unexpectedFileType
+        }
+
+        var descriptorStat = stat()
+        guard fstat(stagingDescriptor, &descriptorStat) == 0,
+              (descriptorStat.st_mode & S_IFMT) == S_IFREG
+        else {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
@@ -132,14 +173,23 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
-        guard let observedIdentity = try PendingCopyFileIdentity.token(
-            at: candidate,
-            fileManager: fileManager
+        guard let observedIdentity = PendingCopyFileIdentity.token(
+            onFileDescriptor: stagingDescriptor
         ) else {
             throw OwnedStagingRecoveryCleanupError.resourceIdentityUnavailable
         }
         guard observedIdentity == recordedIdentity else {
             throw OwnedStagingRecoveryCleanupError.resourceIdentityMismatch
+        }
+    }
+
+    private static func openReadOnlyNoFollow(_ url: URL) -> Int32? {
+        url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return nil
+            }
+            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+            return descriptor >= 0 ? descriptor : nil
         }
     }
 
