@@ -137,13 +137,21 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             }
 
             let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            let resourceIdentifier = PendingCopyFileIdentity.token(from: attributes)
+            let resourceIdentifier = try PendingCopyFileIdentity.token(
+                at: url,
+                fileManager: fileManager
+            )
             return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
             let cocoa = error as NSError
             if cocoa.domain == NSCocoaErrorDomain,
                cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
                 || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
+            {
+                return .absent
+            }
+            if cocoa.domain == NSPOSIXErrorDomain,
+               cocoa.code == Int(ENOENT)
             {
                 return .absent
             }
