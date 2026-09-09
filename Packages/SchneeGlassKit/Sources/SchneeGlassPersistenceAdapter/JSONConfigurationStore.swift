@@ -17,6 +17,12 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         case unsupportedSchema(Int)
     }
 
+    private enum BackupReadFailure: Error {
+        case openFailed(Int32)
+        case metadataFailed(Int32)
+        case readFailed(Int32)
+    }
+
     private let configurationDirectoryURL: URL
     private let backupDirectoryURL: URL
     private let preservedDirectoryURL: URL
@@ -111,14 +117,14 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         descriptors.reserveCapacity(urls.count)
 
         for url in urls where Self.isBackupFilename(url.lastPathComponent) {
-            guard Self.isPhysicalRegularFile(url),
-                  let createdAt = Self.backupCreatedAt(from: url.lastPathComponent)
-            else {
+            guard let createdAt = Self.backupCreatedAt(from: url.lastPathComponent) else {
                 continue
             }
 
             do {
-                let data = try Data(contentsOf: url)
+                guard let data = try Self.readPhysicalRegularFile(at: url) else {
+                    continue
+                }
                 _ = try decodeEnvelope(data)
                 descriptors.append(
                     ConfigurationBackupDescriptor(
@@ -127,7 +133,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
                     )
                 )
             } catch {
-                // Corrupt or unreadable backups are intentionally not surfaced as restorable candidates.
+                // Corrupt, unreadable, replaced, or non-regular backups are intentionally not surfaced.
             }
         }
 
@@ -147,16 +153,21 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         }
 
         let backupURL = backupDirectoryURL.appendingPathComponent(id, isDirectory: false)
-        guard Self.isPhysicalRegularFile(backupURL) else {
-            // A directory, symlink, package, or other non-regular entry is never a configuration
-            // backup even if its filename matches the backup grammar.
-            throw ConfigurationPersistenceError.backupNotFound
-        }
 
         let backupData: Data
+        do {
+            guard let data = try Self.readPhysicalRegularFile(at: backupURL) else {
+                throw ConfigurationPersistenceError.backupNotFound
+            }
+            backupData = data
+        } catch let error as ConfigurationPersistenceError {
+            throw error
+        } catch {
+            throw ConfigurationPersistenceError.corruptBackup
+        }
+
         let backupEnvelope: Envelope
         do {
-            backupData = try Data(contentsOf: backupURL)
             backupEnvelope = try decodeEnvelope(backupData)
         } catch let failure as DecodingFailure {
             switch failure {
@@ -295,6 +306,69 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             return false
         }
         return (metadata.st_mode & S_IFMT) == S_IFREG
+    }
+
+    /// Opens the directory entry itself with O_NOFOLLOW and reads bytes from that pinned FD.
+    /// Returning nil means the entry is missing or non-regular; thrown errors mean a regular-file
+    /// candidate could not be read safely. This closes the lstat -> Data(contentsOf:) symlink race.
+    private static func readPhysicalRegularFile(at url: URL) throws -> Data? {
+        let candidate = url.standardizedFileURL
+        let openResult = candidate.withUnsafeFileSystemRepresentation { path -> (descriptor: Int32, error: Int32)? in
+            guard let path else {
+                return nil
+            }
+            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+            return (descriptor, descriptor >= 0 ? 0 : errno)
+        }
+
+        guard let openResult else {
+            throw BackupReadFailure.openFailed(EINVAL)
+        }
+        guard openResult.descriptor >= 0 else {
+            if openResult.error == ENOENT || openResult.error == ELOOP {
+                return nil
+            }
+            throw BackupReadFailure.openFailed(openResult.error)
+        }
+
+        let descriptor = openResult.descriptor
+        defer { close(descriptor) }
+
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else {
+            throw BackupReadFailure.metadataFailed(errno)
+        }
+        guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+            return nil
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+
+        while true {
+            var observedErrno = Int32(0)
+            let count = buffer.withUnsafeMutableBytes { bytes -> Int in
+                let result = Darwin.read(descriptor, bytes.baseAddress, bytes.count)
+                if result < 0 {
+                    observedErrno = errno
+                }
+                return result
+            }
+
+            if count == 0 {
+                break
+            }
+            if count < 0 {
+                if observedErrno == EINTR {
+                    continue
+                }
+                throw BackupReadFailure.readFailed(observedErrno)
+            }
+
+            data.append(contentsOf: buffer.prefix(count))
+        }
+
+        return data
     }
 
     private static func mapCurrentFailure(_ failure: DecodingFailure) -> ConfigurationPersistenceError {
