@@ -166,6 +166,27 @@ func pendingCopyOwnershipProofSurvivesSameFilesystemRename() throws {
 }
 
 @Test
+func pendingCopyOwnershipProofCannotBeReissuedOverExistingProof() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-identity-immutable-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let staging = root.appendingPathComponent("staging.partial")
+    try Data("payload".utf8).write(to: staging)
+    let first = try createOwnershipToken(at: staging)
+
+    let second = try PendingCopyFileIdentity.createToken(
+        at: staging,
+        fileManager: .default
+    )
+    let observed = try observedOwnershipToken(at: staging)
+
+    #expect(second == nil)
+    #expect(observed == first)
+}
+
+@Test
 func pendingCopyOwnershipProofDoesNotSurviveSamePathRecreation() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-identity-replace-\(UUID().uuidString)", isDirectory: true)
