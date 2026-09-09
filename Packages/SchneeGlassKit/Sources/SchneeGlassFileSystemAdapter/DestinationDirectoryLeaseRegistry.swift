@@ -214,6 +214,15 @@ actor DestinationDirectoryLeaseRegistry {
             throw DestinationDirectoryLeaseError.identityMismatch
         }
 
+        // A volume identifier alone cannot distinguish two directories on the same volume. If
+        // neither the acquired access nor the authoritative plan carries a directory resource ID,
+        // planning-to-execution replacement cannot be proven safe, so production mutation stops.
+        guard expectedAccessFingerprint?.resourceIdentifier != nil
+                || expectedPlanResourceIdentifier != nil
+        else {
+            throw DestinationDirectoryLeaseError.identityMismatch
+        }
+
         let values: URLResourceValues
         do {
             values = try url.resourceValues(forKeys: [
