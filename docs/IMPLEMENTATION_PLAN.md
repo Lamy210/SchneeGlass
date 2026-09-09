@@ -98,6 +98,19 @@ Status: **DONE**
 - hidden item filtering
 - 500-item display limit
 - symlink / alias / package / directory / regular classification
+- 500-item performance baseline
+  - 501 direct-child fixture
+  - 3-run measurement
+  - monotonic clock (`ProcessInfo.systemUptime`)
+  - regression ceiling `worst < 0.5s`
+  - weekly / manual / relevant-PR workflow
+
+PR #39導入時の最終GitHub-hosted macOS 26 / Xcode 26.6実測:
+
+```text
+average = 0.055926s
+worst   = 0.059213s
+```
 
 ### TASK-006 — File Event Hub
 Status: **DONE for v0.1**
@@ -255,6 +268,7 @@ Status: **DONE for v0.1 automated baseline**
 - Architecture Guard
 - File Safety Guard
 - release metadata guard
+- production release credential-free preflight
 - app bundle / Sandbox baseline verification
 - unsigned CI artifact
 - Swift CodeQL v4
@@ -263,6 +277,12 @@ Status: **DONE for v0.1 automated baseline**
   - manual dispatch
   - weekly schedule
   - first-party SwiftPM core targetをmanual build-modeで解析
+- 500-item Folder Snapshot Performance Baseline
+  - relevant source/test/workflow PR
+  - manual dispatch
+  - weekly schedule
+  - filter mismatch防止marker
+  - `worst < 0.5s` regression ceiling
 
 v0.1 Release blockerではない追加候補:
 
@@ -270,9 +290,8 @@ v0.1 Release blockerではない追加候補:
 - Periphery
 - Main Thread Checker
 - Integration / UI automation
-- Performance baseline
 
-追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にASan / TSan / CodeQLは導入済みなので、古い計画を根拠に二重導入しないこと。
+追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にASan / TSan / CodeQL / Snapshot Performance Baselineは導入済みなので、古い計画を根拠に二重導入しないこと。
 
 ### TASK-018 — Release Pipeline
 Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
@@ -301,9 +320,27 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 - Gatekeeper assessment
 - final signed ZIP + SHA-256 manifest
 - signed/notarized candidate Actions artifact
-- source commit / notarization / signature evidence
+- `RELEASE_EVIDENCE.txt` schema v1
+  - required keys exactly once
+  - unknown / malformed key rejection
+  - signed ZIP-derived bundle identifier / version / build
+  - exact source commit evidence
+- candidate workflow identityのfail-closed検証
+  - name = `Production Release Candidate`
+  - path = `.github/workflows/production-release.yml`
+  - event = `workflow_dispatch`
+  - branch = `main`
+  - completed / success
+  - valid 40-character lowercase SHA
 - Manual QA後のGitHub Release promotion workflow
-- candidate workflow / branch / source SHA / evidence / checksum再検証
+- candidate source SHA / evidence / checksum再検証
+- candidate commitがcurrent `main`のancestorであることを検証
+- public Release build history gate
+  - first Releaseはhistory 0件でPASS
+  - 2回目以降は`candidate bundle_build > max(public release bundle_build)`必須
+  - missing/malformed historical evidenceはfail-closed
+- pre-existing tag / release拒否
+- asset-free Draft作成 → exact target SHA検証
 - Draft asset verification
 - publish後`isImmutable=true`必須
 - mutable releaseを正式Releaseとして残さないcleanup path
@@ -331,12 +368,15 @@ Status: **DONE for v0.1 code/document baseline / release record pending**
 - Install guidance
 - signed-artifact Manual QA checklist
 - production credential contract documentation
+- release evidence schema / exact candidate workflow identity documentation
+- public build-number history gate documentation
+- snapshot performance baseline / technical-debt revisit contract
 
 Release時に残る記録:
 
 - tested candidate commit / version / build
 - tested macOS versions
-- CI / sanitizer / CodeQL status
+- CI / sanitizer / CodeQL / performance status
 - signed candidate workflow run
 - artifact SHA-256
 - Manual QA実施記録
