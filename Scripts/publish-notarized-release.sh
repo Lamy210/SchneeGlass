@@ -22,6 +22,7 @@ for name in \
   GH_TOKEN \
   CONFIRM_MANUAL_QA \
   CONFIRM_IMMUTABLE_RELEASES \
+  CONFIRM_RELEASE_GOVERNANCE \
   CONFIRM_PUBLISH; do
   require_env "$name"
 done
@@ -36,6 +37,8 @@ done
   || fail "manual QA confirmation is required"
 [[ "$CONFIRM_IMMUTABLE_RELEASES" == 'true' ]] \
   || fail "immutable releases confirmation is required"
+[[ "$CONFIRM_RELEASE_GOVERNANCE" == 'true' ]] \
+  || fail "release governance confirmation is required"
 [[ "$CONFIRM_PUBLISH" == 'true' ]] \
   || fail "explicit publish confirmation is required"
 
@@ -48,27 +51,27 @@ ARTIFACT_NAME="SchneeGlass-${RELEASE_VERSION}-signed-notarized-candidate"
 ARCHIVE_NAME="SchneeGlass-${RELEASE_VERSION}.zip"
 RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 CANDIDATE_DIR="$RUNNER_TEMP/SchneeGlassReleasePromotion"
-CREATED_DRAFT=false
+CREATED_RELEASE=false
 
 cleanup() {
   set +e
   rm -rf "$CANDIDATE_DIR"
 
-  if [[ "$CREATED_DRAFT" == 'true' ]]; then
-    IS_DRAFT="$(gh release view "$TAG" \
-      --repo "$GITHUB_REPOSITORY" \
-      --json isDraft \
-      --jq '.isDraft' 2>/dev/null || true)"
-
-    if [[ "$IS_DRAFT" == 'true' ]]; then
-      gh release delete "$TAG" \
+  if [[ "$CREATED_RELEASE" == 'true' ]]; then
+    if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+      IS_IMMUTABLE="$(gh release view "$TAG" \
         --repo "$GITHUB_REPOSITORY" \
-        --cleanup-tag \
-        --yes >/dev/null 2>&1 || true
-    elif ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-      if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-        git push origin ":refs/tags/$TAG" >/dev/null 2>&1 || true
+        --json isImmutable \
+        --jq '.isImmutable' 2>/dev/null || true)"
+
+      if [[ "$IS_IMMUTABLE" != 'true' ]]; then
+        gh release delete "$TAG" \
+          --repo "$GITHUB_REPOSITORY" \
+          --cleanup-tag \
+          --yes >/dev/null 2>&1 || true
       fi
+    elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+      git push origin ":refs/tags/$TAG" >/dev/null 2>&1 || true
     fi
   fi
 }
@@ -110,6 +113,20 @@ test -f "$EVIDENCE" || fail "RELEASE_EVIDENCE.txt is missing"
 
 grep -Fx "version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
   || fail "candidate evidence version mismatch"
+
+for key in bundle_identifier bundle_version bundle_build; do
+  COUNT="$(grep -c "^${key}=" "$EVIDENCE" || true)"
+  [[ "$COUNT" == "1" ]] || fail "candidate evidence must contain exactly one $key"
+done
+
+grep -Fx 'bundle_identifier=io.github.lamy210.schneeglass' "$EVIDENCE" >/dev/null \
+  || fail "candidate bundle identifier evidence mismatch"
+grep -Fx "bundle_version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
+  || fail "candidate signed bundle version evidence mismatch"
+BUNDLE_BUILD="$(sed -n 's/^bundle_build=//p' "$EVIDENCE")"
+[[ "$BUNDLE_BUILD" =~ ^[1-9][0-9]*$ ]] \
+  || fail "candidate signed bundle build evidence is invalid: $BUNDLE_BUILD"
+
 grep -Fx 'notarization_status=Accepted' "$EVIDENCE" >/dev/null \
   || fail "candidate is not notarization Accepted"
 grep -Fx 'codesign=verified' "$EVIDENCE" >/dev/null \
@@ -142,22 +159,34 @@ if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
   fail "GitHub Release already exists: $TAG"
 fi
 
-CREATED_DRAFT=true
+# Create the draft without assets first. Only a successful create establishes ownership
+# for cleanup, avoiding deletion of a concurrently-created release on create failure.
 gh release create "$TAG" \
-  "$ARCHIVE" \
-  "$CHECKSUMS" \
-  "$EVIDENCE" \
   --repo "$GITHUB_REPOSITORY" \
   --target "$RUN_HEAD_SHA" \
   --title "SchneeGlass ${RELEASE_VERSION}" \
   --generate-notes \
   --draft
+CREATED_RELEASE=true
 
 IS_DRAFT="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json isDraft \
   --jq '.isDraft')"
 [[ "$IS_DRAFT" == 'true' ]] || fail "release was not created as draft"
+
+RELEASE_TARGET="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json targetCommitish \
+  --jq '.targetCommitish')"
+[[ "$RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
+  || fail "draft release target mismatch: expected $RUN_HEAD_SHA, got $RELEASE_TARGET"
+
+gh release upload "$TAG" \
+  "$ARCHIVE" \
+  "$CHECKSUMS" \
+  "$EVIDENCE" \
+  --repo "$GITHUB_REPOSITORY"
 
 ASSET_NAMES="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -186,11 +215,24 @@ IS_IMMUTABLE="$(gh release view "$TAG" \
   --json isImmutable \
   --jq '.isImmutable')"
 if [[ "$IS_IMMUTABLE" != 'true' ]]; then
-  gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft
-  fail "published release is not immutable; enable repository release immutability before retrying"
+  gh release delete "$TAG" \
+    --repo "$GITHUB_REPOSITORY" \
+    --cleanup-tag \
+    --yes \
+    || fail "published release is mutable and automatic cleanup failed"
+
+  if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+    fail "mutable release still exists after cleanup"
+  fi
+  if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+    fail "mutable release tag still exists after cleanup"
+  fi
+
+  CREATED_RELEASE=false
+  fail "published release was not immutable and was removed; enable repository release immutability before retrying"
 fi
 
-CREATED_DRAFT=false
+CREATED_RELEASE=false
 trap - EXIT
 rm -rf "$CANDIDATE_DIR"
 

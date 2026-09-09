@@ -14,6 +14,7 @@ SchneeGlass currently has CI and workflows for:
 - Apple notarization with `notarytool`
 - notarization ticket stapling and validation
 - Gatekeeper assessment
+- signed bundle metadata evidence derived from the final ZIP
 - final SHA-256 integrity manifest
 - signed/notarized candidate artifact and release evidence
 - Manual QA-gated promotion to an immutable GitHub Release
@@ -76,7 +77,7 @@ The actual signing job only runs when all of the following are true:
 - credential-free preflight passed
 - protected `production-release` environment permits the job
 
-PR validation runs only credential-free checks. It verifies shell syntax, production preflight, and that the signing script fails closed when credentials are absent. PR validation must never produce a signed production artifact.
+PR validation runs only credential-free checks. It verifies shell syntax, production preflight, fail-closed behavior without credentials, and a synthetic signed-bundle metadata fixture. PR validation must never produce a signed production artifact.
 
 Production flow:
 
@@ -105,12 +106,24 @@ Gatekeeper assessment
   ↓
 final signed ZIP
   ↓
-SHA-256 manifest + release evidence
+read signed ZIP Info.plist
+  ↓
+record bundle identifier / version / build in RELEASE_EVIDENCE.txt
+  ↓
+SHA-256 manifest + source commit evidence
   ↓
 Actions artifact for Manual QA
 ```
 
-The candidate is **not** automatically published.
+The signed ZIP itself is the authority for these evidence fields:
+
+```text
+bundle_identifier=io.github.lamy210.schneeglass
+bundle_version=X.Y.Z
+bundle_build=<positive integer>
+```
+
+Publication requires each field exactly once. The candidate is **not** automatically published.
 
 App Sandbox remains enabled even though direct Developer ID distribution does not require it. Hardened Runtime remains mandatory for the notarized production path.
 
@@ -126,8 +139,11 @@ The publication job is restricted to:
 - `main`
 - explicit Manual QA confirmation
 - explicit repository release-immutability confirmation
+- explicit release-governance confirmation
 - explicit publish confirmation
 - protected `production-release` environment
+
+`confirm_release_governance=true` is a human attestation that `main` branch protection/ruleset, required CI, and the release-source governance required for this release were reviewed. This gate exists because the release workflow cannot reliably read all repository Administration settings itself.
 
 Before creating a Release it revalidates:
 
@@ -137,6 +153,10 @@ Before creating a Release it revalidates:
 - candidate was built from `main`
 - candidate workflow head SHA is valid
 - `RELEASE_EVIDENCE.txt` version matches the requested version
+- signed bundle identifier equals `io.github.lamy210.schneeglass`
+- signed bundle version equals the requested version
+- signed bundle build is a positive integer
+- each signed bundle metadata evidence key occurs exactly once
 - notarization status is `Accepted`
 - codesign / stapler / Gatekeeper evidence is present
 - evidence commit SHA equals candidate workflow head SHA
@@ -146,12 +166,16 @@ Before creating a Release it revalidates:
 - target tag does not already exist
 - target GitHub Release does not already exist
 
-Publication is two-phase:
+Publication establishes cleanup ownership only after Draft creation succeeds:
 
-1. create a Draft Release and upload/verify assets
-2. publish only after Draft asset validation
+1. create an asset-free Draft Release targeting the exact candidate SHA
+2. verify `targetCommitish` equals that candidate SHA
+3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
+4. verify Draft assets
+5. publish
+6. require `isImmutable=true`
 
-After publication, `isImmutable` must be `true`. A mutable Release must not be left as the official production Release.
+If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
 
 Expected public assets:
 
@@ -189,6 +213,7 @@ A production macOS release must not be published until all of the following are 
 - Hardened Runtime preserved
 - App Sandbox entitlements verified after signing
 - `codesign --verify --deep --strict` PASS
+- signed ZIP bundle metadata matches requested version/build/bundle identity
 - Apple notarization status = `Accepted`
 - notarization ticket stapled to the distributed app
 - `xcrun stapler validate` PASS
@@ -196,6 +221,7 @@ A production macOS release must not be published until all of the following are 
 - final SHA-256 artifact manifest
 - final install/launch Manual QA on the supported macOS baseline
 - repository release immutability enabled
+- release governance explicitly reviewed
 - publication workflow revalidation PASS
 - final GitHub Release reports `isImmutable=true`
 
@@ -221,7 +247,7 @@ The release code cannot prove all GitHub repository settings by itself. Before f
 - Bootstrap CI treated as a required release check
 - production environment approval/deployment protection where available
 
-The GitHub integration used during development may not have Administration read access, so lack of API visibility must not be interpreted as proof that those settings are enabled.
+The publication workflow requires `confirm_release_governance=true` after this review. The GitHub integration used during development may not have Administration read access, so lack of API visibility must not be interpreted as proof that those settings are enabled.
 
 ## Bad release / rollback policy
 
@@ -246,6 +272,7 @@ The remaining work is operational, not missing release-pipeline code:
 2. enable and verify repository release immutability
 3. verify `main` branch/release governance
 4. run the first real Developer ID signed/notarized candidate
-5. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
-6. run `Publish Production Release`
-7. verify the first immutable public v0.1 Release and record its run/tag/checksum evidence
+5. verify signed ZIP bundle evidence, including actual `bundle_build`
+6. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
+7. run `Publish Production Release` with all confirmations, including release governance
+8. verify the first immutable public v0.1 Release and record its run/tag/checksum/evidence

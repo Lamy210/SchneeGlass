@@ -26,6 +26,10 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] `shasum -a 256 -c SHA256SUMS` がPASSする
 - [ ] `RELEASE_EVIDENCE.txt`が存在する
 - [ ] evidenceのcommit SHAが対象production workflow head SHAと一致する
+- [ ] evidenceの`bundle_identifier`が`io.github.lamy210.schneeglass`である
+- [ ] evidenceの`bundle_version`がQA対象versionと一致する
+- [ ] evidenceの`bundle_build`がQA対象build numberと一致するpositive integerである
+- [ ] `bundle_identifier` / `bundle_version` / `bundle_build`がevidence内に各1件だけ存在する
 - [ ] unsigned candidateの場合、production releaseとして公開しないことを確認した
 
 ## 1. Clean install / first launch
@@ -173,6 +177,7 @@ Developer ID signing / notarization pipelineは実装済み。このSectionは**
 - [ ] Gatekeeper assessment PASS
 - [ ] quarantine付きダウンロード相当の状態から起動できる
 - [ ] signed/stapled artifactに対する最終SHA-256 manifestを生成した
+- [ ] final signed ZIPから記録されたbundle identifier / version / build evidenceがQA対象と一致する
 - [ ] `RELEASE_EVIDENCE.txt`のnotarization / codesign / stapler / Gatekeeper状態がcandidateと一致する
 - [ ] Actions artifactにcredential materialが含まれていない
 
@@ -181,17 +186,22 @@ Developer ID signing / notarization pipelineは実装済み。このSectionは**
 Manual QAが完了するまで`Publish Production Release`を実行しない。
 
 - [ ] Repository Settingsでrelease immutabilityを有効化済み
-- [ ] `main` branch / required CIなどRelease governanceを確認済み
+- [ ] `main` branch / ruleset / required CIなどRelease governanceを確認済み
 - [ ] publication inputのversionがcandidateと一致する
 - [ ] publication inputのcandidate run IDがQA対象runと一致する
 - [ ] `confirm_manual_qa = true`はこのexact candidateのQA完了後にだけ指定する
+- [ ] `confirm_immutable_releases = true`はRepository設定確認後にだけ指定する
+- [ ] `confirm_release_governance = true`はbranch / required CI / release-source governance確認後にだけ指定する
 - [ ] publication workflowのcandidate workflow / branch / success再検証がPASSする
 - [ ] candidate commitがcurrent `main`のancestorである
 - [ ] evidence commit SHAがcandidate workflow head SHAと一致する
+- [ ] evidence bundle identifier / version / buildの再検証がPASSする
 - [ ] `SHA256SUMS` self-check PASS
 - [ ] 同一tag / Releaseが事前に存在しない
-- [ ] Draft asset validation PASS
+- [ ] asset無しDraftの作成後、Draft targetがQA済みcandidate SHAと一致する
+- [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`のDraft upload/asset validation PASS
 - [ ] 公開後`isImmutable=true`
+- [ ] `isImmutable=false`の場合、current runが作ったmutable Release/tagがcleanupされ公開状態で残らない
 - [ ] Release assetsに`SchneeGlass-X.Y.Z.zip`が存在する
 - [ ] Release assetsに`SHA256SUMS`が存在する
 - [ ] Release assetsに`RELEASE_EVIDENCE.txt`が存在する
@@ -226,7 +236,8 @@ Release時に以下をPR / Release notes / QA recordのいずれかへ残す。
 - Sandbox / signing / notarization gate failure
 - config restore結果とUI結果の不一致
 - supported baselineでのlaunch failure
-- candidate source/evidence/checksum不一致
+- candidate source/bundle evidence/checksum不一致
+- release governance未確認でのpublication
 - mutable public Release
 
 軽微な表示差分は個別判断できるが、File Safety / Recovery / Release integrity failureより優先してはならない。

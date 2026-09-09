@@ -16,6 +16,7 @@ on:
     paths:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
+      - 'Scripts/record-release-bundle-metadata.sh'
       - 'Scripts/verify-production-release-preflight.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
 
@@ -49,6 +50,7 @@ jobs:
           bash -n Scripts/verify-release-metadata.sh
           bash -n Scripts/verify-production-release-preflight.sh
           bash -n Scripts/build-notarized-release.sh
+          bash -n Scripts/record-release-bundle-metadata.sh
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
@@ -81,6 +83,42 @@ jobs:
           grep -F 'required release environment value is missing: DEVELOPER_ID_P12_BASE64' "$LOG" >/dev/null
           test ! -e release-output
           rm -f "$LOG"
+
+      - name: Signed bundle metadata recorder fixture
+        run: |
+          FIXTURE="$RUNNER_TEMP/release-bundle-metadata-fixture"
+          rm -rf "$FIXTURE"
+          mkdir -p "$FIXTURE/SchneeGlass.app/Contents"
+
+          cat > "$FIXTURE/SchneeGlass.app/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key>
+            <string>io.github.lamy210.schneeglass</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.0.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+          </dict>
+          </plist>
+          PLIST
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$FIXTURE/SchneeGlass.app" \
+            "$FIXTURE/SchneeGlass-0.0.0.zip"
+          printf 'version=0.0.0\n' > "$FIXTURE/RELEASE_EVIDENCE.txt"
+
+          bash Scripts/record-release-bundle-metadata.sh \
+            0.0.0 \
+            "$FIXTURE/SchneeGlass-0.0.0.zip" \
+            "$FIXTURE/RELEASE_EVIDENCE.txt"
+
+          grep -Fx 'bundle_identifier=io.github.lamy210.schneeglass' "$FIXTURE/RELEASE_EVIDENCE.txt"
+          grep -Fx 'bundle_version=0.0.0' "$FIXTURE/RELEASE_EVIDENCE.txt"
+          grep -Fx 'bundle_build=1' "$FIXTURE/RELEASE_EVIDENCE.txt"
+          rm -rf "$FIXTURE"
 
       - name: Requested version matches project
         if: github.event_name == 'workflow_dispatch'
@@ -117,6 +155,9 @@ jobs:
 
       - name: Build signed and notarized release candidate
         run: bash Scripts/build-notarized-release.sh
+
+      - name: Record and verify signed bundle metadata
+        run: bash Scripts/record-release-bundle-metadata.sh "$RELEASE_VERSION"
 
       - name: Record signed source commit
         run: echo "commit_sha=$GITHUB_SHA" >> release-output/RELEASE_EVIDENCE.txt

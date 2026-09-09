@@ -21,6 +21,11 @@ on:
         required: true
         default: false
         type: boolean
+      confirm_release_governance:
+        description: 'Confirm main branch/release governance and required CI protections were reviewed for this release.'
+        required: true
+        default: false
+        type: boolean
       confirm_publish:
         description: 'Publish the public GitHub Release.'
         required: true
@@ -67,6 +72,7 @@ jobs:
             unset CANDIDATE_RUN_ID
             unset CONFIRM_MANUAL_QA
             unset CONFIRM_IMMUTABLE_RELEASES
+            unset CONFIRM_RELEASE_GOVERNANCE
             unset CONFIRM_PUBLISH
             bash Scripts/publish-notarized-release.sh
           ) >"$LOG" 2>&1
@@ -82,12 +88,41 @@ jobs:
           grep -F 'required promotion environment value is missing: RELEASE_VERSION' "$LOG" >/dev/null
           rm -f "$LOG"
 
+      - name: Publication requires release governance confirmation
+        run: |
+          LOG="$RUNNER_TEMP/release-governance-fail-closed.log"
+          set +e
+          (
+            export RELEASE_VERSION='0.0.0'
+            export CANDIDATE_RUN_ID='1'
+            export GITHUB_REPOSITORY='example/example'
+            export GITHUB_REF='refs/heads/main'
+            export GH_TOKEN='fixture-token'
+            export CONFIRM_MANUAL_QA='true'
+            export CONFIRM_IMMUTABLE_RELEASES='true'
+            export CONFIRM_RELEASE_GOVERNANCE='false'
+            export CONFIRM_PUBLISH='true'
+            bash Scripts/publish-notarized-release.sh
+          ) >"$LOG" 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            cat "$LOG"
+            echo 'Release publication unexpectedly accepted missing governance confirmation.' >&2
+            exit 1
+          fi
+
+          grep -F 'release governance confirmation is required' "$LOG" >/dev/null
+          rm -f "$LOG"
+
   publish:
     name: Promote Signed Candidate to Immutable GitHub Release
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.confirm_manual_qa &&
       inputs.confirm_immutable_releases &&
+      inputs.confirm_release_governance &&
       inputs.confirm_publish &&
       github.ref == 'refs/heads/main'
     needs: preflight
@@ -103,6 +138,7 @@ jobs:
       CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
       CONFIRM_MANUAL_QA: ${{ inputs.confirm_manual_qa }}
       CONFIRM_IMMUTABLE_RELEASES: ${{ inputs.confirm_immutable_releases }}
+      CONFIRM_RELEASE_GOVERNANCE: ${{ inputs.confirm_release_governance }}
       CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
 
     steps:
