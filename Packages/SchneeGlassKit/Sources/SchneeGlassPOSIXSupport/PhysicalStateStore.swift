@@ -94,14 +94,17 @@ public struct PhysicalStateStore: Sendable {
             directoryDescriptor: directoryDescriptor,
             filename: temporaryName
         )
+        let temporaryIdentity = try Self.regularFileIdentity(of: temporaryDescriptor)
 
         var temporaryExists = true
         defer {
             close(temporaryDescriptor)
             if temporaryExists {
-                temporaryName.withCString { name in
-                    _ = unlinkat(directoryDescriptor, name, 0)
-                }
+                Self.removeEntryIfSameRegularIdentity(
+                    directoryDescriptor: directoryDescriptor,
+                    filename: temporaryName,
+                    expectedIdentity: temporaryIdentity
+                )
             }
         }
 
@@ -125,6 +128,15 @@ public struct PhysicalStateStore: Sendable {
                     ? PhysicalStateStoreError.unsafeTopology
                     : PhysicalStateStoreError.alreadyExists
             }
+        }
+
+        // The temporary pathname must still identify the exact inode created above. A name alone
+        // is never sufficient ownership proof for cleanup or commit.
+        guard try Self.regularFileIdentityIfPresent(
+            directoryDescriptor: directoryDescriptor,
+            filename: temporaryName
+        ) == temporaryIdentity else {
+            throw PhysicalStateStoreError.unsafeTopology
         }
 
         let renameResult = temporaryName.withCString { temporary in
@@ -207,12 +219,15 @@ public struct PhysicalStateStore: Sendable {
         }
         defer { close(directoryDescriptor) }
 
-        guard let expectedIdentity = try Self.regularFileIdentityIfPresent(
+        guard let fileDescriptor = try Self.openRegularFile(
             directoryDescriptor: directoryDescriptor,
             filename: filename
         ) else {
             return
         }
+        defer { close(fileDescriptor) }
+
+        let expectedIdentity = try Self.regularFileIdentity(of: fileDescriptor)
         guard try Self.regularFileIdentityIfPresent(
             directoryDescriptor: directoryDescriptor,
             filename: filename
@@ -405,6 +420,17 @@ public struct PhysicalStateStore: Sendable {
         return descriptor
     }
 
+    private static func regularFileIdentity(of descriptor: Int32) throws -> EntryIdentity {
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else {
+            throw PhysicalStateStoreError.ioFailure(errno)
+        }
+        guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+            throw PhysicalStateStoreError.unsafeTopology
+        }
+        return EntryIdentity(metadata)
+    }
+
     private static func regularFileIdentityIfPresent(
         directoryDescriptor: Int32,
         filename: String
@@ -424,6 +450,27 @@ public struct PhysicalStateStore: Sendable {
             throw PhysicalStateStoreError.unsafeTopology
         }
         return EntryIdentity(metadata)
+    }
+
+    private static func removeEntryIfSameRegularIdentity(
+        directoryDescriptor: Int32,
+        filename: String,
+        expectedIdentity: EntryIdentity
+    ) {
+        var metadata = stat()
+        let status = filename.withCString { name in
+            fstatat(directoryDescriptor, name, &metadata, AT_SYMLINK_NOFOLLOW)
+        }
+        guard status == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG,
+              EntryIdentity(metadata) == expectedIdentity
+        else {
+            return
+        }
+
+        filename.withCString { name in
+            _ = unlinkat(directoryDescriptor, name, 0)
+        }
     }
 
     private static func createNewRegularFile(
