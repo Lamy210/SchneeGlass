@@ -23,8 +23,8 @@ struct PreparedSourceLease: Hashable, Sendable {
 /// operation ID produced by DropPlanner. No descriptor crosses the actor boundary.
 ///
 /// The pinned descriptor prevents same-path replacement, rename, or delete/recreate races from
-/// changing which physical file is copied. Size and nanosecond mtime/ctime are checked again just
-/// before copying so an in-place edit between planning and copy fails closed.
+/// changing which physical file is copied. Size and nanosecond mtime/ctime are checked immediately
+/// before and after copying so in-place edits fail closed instead of committing a mixed snapshot.
 public actor SourceFileLeaseRegistry {
     private struct Fingerprint: Hashable, Sendable {
         let size: Int64
@@ -187,13 +187,7 @@ public actor SourceFileLeaseRegistry {
         // Drop plan, which avoids accidentally reusing stale source authority.
         defer { releaseToken(token) }
 
-        var currentMetadata = stat()
-        guard fstat(lease.descriptor, &currentMetadata) == 0 else {
-            throw SourceFileLeaseError.sourceUnavailable
-        }
-        guard Fingerprint(metadata: currentMetadata) == lease.fingerprint else {
-            throw SourceFileLeaseError.sourceChanged
-        }
+        try Self.verifyUnchanged(lease)
 
         guard lseek(lease.descriptor, 0, SEEK_SET) >= 0 else {
             throw SourceFileLeaseError.sourceUnavailable
@@ -230,6 +224,11 @@ public actor SourceFileLeaseRegistry {
         ) == 0 else {
             throw Self.mapCopyError(errno)
         }
+
+        // A writer can modify an already-open inode while fcopyfile is reading it. Verify the same
+        // pinned descriptor again before the caller is allowed to create staging ownership proof
+        // or commit the result. A mismatch leaves the partial staging file uncommitted for Recovery.
+        try Self.verifyUnchanged(lease)
     }
 
     func releasePrepared(tokens: [UUID]) {
@@ -274,17 +273,35 @@ public actor SourceFileLeaseRegistry {
     }
 
     private func scheduleExpiration(for token: UUID) {
-        expirationTasks[token] = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.expirationNanoseconds)
+        // The task intentionally retains this registry until the lease expires. Raw file
+        // descriptors have no automatic Swift lifetime management; allowing the registry to
+        // deinitialize first would orphan an open descriptor. Normal release removes/cancels this
+        // task, breaking the temporary retention cycle immediately.
+        expirationTasks[token] = Task { [self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.expirationNanoseconds)
+            } catch {
+                return
+            }
             guard !Task.isCancelled else {
                 return
             }
-            await self?.expire(token: token)
+            await expire(token: token)
         }
     }
 
     private func expire(token: UUID) {
         releaseToken(token)
+    }
+
+    private static func verifyUnchanged(_ lease: Lease) throws {
+        var currentMetadata = stat()
+        guard fstat(lease.descriptor, &currentMetadata) == 0 else {
+            throw SourceFileLeaseError.sourceUnavailable
+        }
+        guard Fingerprint(metadata: currentMetadata) == lease.fingerprint else {
+            throw SourceFileLeaseError.sourceChanged
+        }
     }
 
     private static func mapOpenError(_ error: Int32) -> SourceFileLeaseError {
