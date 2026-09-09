@@ -1,0 +1,78 @@
+name: CodeQL Swift Analysis
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 18 * * 2'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Packages/SchneeGlassKit/Sources/**/*.swift'
+      - 'Packages/SchneeGlassKit/Package.swift'
+      - '.github/workflows/codeql.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/codeql.yml'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: codeql-swift-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-swift:
+    name: SwiftPM Core / CodeQL v4 / Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: swift
+          build-mode: manual
+
+      - name: Build analyzed SwiftPM core
+        run: |
+          ARCH="$(uname -m)"
+          case "$ARCH" in
+            arm64|x86_64) ;;
+            *)
+              echo "Unsupported runner architecture for CodeQL build: $ARCH" >&2
+              exit 1
+              ;;
+          esac
+
+          # Security-sensitive first-party core only. The macOS shortcut adapter is
+          # excluded here because it pulls KeyboardShortcuts and makes Swift CodeQL
+          # tracing disproportionately expensive. Bootstrap CI still compiles it.
+          for TARGET in \
+            SchneeGlassPresentation \
+            SchneeGlassFileSystemAdapter \
+            SchneeGlassPersistenceAdapter; do
+            swift build \
+              --package-path Packages/SchneeGlassKit \
+              --arch "$ARCH" \
+              --target "$TARGET"
+          done
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:swiftpm-core'
