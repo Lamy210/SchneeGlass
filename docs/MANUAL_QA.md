@@ -13,23 +13,48 @@
 - connected folder外への意図しないmutation = 0
 - Recovery操作によるfinal user-visible fileの削除 = 0
 - App Sandbox / Hardened Runtimeを維持
+- candidate provenance / evidence / checksumを証明できる
+- public build numberを再利用・巻き戻ししない
 
 QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を使用しないこと。
 
 ## 0. Candidate identification
 
-- [ ] 対象commit SHAを記録した
+- [ ] 対象Production Release Candidate run IDを記録した
+- [ ] workflow nameが`Production Release Candidate`である
+- [ ] workflow pathが`.github/workflows/production-release.yml`である
+- [ ] eventが`workflow_dispatch`である
+- [ ] branchが`main`である
+- [ ] workflow status=`completed` / conclusion=`success`である
+- [ ] 対象workflow head commit SHAを記録した
 - [ ] `MARKETING_VERSION`を記録した
 - [ ] `CURRENT_PROJECT_VERSION`を記録した
 - [ ] 対象artifact名を記録した
 - [ ] `SHA256SUMS`が存在する
 - [ ] `shasum -a 256 -c SHA256SUMS` がPASSする
 - [ ] `RELEASE_EVIDENCE.txt`が存在する
-- [ ] evidenceのcommit SHAが対象production workflow head SHAと一致する
+- [ ] `schema_version=1`である
+- [ ] 以下のkeyが各exactly 1件存在する
+  - [ ] `schema_version`
+  - [ ] `version`
+  - [ ] `notarization_id`
+  - [ ] `notarization_status`
+  - [ ] `codesign`
+  - [ ] `stapler`
+  - [ ] `gatekeeper`
+  - [ ] `bundle_identifier`
+  - [ ] `bundle_version`
+  - [ ] `bundle_build`
+  - [ ] `commit_sha`
+- [ ] unknown key / blank line / malformed lineがない
+- [ ] evidenceの`commit_sha`が対象production workflow head SHAと一致する
 - [ ] evidenceの`bundle_identifier`が`io.github.lamy210.schneeglass`である
 - [ ] evidenceの`bundle_version`がQA対象versionと一致する
 - [ ] evidenceの`bundle_build`がQA対象build numberと一致するpositive integerである
-- [ ] `bundle_identifier` / `bundle_version` / `bundle_build`がevidence内に各1件だけ存在する
+- [ ] `notarization_status=Accepted`
+- [ ] `codesign=verified`
+- [ ] `stapler=validated`
+- [ ] `gatekeeper=accepted`
 - [ ] unsigned candidateの場合、production releaseとして公開しないことを確認した
 
 ## 1. Clean install / first launch
@@ -161,7 +186,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 Developer ID signing / notarization pipelineは実装済み。このSectionは**実credentialで生成した、そのexact candidate**に対して必須。
 
-- [ ] `Production Release Candidate` workflowが`main`の対象commitからsuccessしている
+- [ ] `.github/workflows/production-release.yml`の`Production Release Candidate` workflowが`main`の対象commitからsuccessしている
 - [ ] `codesign --verify --deep --strict` PASS
 - [ ] Developer ID Application identityで署名されている
 - [ ] TeamIdentifierが想定Team IDと一致する
@@ -178,7 +203,7 @@ Developer ID signing / notarization pipelineは実装済み。このSectionは**
 - [ ] quarantine付きダウンロード相当の状態から起動できる
 - [ ] signed/stapled artifactに対する最終SHA-256 manifestを生成した
 - [ ] final signed ZIPから記録されたbundle identifier / version / build evidenceがQA対象と一致する
-- [ ] `RELEASE_EVIDENCE.txt`のnotarization / codesign / stapler / Gatekeeper状態がcandidateと一致する
+- [ ] strict schema v1 evidence validationがPASSする
 - [ ] Actions artifactにcredential materialが含まれていない
 
 ## 15. Immutable production publication
@@ -192,11 +217,19 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] `confirm_manual_qa = true`はこのexact candidateのQA完了後にだけ指定する
 - [ ] `confirm_immutable_releases = true`はRepository設定確認後にだけ指定する
 - [ ] `confirm_release_governance = true`はbranch / required CI / release-source governance確認後にだけ指定する
-- [ ] publication workflowのcandidate workflow / branch / success再検証がPASSする
+- [ ] `confirm_publish = true`は公開意思を最終確認した後にだけ指定する
+- [ ] publication workflowがcandidate workflow nameを`Production Release Candidate`として再検証する
+- [ ] publication workflowがcandidate workflow pathを`.github/workflows/production-release.yml`として再検証する
+- [ ] candidate event=`workflow_dispatch` / branch=`main` / completed-successを再検証する
 - [ ] candidate commitがcurrent `main`のancestorである
+- [ ] schema v1 evidence再検証がPASSする
 - [ ] evidence commit SHAがcandidate workflow head SHAと一致する
 - [ ] evidence bundle identifier / version / buildの再検証がPASSする
 - [ ] `SHA256SUMS` self-check PASS
+- [ ] public Release build history取得がPASSする
+- [ ] first public Releaseならhistory 0件としてPASSする
+- [ ] 既存public Releaseがある場合、candidate `bundle_build > max(public bundle_build)`である
+- [ ] historical evidence欠落・malformed時にfail-closedする
 - [ ] 同一tag / Releaseが事前に存在しない
 - [ ] asset無しDraftの作成後、Draft targetがQA済みcandidate SHAと一致する
 - [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`のDraft upload/asset validation PASS
@@ -207,7 +240,25 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] Release assetsに`RELEASE_EVIDENCE.txt`が存在する
 - [ ] Release tagがQA済みcandidate source commitを指す
 
-## 16. Final release record
+## 16. Performance / release-window diagnostics
+
+Release windowで500-item Folder Snapshot baselineの最新結果を確認する。
+
+- [ ] `.github/workflows/snapshot-performance.yml`の直近relevant runがPASSしている
+- [ ] `SCHNEEGLASS_PERF_RESULT snapshot_500` markerが存在する
+- [ ] measurementはmonotonic clockを使用している
+- [ ] worst latencyが`0.5s`未満である
+- [ ] 単発CI jitterではなく継続的悪化がある場合はDEBT-001のRevisit Triggerとして扱った
+
+PR #39導入時の基準値:
+
+```text
+average = 0.055926s
+worst   = 0.059213s
+limit   = 0.500000s
+```
+
+## 17. Final release record
 
 Release時に以下をPR / Release notes / QA recordのいずれかへ残す。
 
@@ -218,7 +269,7 @@ Release時に以下をPR / Release notes / QA recordのいずれかへ残す。
 - [ ] canonical CI run
 - [ ] compatibility CI run
 - [ ] AddressSanitizer status
-- [ ] ThreadSanitizer / CodeQL status or release-window evaluation
+- [ ] ThreadSanitizer / CodeQL / Snapshot Performance status or release-window evaluation
 - [ ] Production Release Candidate workflow run
 - [ ] Publish Production Release workflow run
 - [ ] manual QA実施者と実施日
@@ -236,7 +287,10 @@ Release時に以下をPR / Release notes / QA recordのいずれかへ残す。
 - Sandbox / signing / notarization gate failure
 - config restore結果とUI結果の不一致
 - supported baselineでのlaunch failure
-- candidate source/bundle evidence/checksum不一致
+- candidate workflow identity / source / bundle evidence / checksum不一致
+- release evidence schema violation
+- public build number再利用 / 巻き戻し
+- public build historyを証明できない状態
 - release governance未確認でのpublication
 - mutable public Release
 
