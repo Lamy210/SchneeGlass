@@ -6,9 +6,9 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1 Core Feature / Recovery Complete / Quality & Release Hardening**
+**v0.1 Core / Recovery / Automated Quality Baseline Complete — Production Validation Pending**
 
-Bootstrap段階とv0.1必須Recovery導線は完了し、現在の`main`には実macOS Appと主要利用・障害復旧フローが接続されています。
+v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / notarization / immutable release publicationのコードは`main`へ実装済みです。現在のRelease blockerは、production credential・repository governance・実signed candidate・Manual QAを用いた運用検証です。
 
 実装済み:
 
@@ -48,16 +48,28 @@ Bootstrap段階とv0.1必須Recovery導線は完了し、現在の`main`には�
 - Public Repository / Architecture / File Safety CI guards
 - Xcode 26.6 Debug / Release build CI
 - macOS 15 compatibility build CI
-- unsigned CI app artifact生成
+- AddressSanitizer package tests
+- scheduled/manual ThreadSanitizer package tests
+- scheduled/manual/default-branch Swift CodeQL v4 analysis
+- unsigned Release Candidate validation + SHA-256 manifest
+- production credential contract / credential-free fail-closed preflight
+- Developer ID signed Release archive workflow
+- post-sign codesign / entitlement / Hardened Runtime verification
+- Apple `notarytool` Accepted-state verification
+- stapler / Gatekeeper verification
+- signed/notarized candidate artifact + release evidence
+- Manual QA後のimmutable GitHub Release promotion workflow
 
-v0.1で残っている主要項目:
+v0.1で残っているRelease blocker:
 
-- Quality / Diagnostics CIの拡張
-- 配布用Signing / Notarization / Release Pipeline
-- release/install documentation
-- manual QAの仕上げ
+- `production-release` environmentへ実Developer ID / App Store Connect credentialを設定
+- Repository release immutabilityを有効化
+- `main` branch protection / required CIなどRelease governanceを確認
+- 最初のcredentialed signed/notarized candidateを成功させる
+- `docs/MANUAL_QA.md`をsigned candidateで完走する
+- 最初のimmutable v0.1 GitHub Releaseをpublishする
 
-詳細な進捗は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) を参照してください。
+コード実装済みと運用検証待ちを混同しないこと。詳細は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) と Issue #33 を参照してください。
 
 ## Product Promise
 
@@ -115,9 +127,10 @@ swift test --package-path Packages/SchneeGlassKit
 bash Scripts/verify-public-repo.sh
 bash Scripts/verify-architecture.sh
 bash Scripts/verify-file-safety.sh
+bash Scripts/verify-release-metadata.sh
 ```
 
-GitHub Actionsでは上記に加えて、macOS 15 compatibility buildとXcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact生成を継続検証します。
+GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibility build、Xcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact、scheduled ThreadSanitizer、Swift CodeQL v4を継続検証します。
 
 ## Documentation
 
@@ -125,13 +138,16 @@ GitHub Actionsでは上記に加えて、macOS 15 compatibility buildとXcode 26
 - [Testing](TESTING.md)
 - [Security](SECURITY.md)
 - [Dependencies](DEPENDENCIES.md)
+- [Release Policy](RELEASE.md)
+- [Install](docs/INSTALL.md)
+- [Manual QA](docs/MANUAL_QA.md)
 - [Agent Rules](AGENTS.md)
 - [Technical Debt](TECH_DEBT.md)
 - [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
 
 ## v0.1 Scope
 
-実装済み / 実装中:
+実装済み:
 
 - Folder Glass
 - Multiple Glass

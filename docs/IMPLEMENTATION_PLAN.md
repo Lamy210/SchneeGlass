@@ -240,13 +240,14 @@ Status: **ACTIVE BASELINE**
 
 ### TASK-017 — CI / Diagnostics
 
-Status: **IN PROGRESS**
+Status: **DONE for v0.1 automated baseline**
 
 現在のCI:
 
 - macOS 26 / Xcode 26.6 toolchain verification
 - Swift Package tests
 - pull request時のAddressSanitizer package tests
+- scheduled/manual ThreadSanitizer package tests
 - Debug app build
 - Release app build
 - macOS 15 compatibility package tests / app build
@@ -256,22 +257,27 @@ Status: **IN PROGRESS**
 - release metadata guard
 - app bundle / Sandbox baseline verification
 - unsigned CI artifact
+- Swift CodeQL v4
+  - workflow変更PR
+  - `main` default-branch source変更
+  - manual dispatch
+  - weekly schedule
+  - first-party SwiftPM core targetをmanual build-modeで解析
 
-追加候補:
+v0.1 Release blockerではない追加候補:
 
 - formatting / lint gate
 - Periphery
-- CodeQL
-- TSan
 - Main Thread Checker
-- Integration / UI test plan
+- Integration / UI automation
+- Performance baseline
 
-Sanitizerや追加解析はCI時間・false positive・無料枠を評価して個別PRで導入する。AddressSanitizerは通常package testと同じcanonical runner上でPR時のみ実行し、追加runner起動を避ける。
+追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にASan / TSan / CodeQLは導入済みなので、古い計画を根拠に二重導入しないこと。
 
 ### TASK-018 — Release Pipeline
-Status: **IN PROGRESS**
+Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 
-実装済み:
+コード実装済み:
 
 - strict `X.Y.Z` marketing version policy
 - positive integer build number policy
@@ -283,26 +289,58 @@ Status: **IN PROGRESS**
 - immutable bad-release / rollback policy
 - ADR-0006: v0.1はDeveloper ID direct distributionを採用
 - App Sandbox / Hardened Runtimeをproductionでも維持
-
-残り:
-
-- protected release environment / secret contract
+- protected `production-release` environmentを前提にしたcredential contract
+- credential-free preflight / fail-closed regression
 - temporary keychainへのDeveloper ID certificate import
-- Developer ID signed Release build/export
-- post-sign `codesign` / entitlement verification
-- `notarytool` submission + accepted-state verification
+- Developer ID signed Release archive
+- post-sign `codesign --verify --deep --strict`
+- Developer ID authority / TeamIdentifier / Hardened Runtime / timestamp検証
+- signed entitlements再検証
+- `notarytool` submission + `Accepted`必須
 - notarization ticket staple / validate
 - Gatekeeper assessment
-- immutable GitHub Release publication
-- signed artifact manual QA
+- final signed ZIP + SHA-256 manifest
+- signed/notarized candidate Actions artifact
+- source commit / notarization / signature evidence
+- Manual QA後のGitHub Release promotion workflow
+- candidate workflow / branch / source SHA / evidence / checksum再検証
+- Draft asset verification
+- publish後`isImmutable=true`必須
+- mutable releaseを正式Releaseとして残さないcleanup path
+- public ReleaseへZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`添付
+
+残るRelease blockerはコード実装ではなく運用検証:
+
+- `production-release` environmentへ実credentialを設定
+- repository release immutabilityを有効化
+- `main` branch protection / required checkなどrelease governanceを確認
+- 最初のcredentialed signed/notarized candidateを成功させる
+- signed candidateで`docs/MANUAL_QA.md`を完走
+- 最初のimmutable v0.1 Releaseをpublishして検証
+
+これらはIssue #33で追跡する。実credential値をRepositoryへcommitしない。
 
 ### TASK-019 — Documentation
-Status: **IN PROGRESS**
+Status: **DONE for v0.1 code/document baseline / release record pending**
+
+実装済み:
 
 - README / implementation status同期
 - Recovery UX documentation
-- release / install documentation
-- manual QA checklist
+- Release policy
+- Install guidance
+- signed-artifact Manual QA checklist
+- production credential contract documentation
+
+Release時に残る記録:
+
+- tested candidate commit / version / build
+- tested macOS versions
+- CI / sanitizer / CodeQL status
+- signed candidate workflow run
+- artifact SHA-256
+- Manual QA実施記録
+- final immutable Release URL / tag
 
 ---
 
@@ -311,12 +349,14 @@ Status: **IN PROGRESS**
 現時点の優先順位:
 
 ```text
-1. Quality / Diagnostics gap review
-2. Developer ID signing / notarization pipeline
-3. Final docs + signed-artifact manual QA
+1. Issue #33: production-release credential / governance setup
+2. First credentialed Developer ID + notarized candidate
+3. Signed candidate Manual QA
+4. First immutable v0.1 GitHub Release publication
+5. Release recordをDocumentationへ反映
 ```
 
-Recoveryのv0.1必須導線は完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
+Core / Recovery / v0.1 automated quality / release automation codeは完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
 
 ---
 
@@ -331,6 +371,8 @@ User-owned source destructive mutation 禁止
 Security-scoped acquire/release balance
 Unknown data auto-delete 禁止
 Silent recovery rollback 禁止
+Unsigned artifact production公開禁止
+Mutable release artifact差し替え禁止
 ```
 
 Architectureを変更する必要がある場合は、実装で先に回避せずADRを追加して判断する。
