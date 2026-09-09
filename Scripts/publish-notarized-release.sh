@@ -156,22 +156,34 @@ if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
   fail "GitHub Release already exists: $TAG"
 fi
 
-CREATED_RELEASE=true
+# Create the draft without assets first. Only a successful create establishes ownership
+# for cleanup, avoiding deletion of a concurrently-created release on create failure.
 gh release create "$TAG" \
-  "$ARCHIVE" \
-  "$CHECKSUMS" \
-  "$EVIDENCE" \
   --repo "$GITHUB_REPOSITORY" \
   --target "$RUN_HEAD_SHA" \
   --title "SchneeGlass ${RELEASE_VERSION}" \
   --generate-notes \
   --draft
+CREATED_RELEASE=true
 
 IS_DRAFT="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json isDraft \
   --jq '.isDraft')"
 [[ "$IS_DRAFT" == 'true' ]] || fail "release was not created as draft"
+
+RELEASE_TARGET="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json targetCommitish \
+  --jq '.targetCommitish')"
+[[ "$RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
+  || fail "draft release target mismatch: expected $RUN_HEAD_SHA, got $RELEASE_TARGET"
+
+gh release upload "$TAG" \
+  "$ARCHIVE" \
+  "$CHECKSUMS" \
+  "$EVIDENCE" \
+  --repo "$GITHUB_REPOSITORY"
 
 ASSET_NAMES="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
