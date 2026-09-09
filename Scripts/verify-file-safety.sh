@@ -25,12 +25,17 @@ while IFS= read -r match; do
   fi
 
   if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ConfigurationBackupRotator.swift"* ]] \
-     && [[ "$text" == *".removeItem("* ]]; then
+     && [[ "$text" == *"unlink("* ]]; then
     continue
   fi
 
   echo "File safety violation: ${file#$ROOT/}:$line:$text" >&2
   violations=1
-done < <(grep -RInE '\.(removeItem|moveItem|replaceItem)\(' "$SRC" --include='*.swift' || true)
+done < <(
+  {
+    grep -RInE '\.(removeItem|moveItem|replaceItem)\(' "$SRC" --include='*.swift' || true
+    grep -RInE '(^|[^[:alnum:]_])unlink\(' "$SRC" --include='*.swift' || true
+  } | sort -u
+)
 
 exit "$violations"
