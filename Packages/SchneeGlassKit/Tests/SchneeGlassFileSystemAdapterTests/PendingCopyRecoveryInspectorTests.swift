@@ -32,8 +32,10 @@ private func makeRecoveryRoot() throws -> URL {
 }
 
 private func resourceIdentifier(for url: URL) throws -> String? {
-    let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    return values.fileResourceIdentifier.map { String(describing: $0) }
+    try PendingCopyFileIdentity.token(
+        at: url,
+        fileManager: .default
+    )
 }
 
 private func expectedVerification(
