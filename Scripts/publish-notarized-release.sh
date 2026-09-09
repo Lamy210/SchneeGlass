@@ -22,6 +22,7 @@ for name in \
   GH_TOKEN \
   CONFIRM_MANUAL_QA \
   CONFIRM_IMMUTABLE_RELEASES \
+  CONFIRM_RELEASE_GOVERNANCE \
   CONFIRM_PUBLISH; do
   require_env "$name"
 done
@@ -36,6 +37,8 @@ done
   || fail "manual QA confirmation is required"
 [[ "$CONFIRM_IMMUTABLE_RELEASES" == 'true' ]] \
   || fail "immutable releases confirmation is required"
+[[ "$CONFIRM_RELEASE_GOVERNANCE" == 'true' ]] \
+  || fail "release governance confirmation is required"
 [[ "$CONFIRM_PUBLISH" == 'true' ]] \
   || fail "explicit publish confirmation is required"
 
