@@ -125,7 +125,14 @@ public final class FileURLDropDestinationView: NSView {
     }
 
     public override func draggingEnded(_ sender: any NSDraggingInfo) {
-        resetValidation(notifyExit: false)
+        finishDraggingSession()
+    }
+
+    /// A drag can end without first exiting this view (for example, user cancellation while the
+    /// pointer is still over the Glass). Always notify the workspace so hover/drop-valid UI cannot
+    /// remain stale after AppKit has ended the session.
+    func finishDraggingSession() {
+        resetValidation(notifyExit: true)
     }
 
     func updateCallbacks(
