@@ -52,16 +52,24 @@ public actor SourceFileLeaseRegistry {
         let sourceURL: URL
         let fingerprint: Fingerprint
         var operationID: UUID?
+        var executionActive: Bool
     }
 
-    private static let expirationNanoseconds: UInt64 = 120_000_000_000
+    private static let defaultExpirationNanoseconds: UInt64 = 120_000_000_000
 
+    private let expirationNanoseconds: UInt64
     private var leases: [UUID: Lease] = [:]
     private var tokenByOperationID: [UUID: UUID] = [:]
     private var operationIDBySourceURL: [URL: UUID] = [:]
     private var expirationTasks: [UUID: Task<Void, Never>] = [:]
 
-    public init() {}
+    public init() {
+        self.expirationNanoseconds = Self.defaultExpirationNanoseconds
+    }
+
+    init(expirationNanoseconds: UInt64) {
+        self.expirationNanoseconds = expirationNanoseconds
+    }
 
     func prepareSource(at url: URL) throws -> PreparedSourceLease {
         let source = url.standardizedFileURL
@@ -105,7 +113,8 @@ public actor SourceFileLeaseRegistry {
             descriptor: descriptor,
             sourceURL: source,
             fingerprint: fingerprint,
-            operationID: nil
+            operationID: nil,
+            executionActive: false
         )
         scheduleExpiration(for: token)
 
@@ -144,12 +153,16 @@ public actor SourceFileLeaseRegistry {
             throw SourceFileLeaseError.sourceUnavailable
         }
 
-        // A newer plan for the same path invalidates an older unconsumed plan. This keeps source
-        // metadata lookup unambiguous and makes stale plans fail closed instead of borrowing a
-        // descriptor that belongs to another operation.
+        // A newer plan may invalidate an older unconsumed plan, but it must never revoke source
+        // authority that belongs to a batch whose copy execution has already begun.
         if let previousOperationID = operationIDBySourceURL[lease.sourceURL],
            previousOperationID != operationID
         {
+            if let previousToken = tokenByOperationID[previousOperationID],
+               leases[previousToken]?.executionActive == true
+            {
+                throw SourceFileLeaseError.sourceUnavailable
+            }
             releaseBound(operationID: previousOperationID)
         }
 
@@ -157,6 +170,24 @@ public actor SourceFileLeaseRegistry {
         leases[token] = lease
         tokenByOperationID[operationID] = token
         operationIDBySourceURL[lease.sourceURL] = operationID
+    }
+
+    /// Marks every still-bound lease in a submitted batch as execution-active. Active leases are no
+    /// longer stale-plan candidates: their TTL is cancelled and a newer plan for the same source
+    /// cannot supersede them while earlier items in the batch are copying.
+    func beginExecution(operationIDs: [UUID]) {
+        for operationID in operationIDs {
+            guard let token = tokenByOperationID[operationID],
+                  var lease = leases[token],
+                  lease.operationID == operationID
+            else {
+                continue
+            }
+
+            lease.executionActive = true
+            leases[token] = lease
+            expirationTasks.removeValue(forKey: token)?.cancel()
+        }
     }
 
     func boundSourceSize(at sourceURL: URL) -> Int64? {
@@ -284,20 +315,21 @@ public actor SourceFileLeaseRegistry {
     }
 
     private func scheduleExpiration(for token: UUID) {
-        // The task intentionally retains this registry until the lease expires. Raw file
+        // The task intentionally retains this registry until an unconsumed lease expires. Raw file
         // descriptors have no automatic Swift lifetime management; allowing the registry to
-        // deinitialize first would orphan an open descriptor. Normal release removes/cancels this
-        // task, breaking the temporary retention cycle immediately.
+        // deinitialize first would orphan an open descriptor. Normal release or execution start
+        // removes/cancels this task, breaking the temporary retention cycle immediately.
+        let expirationNanoseconds = self.expirationNanoseconds
         expirationTasks[token] = Task { [self] in
             do {
-                try await Task.sleep(nanoseconds: Self.expirationNanoseconds)
+                try await Task.sleep(nanoseconds: expirationNanoseconds)
             } catch {
                 return
             }
             guard !Task.isCancelled else {
                 return
             }
-            await expire(token: token)
+            expire(token: token)
         }
     }
 
@@ -458,10 +490,11 @@ public actor PinnedSourceFileCopying: FileCopying {
     }
 
     public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+        let operationIDs = request.plan.items.map(\.operationID)
+        await sourceLeases.beginExecution(operationIDs: operationIDs)
+
         let result = await delegate.copy(request)
-        await sourceLeases.releaseBound(
-            operationIDs: request.plan.items.map(\.operationID)
-        )
+        await sourceLeases.releaseBound(operationIDs: operationIDs)
         return result
     }
 }
