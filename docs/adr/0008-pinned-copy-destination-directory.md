@@ -31,9 +31,15 @@ Binding performs all of the following before mutation begins:
 
 - open destination with `O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW`,
 - verify the open descriptor still matches the destination pathname,
+- require a directory-specific resource identifier from the acquired access or authoritative plan,
 - compare available `FolderAccessHandle` fingerprint values,
 - compare the authoritative `DestinationDescriptor` resource identifier,
 - require the volume to advertise exclusive rename support.
+
+A volume identifier alone is not sufficient because it cannot distinguish two directories on the
+same filesystem. If both the acquired access and authoritative plan lack a directory resource
+identifier, production mutation fails closed rather than accepting an identity that cannot detect a
+planning-to-execution directory replacement.
 
 Every operation ID in the batch is then associated with that same open directory descriptor plus its
 single-component staging/final filenames.
@@ -71,10 +77,12 @@ is unchanged.
 The older `InternalStagingCommitter` remains available for focused internal tests/support code, but
 production `PinnedSourceFileCopying` uses only the descriptor-relative committer.
 
-### Unsupported volumes
+### Unsupported volumes / identities
 
 If Foundation does not report `volumeSupportsExclusiveRenaming == true`, production Drop execution
-fails closed. v0.1 does not silently fall back to a weaker path-based commit implementation.
+fails closed. Likewise, if no directory-specific resource identity is available to compare planning
+and execution, production Drop execution fails closed. v0.1 does not silently fall back to a weaker
+path-based or volume-only identity implementation.
 
 Network destinations remain unsupported independently of this decision.
 
@@ -101,6 +109,7 @@ the production source-copy boundary.
 Regression tests must cover:
 
 - destination rename/recreate between authoritative planning and execution,
+- missing directory-specific identity rejection,
 - existing final entry preservation,
 - descriptor-relative commit after destination pathname replacement,
 - source/destination lease cleanup on failure and success.
@@ -118,6 +127,8 @@ Advantages:
 Costs:
 
 - production Drop execution is unavailable on volumes without exclusive rename support,
+- production Drop execution is unavailable when a directory-specific resource identity cannot be
+  established,
 - POSIX-specific implementation and tests increase,
 - production commit no longer relies on `FileManager.moveItem`/`NSFileCoordinator` for the final
   local rename; network destinations are already outside v0.1 scope.
