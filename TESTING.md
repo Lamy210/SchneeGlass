@@ -91,6 +91,7 @@ Scripts/verify-public-repo.sh
 Scripts/verify-architecture.sh
 Scripts/verify-file-safety.sh
 Scripts/verify-release-metadata.sh
+Scripts/verify-production-release-preflight.sh
 swift test --package-path Packages/SchneeGlassKit
 ```
 
@@ -204,7 +205,7 @@ Recovery testでは次を特に固定します。
 
 ---
 
-## 8. FSEvents Tests
+## 8. FSEvents / Snapshot Tests
 
 Event件数をassertしません。
 
@@ -219,6 +220,42 @@ FolderSnapshot == final filesystem state
 ```
 
 Startup snapshot中のeventを取りこぼさないこともcritical contractです。
+
+### 500-item Snapshot Performance Baseline
+
+DEBT-001のRevisit Triggerを実測可能にするため、`NativeFolderSnapshotReader`の500-item direct-child snapshotを専用workflowで測定します。
+
+Test contract:
+
+```text
+501 direct-child files
+↓
+500 items returned + isTruncated == true
+↓
+3 snapshots
+↓
+ProcessInfo.systemUptimeで測定
+↓
+worst < 0.5s
+```
+
+通常package test / ASanでは`SCHNEEGLASS_PERFORMANCE_BASELINE`未設定のためperformance measurementはskipします。専用workflowだけが`SCHNEEGLASS_PERFORMANCE_BASELINE=1`を設定します。
+
+CI logには必ず次のmarkerを出し、filter mismatch等で0 testのままgreenになることを防ぎます。
+
+```text
+SCHNEEGLASS_PERF_RESULT snapshot_500 ...
+```
+
+PR #39導入時の最終GitHub-hosted macOS 26 / Xcode 26.6実測:
+
+```text
+average = 0.055926s
+worst   = 0.059213s
+limit   = 0.500000s
+```
+
+単発のshared-runner jitterだけで設計変更を判断せず、継続超過または実機UI responsivenessへの影響をRevisit Triggerとします。
 
 ---
 
@@ -251,6 +288,28 @@ Unsigned CI artifact
 ```
 
 別jobでmacOS 15 compatibility package tests / app buildも実行します。
+
+### Relevant PR / Scheduled / Manual — Snapshot Performance Baseline
+
+`.github/workflows/snapshot-performance.yml`:
+
+```text
+macOS 26 / Xcode 26.6
+500-item direct-child snapshot
+3-run monotonic-clock measurement
+worst < 0.5s
+performance marker required
+```
+
+実行条件:
+
+- workflow自身変更PR
+- `NativeFolderSnapshotReader.swift`変更PR
+- 対応test変更PR
+- manual dispatch
+- weekly schedule
+
+無関係PRでは追加macOS runnerを起動しません。
 
 ### Scheduled / Manual — ThreadSanitizer
 
@@ -306,9 +365,11 @@ Credential-free pathでは次をCIで固定します。
 
 ```text
 production release preflight
-signing script shell syntax
+signing/evidence helper shell syntax
 credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない
+schema v1 evidence fixture
+unknown evidence key rejection
 PRでは実signing jobをskip
 ```
 
@@ -326,7 +387,10 @@ stapler staple / validate
 Gatekeeper assessment
 final SHA-256 manifest
 signed/notarized candidate artifact
-release evidence
+schema v1 RELEASE_EVIDENCE.txt
+signed ZIP-derived bundle identifier / version / build
+exact source commit evidence
+complete evidence validation before artifact upload
 ```
 
 ### Production Release Publication
@@ -336,16 +400,36 @@ Signed/notarized candidateを直接自動公開しません。Manual QA完了後
 Publication jobは以下を再検証します。
 
 ```text
-candidate workflow identity / event / branch / success
-candidate source commit SHA
-release evidence
+candidate workflow name == Production Release Candidate
+candidate workflow path == .github/workflows/production-release.yml
+event == workflow_dispatch
+branch == main
+status == completed / conclusion == success
+valid candidate source commit SHA
+schema v1 release evidence
+unknown/malformed evidence rejection
+bundle identifier / version / positive build
 notarization / codesign / stapler / Gatekeeper state
+evidence commit SHA == candidate workflow head SHA
 SHA256SUMS
 candidate commit is ancestor of current main
+public Release build-number history
 pre-existing tag / release absence
-draft assets
+draft target SHA / assets
 published release isImmutable == true
 ```
+
+Build history contract:
+
+```text
+public Release 0件:
+  first releaseとしてPASS
+
+public Release 1件以上:
+  candidate bundle_build > max(all public release bundle_build)
+```
+
+過去public Releaseの`RELEASE_EVIDENCE.txt`が取得不能・malformed・unsupported schemaの場合は公開せずfail-closedします。prereleaseもnon-draftならdistribution historyとして扱います。
 
 公開Releaseには少なくとも次を添付します。
 
@@ -366,7 +450,6 @@ formatting / lint
 Periphery
 Main Thread Checker
 Integration / UI automation
-Performance baseline
 ```
 
 追加解析はCI時間・false positive・無料枠・既存検査との重複を評価し、個別PRで導入します。
@@ -391,6 +474,8 @@ CIでは完全に代替できない実ユーザー操作とartifact確認は [`d
 - supported macOS baseline
 - signed production candidateのcodesign / notarization / stapling / Gatekeeper
 - quarantine付き配布相当artifactからのlaunch
+- exact candidate workflow path / source SHA / schema v1 evidence
+- build-number history gate
 
 Manual QAが自動Safety testの代替になることも、自動testがManual QAの代替になることもありません。
 
@@ -413,6 +498,9 @@ Release blockerの代表例:
 - Sandbox / signing / notarization gate failure
 - supported baselineでのlaunch failure
 - mutable production release
-- candidate source/evidence/checksum不一致
+- candidate workflow identity / source / evidence / checksum不一致
+- release evidence schema violation
+- reused / decreasing public build number
+- public build historyを証明できない状態
 
-Production releaseではDeveloper ID signing、notarization、stapling、Gatekeeper assessment、final SHA-256 manifest、Manual QA、immutable publicationをすべて通過させます。
+Production releaseではDeveloper ID signing、notarization、stapling、Gatekeeper assessment、final SHA-256 manifest、Manual QA、exact candidate provenance validation、monotonic build history、immutable publicationをすべて通過させます。
