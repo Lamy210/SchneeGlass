@@ -1,40 +1,48 @@
+import Darwin
 import Foundation
 
 /// Physical identity token used only for Pending Copy ownership / commit verification.
 ///
-/// URL resource identifiers are intentionally not used as the sole ownership proof here. The
-/// token combines filesystem/device number, filesystem file number, and creation time so a
-/// same-path replacement can be distinguished from the file SchneeGlass originally staged while
-/// a same-filesystem rename keeps the same identity.
+/// The token is intentionally derived from `lstat(2)` rather than URL resource identifiers or
+/// rounded Foundation dates. Pending Copy needs to distinguish a path that still names the exact
+/// staged file from a path that was removed and recreated before commit/recovery. A same-filesystem
+/// rename preserves these inode fields, while inode generation and nanosecond birth time strengthen
+/// replacement detection when an inode number is reused quickly.
 enum PendingCopyFileIdentity {
-    private static let schema = "stat-v1"
+    private static let schema = "stat-v2"
 
     static func token(
         at url: URL,
         fileManager: FileManager
     ) throws -> String? {
-        let attributes = try fileManager.attributesOfItem(
-            atPath: url.standardizedFileURL.path
-        )
-        return token(from: attributes)
-    }
-
-    static func token(
-        from attributes: [FileAttributeKey: Any]
-    ) -> String? {
-        guard let systemNumber = attributes[.systemNumber] as? NSNumber,
-              let fileNumber = attributes[.systemFileNumber] as? NSNumber,
-              let creationDate = attributes[.creationDate] as? Date
-        else {
+        _ = fileManager
+        let candidate = url.standardizedFileURL
+        guard candidate.isFileURL else {
             return nil
         }
 
-        let creationBits = creationDate.timeIntervalSinceReferenceDate.bitPattern
-        return [
-            schema,
-            String(systemNumber.uint64Value),
-            String(fileNumber.uint64Value),
-            String(creationBits, radix: 16),
-        ].joined(separator: ":")
+        return try candidate.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return nil
+            }
+
+            var metadata = stat()
+            guard lstat(path, &metadata) == 0 else {
+                let errorCode = errno
+                throw NSError(
+                    domain: NSPOSIXErrorDomain,
+                    code: Int(errorCode)
+                )
+            }
+
+            return [
+                schema,
+                String(metadata.st_dev),
+                String(metadata.st_ino),
+                String(metadata.st_gen),
+                String(metadata.st_birthtimespec.tv_sec),
+                String(metadata.st_birthtimespec.tv_nsec),
+            ].joined(separator: ":")
+        }
     }
 }
