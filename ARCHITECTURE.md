@@ -254,12 +254,17 @@ Read Pathで実装済み:
 
 Safe Copyで実装済み:
 
+- `PinnedDropCopyPipeline`
 - `SafeFileCopyEngine`
-- `InternalStagingCommitter`
 - `SourceFileLeaseRegistry`
+- `DestinationDirectoryLeaseRegistry`
+- `PinnedDestinationStagingCommitter`
+- `InternalStagingCommitter`（internal test/support）
 - `JSONPendingCopyStore`
 
 Runtimeでdestination filesystemに対するuser-visible copy mutationを実行できる唯一のConcrete Adapterです。
+
+Production Safe Copyはsource inodeとdestination directoryをdescriptorでpinし、staging作成を`openat(... O_EXCL | O_NOFOLLOW)`、final commitを同一directory descriptor上の`renameatx_np(... RENAME_EXCL)`で実行します。Pathnameは表示・計画上の情報であり、mutation authorityそのものとして扱いません。詳細はADR 0008を参照します。
 
 Pending-copy metadataのapp-owned state mutationは`SchneeGlassPOSIXSupport`へ委譲します。
 
@@ -392,16 +397,16 @@ Write
 唯一の内部例外は、SchneeGlass自身が現在のCopy operationのために作成したstaging fileを同一destination directory内でfinal nameへcommitするRenameです。
 
 ```text
-.glass-<operation-id>.partial
-              ↓
-         final-name.ext
+.schneeglass-copy-<operation-id>.partial
+                   ↓
+              final-name.ext
 ```
 
-この処理は `InternalStagingCommitter` のみ実行できます。
+Productionでは`DestinationDirectoryLeaseRegistry`が物理destination directoryをpinし、`PinnedDestinationStagingCommitter`だけがそのdescriptor上で`RENAME_EXCL`付きfinal commitを実行します。`InternalStagingCommitter`はfocused internal test/support pathとして残しますが、production compositionからは使用しません。
 
 SchneeGlass-owned metadata (`Configuration` / `FileOperations`) のmutationはuser-owned mutationとは別boundaryとして`SchneeGlassPOSIXSupport.PhysicalStateStore`だけに限定します。
 
-CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceItem` / `mkdirat` / `renameat` / `unlinkat` / state-file `O_CREAT` 使用を拒否します。
+CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceItem` / `mkdirat` / `renameat` / `renameatx_np` / `unlinkat` / mutation用`O_CREAT` 使用を拒否します。
 
 ---
 
