@@ -24,11 +24,6 @@ while IFS= read -r match; do
     continue
   fi
 
-  if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ConfigurationBackupRotator.swift"* ]] \
-     && [[ "$text" == *"unlink("* ]]; then
-    continue
-  fi
-
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift"* ]] \
      && { [[ "$text" == *"fcopyfile("* ]] || [[ "$text" == *"O_CREAT"* ]]; }; then
     continue
