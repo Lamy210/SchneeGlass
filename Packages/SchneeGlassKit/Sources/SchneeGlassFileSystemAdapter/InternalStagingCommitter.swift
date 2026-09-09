@@ -183,7 +183,6 @@ public actor InternalStagingCommitter: StagingCommitting {
             values = try candidate.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
-                .fileResourceIdentifierKey,
             ])
         } catch {
             throw StagingCommitError.commitFailed
@@ -194,7 +193,7 @@ public actor InternalStagingCommitter: StagingCommitting {
         else {
             throw StagingCommitError.unexpectedFileType
         }
-        guard let identity = values.fileResourceIdentifier.map({ String(describing: $0) }) else {
+        guard let identity = PendingCopyFileIdentity.token(from: attributes) else {
             throw StagingCommitError.resourceIdentityUnavailable
         }
 
@@ -243,7 +242,6 @@ public actor InternalStagingCommitter: StagingCommitting {
             values = try candidate.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
-                .fileResourceIdentifierKey,
             ])
         } catch {
             throw StagingCommitError.commitFailed
@@ -255,7 +253,7 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.unexpectedFileType
         }
 
-        guard let observedIdentity = values.fileResourceIdentifier.map({ String(describing: $0) }) else {
+        guard let observedIdentity = PendingCopyFileIdentity.token(from: attributes) else {
             throw StagingCommitError.resourceIdentityUnavailable
         }
         guard observedIdentity == authorization.expectedResourceIdentifier else {
