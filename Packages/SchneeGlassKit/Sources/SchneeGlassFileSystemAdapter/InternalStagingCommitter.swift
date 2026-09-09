@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum StagingCommitError: Error, Hashable, Sendable {
@@ -85,6 +86,23 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.invalidStagingFile
         }
 
+        guard let stagingDescriptor = Self.openReadOnlyNoFollow(staging) else {
+            throw StagingCommitError.stagingMissing
+        }
+        defer { close(stagingDescriptor) }
+
+        // Pin the exact inode for the whole coordinated commit. Even if another process unlinks
+        // and recreates the staging path, the original inode cannot be recycled while this file
+        // descriptor is alive, and the final path-to-descriptor check will fail closed.
+        try Self.revalidateOwnedStaging(
+            at: staging,
+            expectedDestination: destinationDirectory,
+            expectedFilename: staging.lastPathComponent,
+            authorization: authorization,
+            stagingDescriptor: stagingDescriptor,
+            fileManager: fileManager
+        )
+
         let fileManager = self.fileManager
         var coordinationError: NSError?
         var operationError: StagingCommitError?
@@ -108,11 +126,21 @@ public actor InternalStagingCommitter: StagingCommitting {
                     expectedDestination: coordinatedDirectory.standardizedFileURL,
                     expectedFilename: staging.lastPathComponent,
                     authorization: authorization,
+                    stagingDescriptor: stagingDescriptor,
                     fileManager: fileManager
                 )
 
                 guard !fileManager.fileExists(atPath: coordinatedDestination.path) else {
                     throw StagingCommitError.collision
+                }
+
+                // Recheck immediately before the only allowed final-name mutation. This catches a
+                // non-cooperating process that replaces the path after NSFileCoordinator begins.
+                guard PendingCopyFileIdentity.descriptorMatchesPath(
+                    stagingDescriptor,
+                    pathURL: coordinatedStaging
+                ) else {
+                    throw StagingCommitError.resourceIdentityMismatch
                 }
 
                 do {
@@ -193,7 +221,7 @@ public actor InternalStagingCommitter: StagingCommitting {
         else {
             throw StagingCommitError.unexpectedFileType
         }
-        guard let identity = try PendingCopyFileIdentity.token(
+        guard let identity = try PendingCopyFileIdentity.createToken(
             at: candidate,
             fileManager: fileManager
         ) else {
@@ -211,6 +239,7 @@ public actor InternalStagingCommitter: StagingCommitting {
         expectedDestination: URL,
         expectedFilename: String,
         authorization: StagingCommitAuthorization,
+        stagingDescriptor: Int32,
         fileManager: FileManager
     ) throws {
         let candidate = url.standardizedFileURL
@@ -218,6 +247,13 @@ public actor InternalStagingCommitter: StagingCommitting {
               candidate.lastPathComponent == expectedFilename
         else {
             throw StagingCommitError.invalidStagingFile
+        }
+
+        guard PendingCopyFileIdentity.descriptorMatchesPath(
+            stagingDescriptor,
+            pathURL: candidate
+        ) else {
+            throw StagingCommitError.resourceIdentityMismatch
         }
 
         let attributes: [FileAttributeKey: Any]
@@ -240,6 +276,13 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.sizeMismatch
         }
 
+        var descriptorStat = stat()
+        guard fstat(stagingDescriptor, &descriptorStat) == 0,
+              Int64(descriptorStat.st_size) == authorization.expectedSize
+        else {
+            throw StagingCommitError.sizeMismatch
+        }
+
         let values: URLResourceValues
         do {
             values = try candidate.resourceValues(forKeys: [
@@ -256,14 +299,23 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.unexpectedFileType
         }
 
-        guard let observedIdentity = try PendingCopyFileIdentity.token(
-            at: candidate,
-            fileManager: fileManager
+        guard let observedIdentity = PendingCopyFileIdentity.token(
+            onFileDescriptor: stagingDescriptor
         ) else {
             throw StagingCommitError.resourceIdentityUnavailable
         }
         guard observedIdentity == authorization.expectedResourceIdentifier else {
             throw StagingCommitError.resourceIdentityMismatch
+        }
+    }
+
+    private static func openReadOnlyNoFollow(_ url: URL) -> Int32? {
+        url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return nil
+            }
+            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+            return descriptor >= 0 ? descriptor : nil
         }
     }
 
