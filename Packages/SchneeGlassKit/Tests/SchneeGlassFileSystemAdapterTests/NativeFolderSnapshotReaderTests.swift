@@ -171,11 +171,11 @@ func snapshotPerformanceBaselineAtDisplayLimit() async throws {
     let average = durations.reduce(0, +) / Double(durations.count)
     print(
         String(
-            format: "SCHNEEGLASS_PERF_RESULT snapshot_500 average=%.6fs worst=%.6fs limit=2.000000s",
+            format: "SCHNEEGLASS_PERF_RESULT snapshot_500 average=%.6fs worst=%.6fs limit=0.500000s",
             average,
             worst
         )
     )
 
-    #expect(worst < 2.0)
+    #expect(worst < 0.5)
 }
