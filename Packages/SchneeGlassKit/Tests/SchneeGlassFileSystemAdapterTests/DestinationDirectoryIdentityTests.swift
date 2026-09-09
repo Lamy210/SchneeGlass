@@ -59,5 +59,5 @@ func destinationLeaseRejectsVolumeOnlyIdentityBeforeMutation() async throws {
     }
 
     #expect(await leases.activeLeaseCount() == 0)
-    #expect(FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
 }
