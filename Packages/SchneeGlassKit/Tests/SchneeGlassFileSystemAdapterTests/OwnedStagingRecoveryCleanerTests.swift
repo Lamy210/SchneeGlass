@@ -84,11 +84,14 @@ func ownedStagingCleanerRejectsResourceIdentityMismatchWithoutMutation() async t
         ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
     )
     try Data("staging".utf8).write(to: stagingURL)
+    let observedIdentity = try resourceIdentifier(of: stagingURL)
+    let recordedIdentity = "xattr-v1:\(UUID().uuidString.lowercased())"
+    #expect(recordedIdentity != observedIdentity)
 
     let record = makeOwnedStagingRecord(
         glassID: glassID,
         operationID: operationID,
-        stagingResourceIdentifier: "different-resource"
+        stagingResourceIdentifier: recordedIdentity
     )
     let cleaner = OwnedStagingRecoveryCleaner()
 
