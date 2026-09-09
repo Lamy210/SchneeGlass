@@ -84,6 +84,16 @@ public actor GlassRuntimeSession {
         return pair.stream
     }
 
+    public func previewDrop(sourceURLs: [URL]) async -> DropPlan {
+        guard lifecycle == .running else {
+            return .reject(.destinationUnavailable)
+        }
+        return await dropPlanning.preview(
+            sourceURLs: sourceURLs,
+            destinationAccess: access
+        )
+    }
+
     public func planDrop(sourceURLs: [URL]) async -> DropPlan {
         guard lifecycle == .running else {
             return .reject(.destinationUnavailable)

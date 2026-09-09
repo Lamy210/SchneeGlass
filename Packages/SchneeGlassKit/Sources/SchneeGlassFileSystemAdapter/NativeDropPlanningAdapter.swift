@@ -211,6 +211,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
 public actor NativeDropPlanningAdapter: DropPlanning {
     private let inspector: any DropFileSystemInspecting
+    private let previewInspector: any DropFileSystemInspecting
     private let sourceLeases: SourceFileLeaseRegistry?
 
     /// Standalone construction is intentionally module-internal. Executable native Drop plans must
@@ -220,21 +221,50 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         let sourceLeases = SourceFileLeaseRegistry()
         self.sourceLeases = sourceLeases
         self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
+        self.previewInspector = FoundationDropFileSystemInspector()
     }
 
     init(sourceLeases: SourceFileLeaseRegistry) {
         self.sourceLeases = sourceLeases
         self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
+        self.previewInspector = FoundationDropFileSystemInspector()
     }
 
     init(inspector: any DropFileSystemInspecting) {
         self.inspector = inspector
+        self.previewInspector = inspector
         self.sourceLeases = nil
+    }
+
+    public func preview(
+        sourceURLs: [URL],
+        destinationAccess: FolderAccessHandle
+    ) async -> DropPlan {
+        await makePlan(
+            sourceURLs: sourceURLs,
+            destinationAccess: destinationAccess,
+            inspector: previewInspector,
+            sourceLeases: nil
+        )
     }
 
     public func plan(
         sourceURLs: [URL],
         destinationAccess: FolderAccessHandle
+    ) async -> DropPlan {
+        await makePlan(
+            sourceURLs: sourceURLs,
+            destinationAccess: destinationAccess,
+            inspector: inspector,
+            sourceLeases: sourceLeases
+        )
+    }
+
+    private func makePlan(
+        sourceURLs: [URL],
+        destinationAccess: FolderAccessHandle,
+        inspector: any DropFileSystemInspecting,
+        sourceLeases: SourceFileLeaseRegistry?
     ) async -> DropPlan {
         guard let destination = await inspector.destinationDescriptor(for: destinationAccess) else {
             return .reject(.destinationUnavailable)

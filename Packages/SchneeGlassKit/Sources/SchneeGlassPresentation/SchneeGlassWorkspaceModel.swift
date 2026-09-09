@@ -301,7 +301,7 @@ public final class SchneeGlassWorkspaceModel {
         defer { dropPlanningTracker.finish(planningToken, for: glassID) }
 
         updateInteraction(.hovered, for: glassID)
-        let plan = await session.planDrop(sourceURLs: sourceURLs)
+        let plan = await session.previewDrop(sourceURLs: sourceURLs)
 
         guard dropPlanningTracker.isCurrent(planningToken, for: glassID),
               !isMutatingConfiguration,
