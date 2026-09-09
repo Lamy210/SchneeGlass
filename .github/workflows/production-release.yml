@@ -1,0 +1,130 @@
+name: Production Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact X.Y.Z version to sign and notarize.'
+        required: true
+        type: string
+      confirm_sign_and_notarize:
+        description: 'Run the protected Developer ID signing and Apple notarization job.'
+        required: true
+        default: false
+        type: boolean
+  pull_request:
+    paths:
+      - '.github/workflows/production-release.yml'
+      - 'Scripts/build-notarized-release.sh'
+      - 'Scripts/verify-production-release-preflight.sh'
+      - 'docs/RELEASE_CREDENTIALS.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Production Release / Credential-free Preflight
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-release-metadata.sh
+          bash -n Scripts/verify-production-release-preflight.sh
+          bash -n Scripts/build-notarized-release.sh
+
+      - name: Production release baseline
+        run: bash Scripts/verify-production-release-preflight.sh
+
+      - name: Credential-free signing fails closed
+        run: |
+          rm -rf release-output
+          LOG="$RUNNER_TEMP/production-release-fail-closed.log"
+
+          set +e
+          (
+            export RELEASE_VERSION='0.0.0'
+            unset DEVELOPER_ID_P12_BASE64
+            unset DEVELOPER_ID_P12_PASSWORD
+            unset APPLE_TEAM_ID
+            unset APPSTORE_CONNECT_KEY_ID
+            unset APPSTORE_CONNECT_ISSUER_ID
+            unset APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+            bash Scripts/build-notarized-release.sh
+          ) >"$LOG" 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            cat "$LOG"
+            echo 'Production signing unexpectedly succeeded without credentials.' >&2
+            exit 1
+          fi
+
+          grep -F 'required release environment value is missing: DEVELOPER_ID_P12_BASE64' "$LOG" >/dev/null
+          test ! -e release-output
+          rm -f "$LOG"
+
+      - name: Requested version matches project
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: bash Scripts/verify-release-metadata.sh "v${REQUESTED_VERSION}"
+
+  sign-notarize:
+    name: Developer ID / Notarize / Staple / Gatekeeper
+    if: github.event_name == 'workflow_dispatch' && inputs.confirm_sign_and_notarize && github.ref == 'refs/heads/main'
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: production-release
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RELEASE_VERSION: ${{ inputs.version }}
+      DEVELOPER_ID_P12_BASE64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+      DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+      APPSTORE_CONNECT_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY_BASE64 }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_CONNECT_KEY_ID: ${{ vars.APPSTORE_CONNECT_KEY_ID }}
+      APPSTORE_CONNECT_ISSUER_ID: ${{ vars.APPSTORE_CONNECT_ISSUER_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Build signed and notarized release candidate
+        run: bash Scripts/build-notarized-release.sh
+
+      - name: Record signed source commit
+        run: echo "commit_sha=$GITHUB_SHA" >> release-output/RELEASE_EVIDENCE.txt
+
+      - name: Upload signed notarized candidate for manual QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchneeGlass-${{ inputs.version }}-signed-notarized-candidate
+          path: release-output/
+          if-no-files-found: error
+          retention-days: 14
