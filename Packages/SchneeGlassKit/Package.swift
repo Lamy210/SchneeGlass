@@ -97,7 +97,8 @@ let package = Package(
                 "SchneeGlassFileSystemAdapter",
                 "SchneeGlassApplication",
                 "SchneeGlassDomain",
-                "FileDomain"
+                "FileDomain",
+                "SchneeGlassPOSIXSupport"
             ]
         ),
         .testTarget(
