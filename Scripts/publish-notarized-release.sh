@@ -89,18 +89,14 @@ RUN_CONCLUSION="$(gh api "$RUN_API" --jq '.conclusion')"
 RUN_BRANCH="$(gh api "$RUN_API" --jq '.head_branch')"
 RUN_HEAD_SHA="$(gh api "$RUN_API" --jq '.head_sha')"
 
-[[ "$RUN_NAME" == 'Production Release Candidate' ]] \
-  || fail "candidate run belongs to unexpected workflow: $RUN_NAME"
-[[ "$RUN_PATH" == '.github/workflows/production-release.yml' ]] \
-  || fail "candidate run has unexpected workflow path: $RUN_PATH"
-[[ "$RUN_EVENT" == 'workflow_dispatch' ]] \
-  || fail "candidate run must be workflow_dispatch"
-[[ "$RUN_STATUS" == 'completed' && "$RUN_CONCLUSION" == 'success' ]] \
-  || fail "candidate run is not completed successfully"
-[[ "$RUN_BRANCH" == 'main' ]] \
-  || fail "candidate run was not built from main"
-[[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] \
-  || fail "candidate run returned an invalid head SHA"
+bash Scripts/verify-production-candidate-run.sh \
+  "$RUN_NAME" \
+  "$RUN_PATH" \
+  "$RUN_EVENT" \
+  "$RUN_STATUS" \
+  "$RUN_CONCLUSION" \
+  "$RUN_BRANCH" \
+  "$RUN_HEAD_SHA"
 
 gh run download "$CANDIDATE_RUN_ID" \
   --repo "$GITHUB_REPOSITORY" \
