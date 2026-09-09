@@ -22,10 +22,6 @@ struct PreparedSourceLease: Hashable, Sendable {
 
 /// Keeps the exact source file opened at Drop planning time and binds that open descriptor to the
 /// operation ID produced by DropPlanner. No descriptor crosses the actor boundary.
-///
-/// The pinned descriptor prevents same-path replacement, rename, or delete/recreate races from
-/// changing which physical file is copied. Size and nanosecond mtime/ctime are checked immediately
-/// before and after copying so in-place edits fail closed instead of committing a mixed snapshot.
 public actor SourceFileLeaseRegistry {
     private struct Fingerprint: Hashable, Sendable {
         let size: Int64
@@ -81,19 +77,12 @@ public actor SourceFileLeaseRegistry {
         }
 
         let openResult = source.withUnsafeFileSystemRepresentation { path -> (descriptor: Int32, error: Int32)? in
-            guard let path else {
-                return nil
-            }
+            guard let path else { return nil }
             let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
             return (descriptor, descriptor >= 0 ? 0 : errno)
         }
-
-        guard let openResult else {
-            throw SourceFileLeaseError.sourceUnavailable
-        }
-        guard openResult.descriptor >= 0 else {
-            throw Self.mapOpenError(openResult.error)
-        }
+        guard let openResult else { throw SourceFileLeaseError.sourceUnavailable }
+        guard openResult.descriptor >= 0 else { throw Self.mapOpenError(openResult.error) }
 
         let descriptor = openResult.descriptor
         var metadata = stat()
@@ -117,44 +106,25 @@ public actor SourceFileLeaseRegistry {
             executionActive: false
         )
         scheduleExpiration(for: token)
-
-        return PreparedSourceLease(
-            token: token,
-            standardizedURL: source,
-            size: fingerprint.size
-        )
+        return PreparedSourceLease(token: token, standardizedURL: source, size: fingerprint.size)
     }
 
     func preparedSourceStillMatchesPath(token: UUID) -> Bool {
-        guard let lease = leases[token], lease.operationID == nil else {
-            return false
-        }
-
+        guard let lease = leases[token], lease.operationID == nil else { return false }
         var metadata = stat()
         let result = lease.sourceURL.withUnsafeFileSystemRepresentation { path in
-            guard let path else {
-                return Int32(-1)
-            }
+            guard let path else { return Int32(-1) }
             return lstat(path, &metadata)
         }
-        guard result == 0,
-              (metadata.st_mode & S_IFMT) == S_IFREG
-        else {
-            return false
-        }
-
+        guard result == 0, (metadata.st_mode & S_IFMT) == S_IFREG else { return false }
         let current = Fingerprint(metadata: metadata)
-        return current.device == lease.fingerprint.device
-            && current.inode == lease.fingerprint.inode
+        return current.device == lease.fingerprint.device && current.inode == lease.fingerprint.inode
     }
 
     func bind(token: UUID, operationID: UUID) throws {
         guard var lease = leases[token], lease.operationID == nil else {
             throw SourceFileLeaseError.sourceUnavailable
         }
-
-        // A newer plan may invalidate an older unconsumed plan, but it must never revoke source
-        // authority that belongs to a batch whose copy execution has already begun.
         if let previousOperationID = operationIDBySourceURL[lease.sourceURL],
            previousOperationID != operationID
         {
@@ -165,25 +135,18 @@ public actor SourceFileLeaseRegistry {
             }
             releaseBound(operationID: previousOperationID)
         }
-
         lease.operationID = operationID
         leases[token] = lease
         tokenByOperationID[operationID] = token
         operationIDBySourceURL[lease.sourceURL] = operationID
     }
 
-    /// Marks every still-bound lease in a submitted batch as execution-active. Active leases are no
-    /// longer stale-plan candidates: their TTL is cancelled and a newer plan for the same source
-    /// cannot supersede them while earlier items in the batch are copying.
     func beginExecution(operationIDs: [UUID]) {
         for operationID in operationIDs {
             guard let token = tokenByOperationID[operationID],
                   var lease = leases[token],
                   lease.operationID == operationID
-            else {
-                continue
-            }
-
+            else { continue }
             lease.executionActive = true
             leases[token] = lease
             expirationTasks.removeValue(forKey: token)?.cancel()
@@ -196,50 +159,39 @@ public actor SourceFileLeaseRegistry {
               let token = tokenByOperationID[operationID],
               let lease = leases[token],
               lease.operationID == operationID
-        else {
-            return nil
-        }
+        else { return nil }
         return lease.fingerprint.size
     }
 
     func copyBoundSource(
         operationID: UUID,
         expectedSourceURL: URL,
-        to stagingURL: URL
+        destinationDirectoryDescriptor: Int32,
+        stagingFilename: String
     ) throws -> PreparedPendingCopyStaging {
         guard let token = tokenByOperationID[operationID],
               let lease = leases[token],
               lease.operationID == operationID,
-              lease.sourceURL == expectedSourceURL.standardizedFileURL
+              lease.sourceURL == expectedSourceURL.standardizedFileURL,
+              DestinationDirectoryLeaseRegistry.stagingFilename(operationID: operationID) == stagingFilename
         else {
             throw SourceFileLeaseError.sourceUnavailable
         }
 
-        // A bound lease is one-shot. Even a destination collision or copy error requires a new
-        // Drop plan, which avoids accidentally reusing stale source authority.
         defer { releaseToken(token) }
-
         try Self.verifyUnchanged(lease)
-
         guard lseek(lease.descriptor, 0, SEEK_SET) >= 0 else {
             throw SourceFileLeaseError.sourceUnavailable
         }
 
-        let staging = stagingURL.standardizedFileURL
-        let destinationOpen = staging.withUnsafeFileSystemRepresentation { path -> (descriptor: Int32, error: Int32)? in
-            guard let path else {
-                return nil
-            }
-            let descriptor = open(
-                path,
+        let destinationOpen = stagingFilename.withCString { name -> (descriptor: Int32, error: Int32) in
+            let descriptor = openat(
+                destinationDirectoryDescriptor,
+                name,
                 O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
                 mode_t(0o600)
             )
             return (descriptor, descriptor >= 0 ? 0 : errno)
-        }
-
-        guard let destinationOpen else {
-            throw SourceFileLeaseError.copyFailed(EINVAL)
         }
         guard destinationOpen.descriptor >= 0 else {
             throw Self.mapDestinationOpenError(destinationOpen.error)
@@ -257,55 +209,36 @@ public actor SourceFileLeaseRegistry {
             throw Self.mapCopyError(errno)
         }
 
-        // A writer can modify an already-open inode while fcopyfile is reading it. Verify the same
-        // pinned descriptor again before this exact destination inode receives ownership proof.
         try Self.verifyUnchanged(lease)
 
-        // Keep the destination descriptor open while inherited proof is removed, the fresh proof is
-        // minted, and the path is revalidated against this exact inode. A same-path replacement can
-        // therefore never receive SchneeGlass recovery authority in the copy-to-verification gap.
         guard let prepared = PendingCopyFileIdentity.prepareAppOwnedStaging(
             onFileDescriptor: destinationDescriptor,
-            pathURL: staging
+            directoryDescriptor: destinationDirectoryDescriptor,
+            filename: stagingFilename
         ) else {
             throw SourceFileLeaseError.stagingIdentityPreparationFailed
         }
-
         return prepared
     }
 
     func releasePrepared(tokens: [UUID]) {
-        for token in tokens {
-            guard leases[token]?.operationID == nil else {
-                continue
-            }
-            releaseToken(token)
-        }
+        for token in tokens where leases[token]?.operationID == nil { releaseToken(token) }
     }
 
     func releaseBound(operationIDs: [UUID]) {
-        for operationID in operationIDs {
-            releaseBound(operationID: operationID)
-        }
+        for operationID in operationIDs { releaseBound(operationID: operationID) }
     }
 
-    func activeLeaseCount() -> Int {
-        leases.count
-    }
+    func activeLeaseCount() -> Int { leases.count }
 
     private func releaseBound(operationID: UUID) {
-        guard let token = tokenByOperationID[operationID] else {
-            return
-        }
+        guard let token = tokenByOperationID[operationID] else { return }
         releaseToken(token)
     }
 
     private func releaseToken(_ token: UUID) {
         expirationTasks.removeValue(forKey: token)?.cancel()
-        guard let lease = leases.removeValue(forKey: token) else {
-            return
-        }
-
+        guard let lease = leases.removeValue(forKey: token) else { return }
         if let operationID = lease.operationID {
             tokenByOperationID.removeValue(forKey: operationID)
             if operationIDBySourceURL[lease.sourceURL] == operationID {
@@ -316,27 +249,15 @@ public actor SourceFileLeaseRegistry {
     }
 
     private func scheduleExpiration(for token: UUID) {
-        // The task intentionally retains this registry until an unconsumed lease expires. Raw file
-        // descriptors have no automatic Swift lifetime management; allowing the registry to
-        // deinitialize first would orphan an open descriptor. Normal release or execution start
-        // removes/cancels this task, breaking the temporary retention cycle immediately.
         let expirationNanoseconds = self.expirationNanoseconds
         expirationTasks[token] = Task { [self] in
-            do {
-                try await Task.sleep(nanoseconds: expirationNanoseconds)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled else {
-                return
-            }
+            do { try await Task.sleep(nanoseconds: expirationNanoseconds) } catch { return }
+            guard !Task.isCancelled else { return }
             expire(token: token)
         }
     }
 
-    private func expire(token: UUID) {
-        releaseToken(token)
-    }
+    private func expire(token: UUID) { releaseToken(token) }
 
     private static func verifyUnchanged(_ lease: Lease) throws {
         var currentMetadata = stat()
@@ -350,51 +271,41 @@ public actor SourceFileLeaseRegistry {
 
     private static func mapOpenError(_ error: Int32) -> SourceFileLeaseError {
         switch error {
-        case EACCES, EPERM:
-            return .permissionDenied
-        case ELOOP:
-            return .unsupportedItem
-        default:
-            return .sourceUnavailable
+        case EACCES, EPERM: return .permissionDenied
+        case ELOOP: return .unsupportedItem
+        default: return .sourceUnavailable
         }
     }
 
     private static func mapDestinationOpenError(_ error: Int32) -> SourceFileLeaseError {
         switch error {
-        case EEXIST:
-            return .collision
-        case EACCES, EPERM:
-            return .permissionDenied
-        case ENOSPC, EDQUOT:
-            return .insufficientSpace
-        default:
-            return .copyFailed(error)
+        case EEXIST: return .collision
+        case EACCES, EPERM: return .permissionDenied
+        case ENOSPC, EDQUOT: return .insufficientSpace
+        default: return .copyFailed(error)
         }
     }
 
     private static func mapCopyError(_ error: Int32) -> SourceFileLeaseError {
         switch error {
-        case EACCES, EPERM:
-            return .permissionDenied
-        case ENOSPC, EDQUOT:
-            return .insufficientSpace
-        default:
-            return .copyFailed(error)
+        case EACCES, EPERM: return .permissionDenied
+        case ENOSPC, EDQUOT: return .insufficientSpace
+        default: return .copyFailed(error)
         }
     }
 }
 
-/// File-system accessor used only by the production pinned-source copy path. The exact staging
-/// inode's size and ownership proof are captured while its app-created descriptor is still open,
-/// then served from actor state to SafeFileCopyEngine without reopening the staging pathname.
 private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
     private let sourceLeases: SourceFileLeaseRegistry
-    private let fallback: FoundationCopyFileSystemAccessor
+    private let destinationLeases: DestinationDirectoryLeaseRegistry
     private var preparedStagingByURL: [URL: PreparedPendingCopyStaging] = [:]
 
-    init(sourceLeases: SourceFileLeaseRegistry) {
+    init(
+        sourceLeases: SourceFileLeaseRegistry,
+        destinationLeases: DestinationDirectoryLeaseRegistry
+    ) {
         self.sourceLeases = sourceLeases
-        self.fallback = FoundationCopyFileSystemAccessor()
+        self.destinationLeases = destinationLeases
     }
 
     func sourceMetadata(at url: URL) async throws -> CopySourceMetadata {
@@ -405,28 +316,41 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
     }
 
     func isWritableDirectory(at url: URL) async -> Bool {
-        await fallback.isWritableDirectory(at: url)
+        await destinationLeases.isBoundDirectory(url)
     }
 
     func supportsCaseSensitiveNames(at url: URL) async -> Bool? {
-        await fallback.supportsCaseSensitiveNames(at: url)
+        _ = url
+        return nil
     }
 
     func itemExists(at url: URL) async -> Bool {
-        await fallback.itemExists(at: url)
+        guard let exists = await destinationLeases.itemExists(at: url) else {
+            return true
+        }
+        return exists
     }
 
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws {
         let staging = stagingURL.standardizedFileURL
-        guard let operationID = Self.operationID(fromStagingFilename: staging.lastPathComponent) else {
-            throw CopyFileSystemError.unexpected
+        guard let operationID = await destinationLeases.operationID(forStagingURL: staging) else {
+            throw CopyFileSystemError.destinationUnavailable
         }
+
+        let directoryDescriptor: Int32
+        do {
+            directoryDescriptor = try await destinationLeases.duplicateDescriptor(operationID: operationID)
+        } catch let error as DestinationDirectoryLeaseError {
+            throw Self.map(error)
+        }
+        defer { close(directoryDescriptor) }
 
         do {
             let prepared = try await sourceLeases.copyBoundSource(
                 operationID: operationID,
                 expectedSourceURL: sourceURL,
-                to: staging
+                destinationDirectoryDescriptor: directoryDescriptor,
+                stagingFilename: staging.lastPathComponent
             )
             preparedStagingByURL[staging] = prepared
         } catch let error as SourceFileLeaseError {
@@ -435,75 +359,104 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
     }
 
     func regularFileSize(at url: URL) async throws -> Int64 {
-        let staging = url.standardizedFileURL
-        guard let prepared = preparedStagingByURL[staging] else {
+        guard let prepared = preparedStagingByURL[url.standardizedFileURL] else {
             throw CopyFileSystemError.verificationFailed
         }
         return prepared.size
     }
 
     func resourceIdentifier(at url: URL) async -> String? {
-        let staging = url.standardizedFileURL
-        return preparedStagingByURL.removeValue(forKey: staging)?.resourceIdentifier
-    }
-
-    private static func operationID(fromStagingFilename filename: String) -> UUID? {
-        let prefix = ".schneeglass-copy-"
-        let suffix = ".partial"
-        guard filename.hasPrefix(prefix), filename.hasSuffix(suffix) else {
-            return nil
-        }
-        let start = filename.index(filename.startIndex, offsetBy: prefix.count)
-        let end = filename.index(filename.endIndex, offsetBy: -suffix.count)
-        return UUID(uuidString: String(filename[start..<end]))
+        preparedStagingByURL.removeValue(forKey: url.standardizedFileURL)?.resourceIdentifier
     }
 
     private static func map(_ error: SourceFileLeaseError) -> CopyFileSystemError {
         switch error {
-        case .sourceUnavailable:
-            return .sourceUnavailable
-        case .unsupportedItem:
-            return .unsupportedItem
-        case .sourceChanged:
-            return .verificationFailed
-        case .permissionDenied:
-            return .permissionDenied
-        case .insufficientSpace:
-            return .insufficientSpace
-        case .collision:
-            return .collision
-        case .stagingIdentityPreparationFailed:
-            return .verificationFailed
-        case .copyFailed:
+        case .sourceUnavailable: return .sourceUnavailable
+        case .unsupportedItem: return .unsupportedItem
+        case .sourceChanged: return .verificationFailed
+        case .permissionDenied: return .permissionDenied
+        case .insufficientSpace: return .insufficientSpace
+        case .collision: return .collision
+        case .stagingIdentityPreparationFailed: return .verificationFailed
+        case .copyFailed: return .unexpected
+        }
+    }
+
+    private static func map(_ error: DestinationDirectoryLeaseError) -> CopyFileSystemError {
+        switch error {
+        case .permissionDenied: return .permissionDenied
+        case .destinationUnavailable, .identityMismatch, .exclusiveRenameUnsupported, .operationNotBound:
+            return .destinationUnavailable
+        case .descriptorDuplicationFailed:
             return .unexpected
         }
     }
 }
 
-/// Production FileCopying facade that guarantees every bound source lease is released after the
-/// batch result is produced, including preflight failures and not-attempted tail items.
+/// Production FileCopying facade. Source and destination authority are both descriptor-bound for
+/// the entire batch and are released after every success/failure path.
 public actor PinnedSourceFileCopying: FileCopying {
     private let sourceLeases: SourceFileLeaseRegistry
+    private let destinationLeases: DestinationDirectoryLeaseRegistry
     private let delegate: SafeFileCopyEngine
 
     public init(
         recoveryStore: any PendingCopyRecording,
         sourceLeases: SourceFileLeaseRegistry
     ) {
+        let destinationLeases = DestinationDirectoryLeaseRegistry()
         self.sourceLeases = sourceLeases
+        self.destinationLeases = destinationLeases
         self.delegate = SafeFileCopyEngine(
-            fileSystem: PinnedSourceCopyFileSystemAccessor(sourceLeases: sourceLeases),
-            committer: InternalStagingCommitter(),
+            fileSystem: PinnedSourceCopyFileSystemAccessor(
+                sourceLeases: sourceLeases,
+                destinationLeases: destinationLeases
+            ),
+            committer: PinnedDestinationStagingCommitter(destinationLeases: destinationLeases),
             recoveryStore: recoveryStore
         )
     }
 
     public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
         let operationIDs = request.plan.items.map(\.operationID)
-        await sourceLeases.beginExecution(operationIDs: operationIDs)
 
+        do {
+            try await destinationLeases.bind(request)
+        } catch let error as DestinationDirectoryLeaseError {
+            await sourceLeases.releaseBound(operationIDs: operationIDs)
+            return Self.destinationBindingFailure(request: request, error: error)
+        } catch {
+            await sourceLeases.releaseBound(operationIDs: operationIDs)
+            return Self.destinationBindingFailure(request: request, error: .destinationUnavailable)
+        }
+
+        await sourceLeases.beginExecution(operationIDs: operationIDs)
         let result = await delegate.copy(request)
+        await destinationLeases.release(batchID: request.plan.batchID)
         await sourceLeases.releaseBound(operationIDs: operationIDs)
         return result
+    }
+
+    private static func destinationBindingFailure(
+        request: AuthorizedCopyBatchRequest,
+        error: DestinationDirectoryLeaseError
+    ) -> CopyBatchResult {
+        guard let first = request.plan.items.first else {
+            return CopyBatchResult(
+                batchID: request.plan.batchID,
+                succeeded: [],
+                failed: nil,
+                notAttempted: []
+            )
+        }
+        let reason: CopyItemFailure.Reason = error == .permissionDenied
+            ? .permissionDenied
+            : .destinationUnavailable
+        return CopyBatchResult(
+            batchID: request.plan.batchID,
+            succeeded: [],
+            failed: CopyItemFailure(operationID: first.operationID, reason: reason),
+            notAttempted: Array(request.plan.items.dropFirst())
+        )
     }
 }
