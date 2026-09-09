@@ -20,22 +20,11 @@ struct StagingCommitAuthorization: Hashable, Sendable {
 }
 
 protocol StagingCommitting: Sendable {
-    func commit(stagingURL: URL, finalURL: URL) async throws
     func commit(
         stagingURL: URL,
         finalURL: URL,
         authorization: StagingCommitAuthorization
     ) async throws
-}
-
-extension StagingCommitting {
-    func commit(
-        stagingURL: URL,
-        finalURL: URL,
-        authorization: StagingCommitAuthorization
-    ) async throws {
-        try await commit(stagingURL: stagingURL, finalURL: finalURL)
-    }
 }
 
 public actor InternalStagingCommitter: StagingCommitting {
@@ -52,6 +41,9 @@ public actor InternalStagingCommitter: StagingCommitting {
         self.fileManager = fileManager
     }
 
+    /// Test/support convenience that derives authorization from a fresh app-owned staging item.
+    /// Production Safe Copy uses the explicit authorization overload so the verifier's proof is
+    /// carried across the verification-to-commit boundary rather than regenerated here.
     func commit(stagingURL: URL, finalURL: URL) async throws {
         let staging = stagingURL.standardizedFileURL
         guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
