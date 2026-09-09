@@ -23,7 +23,8 @@
 ### MUST
 
 - FilesystemをSource of Truthとする
-- File mutationを`SchneeGlassFileSystemAdapter`のallowlist内へ限定する
+- user-visible destinationのFile mutationを`SchneeGlassFileSystemAdapter`のallowlist内へ限定する
+- SchneeGlass-owned metadataのFile mutationを`SchneeGlassPOSIXSupport.PhysicalStateStore`のallowlist内へ限定する
 - Security-scoped accessのAcquire/Releaseをbalanceする
 - File Safety changeと同じPRでSafety Testを追加/更新する
 - Schema changeと同じPRでMigration/Recovery Testを追加する
@@ -40,8 +41,12 @@
 ```text
 Presentation -> Concrete FileSystem Adapter   禁止
 Presentation -> Concrete Persistence Adapter  禁止
+Presentation -> SchneeGlassPOSIXSupport        禁止
 Domain -> SwiftUI/AppKit                       禁止
+Domain -> SchneeGlassPOSIXSupport              禁止
 FileDomain -> SchneeGlassApplication           禁止
+FileDomain -> SchneeGlassPOSIXSupport           禁止
+SchneeGlassPOSIXSupport -> Domain/Application/Presentation/Concrete Adapter  禁止
 ```
 
 `GlassContentState`やSecurity Scope付きCopy Requestのように複数Layerを組み合わせる型は、循環依存を避けるためApplication Layerへ配置する。
@@ -157,3 +162,4 @@ Feature完了は「動く」だけではない。
 - Documentation Update when needed
 
 File Operation変更の場合はFileSafety Suite PASSが必須。
+SchneeGlass-owned metadata storage変更の場合はphysical topology regression test PASSが必須。
