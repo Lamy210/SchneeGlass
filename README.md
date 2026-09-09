@@ -16,6 +16,11 @@ v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / n
 - Compile-time Architecture Boundary
 - Security-scoped Folder Access
 - One-level Folder Snapshot / 500-item safety limit
+- 500-item Folder Snapshot Performance Baseline
+  - relevant PR / weekly / manual workflow
+  - monotonic clockによる3-run measurement
+  - `worst < 0.5s` regression ceiling
+  - PR #39最終実測: average `0.055926s` / worst `0.059213s`
 - FSEventsによるExternal Change Refresh
 - Multiple Glass / Runtime Session lifecycle
 - Glass作成・起動時復元・削除
@@ -57,7 +62,16 @@ v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / n
 - post-sign codesign / entitlement / Hardened Runtime verification
 - Apple `notarytool` Accepted-state verification
 - stapler / Gatekeeper verification
-- signed/notarized candidate artifact + release evidence
+- signed/notarized candidate artifact
+- strict `RELEASE_EVIDENCE.txt` schema v1
+  - required keys exactly once
+  - unknown/malformed key rejection
+  - final signed ZIP由来のbundle identifier / version / build
+  - exact source commit SHA
+- exact Production Release Candidate workflow identity validation
+  - workflow name + `.github/workflows/production-release.yml` path
+  - `workflow_dispatch` / `main` / completed-success
+- public Release build-number monotonicity gate
 - Manual QA後のimmutable GitHub Release promotion workflow
 
 v0.1で残っているRelease blocker:
@@ -128,9 +142,10 @@ bash Scripts/verify-public-repo.sh
 bash Scripts/verify-architecture.sh
 bash Scripts/verify-file-safety.sh
 bash Scripts/verify-release-metadata.sh
+bash Scripts/verify-production-release-preflight.sh
 ```
 
-GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibility build、Xcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact、scheduled ThreadSanitizer、Swift CodeQL v4を継続検証します。
+GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibility build、Xcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact、scheduled ThreadSanitizer、Swift CodeQL v4、500-item Snapshot Performance Baselineを継続検証します。
 
 ## Documentation
 
