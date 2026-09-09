@@ -24,6 +24,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] 対象artifact名を記録した
 - [ ] `SHA256SUMS`が存在する
 - [ ] `shasum -a 256 -c SHA256SUMS` がPASSする
+- [ ] `RELEASE_EVIDENCE.txt`が存在する
+- [ ] evidenceのcommit SHAが対象production workflow head SHAと一致する
 - [ ] unsigned candidateの場合、production releaseとして公開しないことを確認した
 
 ## 1. Clean install / first launch
@@ -153,24 +155,51 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 ## 14. Signed production candidate — Developer ID path
 
-このSectionはDeveloper ID signing pipeline実装後に必須。
+Developer ID signing / notarization pipelineは実装済み。このSectionは**実credentialで生成した、そのexact candidate**に対して必須。
 
+- [ ] `Production Release Candidate` workflowが`main`の対象commitからsuccessしている
 - [ ] `codesign --verify --deep --strict` PASS
 - [ ] Developer ID Application identityで署名されている
+- [ ] TeamIdentifierが想定Team IDと一致する
+- [ ] secure signing timestampが存在する
 - [ ] Hardened Runtimeが維持されている
 - [ ] App Sandbox entitlementが維持されている
 - [ ] user-selected read-write entitlementが維持されている
 - [ ] 不要なnetwork entitlementが追加されていない
-- [ ] Apple notarization result = Accepted
+- [ ] `get-task-allow=true`ではない
+- [ ] Apple notarization result = `Accepted`
 - [ ] notarization ticketをstaple済み
 - [ ] `xcrun stapler validate` PASS
 - [ ] Gatekeeper assessment PASS
 - [ ] quarantine付きダウンロード相当の状態から起動できる
 - [ ] signed/stapled artifactに対する最終SHA-256 manifestを生成した
+- [ ] `RELEASE_EVIDENCE.txt`のnotarization / codesign / stapler / Gatekeeper状態がcandidateと一致する
+- [ ] Actions artifactにcredential materialが含まれていない
 
-## 15. Final release record
+## 15. Immutable production publication
 
-Release前に以下をPR / Release notes / QA recordのいずれかへ残す。
+Manual QAが完了するまで`Publish Production Release`を実行しない。
+
+- [ ] Repository Settingsでrelease immutabilityを有効化済み
+- [ ] `main` branch / required CIなどRelease governanceを確認済み
+- [ ] publication inputのversionがcandidateと一致する
+- [ ] publication inputのcandidate run IDがQA対象runと一致する
+- [ ] `confirm_manual_qa = true`はこのexact candidateのQA完了後にだけ指定する
+- [ ] publication workflowのcandidate workflow / branch / success再検証がPASSする
+- [ ] candidate commitがcurrent `main`のancestorである
+- [ ] evidence commit SHAがcandidate workflow head SHAと一致する
+- [ ] `SHA256SUMS` self-check PASS
+- [ ] 同一tag / Releaseが事前に存在しない
+- [ ] Draft asset validation PASS
+- [ ] 公開後`isImmutable=true`
+- [ ] Release assetsに`SchneeGlass-X.Y.Z.zip`が存在する
+- [ ] Release assetsに`SHA256SUMS`が存在する
+- [ ] Release assetsに`RELEASE_EVIDENCE.txt`が存在する
+- [ ] Release tagがQA済みcandidate source commitを指す
+
+## 16. Final release record
+
+Release時に以下をPR / Release notes / QA recordのいずれかへ残す。
 
 - [ ] commit SHA
 - [ ] version / build number
@@ -178,9 +207,12 @@ Release前に以下をPR / Release notes / QA recordのいずれかへ残す。
 - [ ] artifact SHA-256
 - [ ] canonical CI run
 - [ ] compatibility CI run
-- [ ] sanitizer status
-- [ ] Release Candidate / production release workflow run
+- [ ] AddressSanitizer status
+- [ ] ThreadSanitizer / CodeQL status or release-window evaluation
+- [ ] Production Release Candidate workflow run
+- [ ] Publish Production Release workflow run
 - [ ] manual QA実施者と実施日
+- [ ] immutable Release URL / tag
 - [ ] known limitations
 
 ## Release blockerの扱い
@@ -194,5 +226,7 @@ Release前に以下をPR / Release notes / QA recordのいずれかへ残す。
 - Sandbox / signing / notarization gate failure
 - config restore結果とUI結果の不一致
 - supported baselineでのlaunch failure
+- candidate source/evidence/checksum不一致
+- mutable public Release
 
 軽微な表示差分は個別判断できるが、File Safety / Recovery / Release integrity failureより優先してはならない。
