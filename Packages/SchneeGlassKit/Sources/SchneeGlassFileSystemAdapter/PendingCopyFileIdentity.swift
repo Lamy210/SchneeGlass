@@ -21,18 +21,17 @@ enum PendingCopyFileIdentity {
             return nil
         }
 
-        return try candidate.withUnsafeFileSystemRepresentation { path in
+        return candidate.withUnsafeFileSystemRepresentation { path in
             guard let path else {
                 return nil
             }
 
             var metadata = stat()
             guard lstat(path, &metadata) == 0 else {
-                let errorCode = errno
-                throw NSError(
-                    domain: NSPOSIXErrorDomain,
-                    code: Int(errorCode)
-                )
+                // Identity is an authorization proof, not availability metadata. If the raw
+                // identity cannot be read at this exact boundary, fail closed instead of trying
+                // to infer ownership from the path alone.
+                return nil
             }
 
             return [
