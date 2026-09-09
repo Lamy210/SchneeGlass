@@ -38,6 +38,7 @@ on:
       - 'Scripts/verify-production-candidate-run.sh'
       - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
+      - 'Scripts/verify-release-branch-protection.sh'
 
 permissions:
   contents: read
@@ -69,6 +70,7 @@ jobs:
           bash -n Scripts/verify-production-candidate-run.sh
           bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/verify-release-evidence.sh
+          bash -n Scripts/verify-release-branch-protection.sh
 
       - name: Production candidate run policy fixture
         run: |
@@ -177,6 +179,25 @@ jobs:
           grep -F 'release governance confirmation is required' "$LOG" >/dev/null
           rm -f "$LOG"
 
+      - name: Branch protection policy fixture
+        run: |
+          bash Scripts/verify-release-branch-protection.sh main true
+
+          if bash Scripts/verify-release-branch-protection.sh main false; then
+            echo 'Branch protection validator unexpectedly accepted unprotected main.' >&2
+            exit 1
+          fi
+
+          if bash Scripts/verify-release-branch-protection.sh develop true; then
+            echo 'Branch protection validator unexpectedly accepted a non-main branch.' >&2
+            exit 1
+          fi
+
+          if bash Scripts/verify-release-branch-protection.sh main unknown; then
+            echo 'Branch protection validator unexpectedly accepted an unknown protection state.' >&2
+            exit 1
+          fi
+
   publish:
     name: Promote Signed Candidate to Immutable GitHub Release
     if: >-
@@ -207,6 +228,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Verify current main branch protection
+        run: |
+          MAIN_PROTECTED="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.protected')"
+          bash Scripts/verify-release-branch-protection.sh main "$MAIN_PROTECTED"
 
       - name: Publish validated notarized candidate
         run: bash Scripts/publish-notarized-release.sh
