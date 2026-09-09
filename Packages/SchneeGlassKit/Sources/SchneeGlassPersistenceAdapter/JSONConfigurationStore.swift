@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
@@ -110,7 +111,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         descriptors.reserveCapacity(urls.count)
 
         for url in urls where Self.isBackupFilename(url.lastPathComponent) {
-            guard Self.isPhysicalRegularFile(url, fileManager: fileManager),
+            guard Self.isPhysicalRegularFile(url),
                   let createdAt = Self.backupCreatedAt(from: url.lastPathComponent)
             else {
                 continue
@@ -146,7 +147,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         }
 
         let backupURL = backupDirectoryURL.appendingPathComponent(id, isDirectory: false)
-        guard Self.isPhysicalRegularFile(backupURL, fileManager: fileManager) else {
+        guard Self.isPhysicalRegularFile(backupURL) else {
             // A directory, symlink, package, or other non-regular entry is never a configuration
             // backup even if its filename matches the backup grammar.
             throw ConfigurationPersistenceError.backupNotFound
@@ -262,7 +263,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         )
         .filter {
             Self.isBackupFilename($0.lastPathComponent)
-                && Self.isPhysicalRegularFile($0, fileManager: fileManager)
+                && Self.isPhysicalRegularFile($0)
         }
         .sorted { lhs, rhs in
             let lhsDate = Self.backupCreatedAt(from: lhs.lastPathComponent) ?? .distantPast
@@ -283,16 +284,18 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         )
     }
 
-    private static func isPhysicalRegularFile(
-        _ url: URL,
-        fileManager: FileManager
-    ) -> Bool {
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: url.standardizedFileURL.path)
-            return attributes[.type] as? FileAttributeType == .typeRegular
-        } catch {
+    private static func isPhysicalRegularFile(_ url: URL) -> Bool {
+        var metadata = stat()
+        let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return Int32(-1)
+            }
+            return lstat(path, &metadata)
+        }
+        guard result == 0 else {
             return false
         }
+        return (metadata.st_mode & S_IFMT) == S_IFREG
     }
 
     private static func mapCurrentFailure(_ failure: DecodingFailure) -> ConfigurationPersistenceError {
