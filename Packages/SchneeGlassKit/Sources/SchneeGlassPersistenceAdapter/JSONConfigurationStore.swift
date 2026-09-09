@@ -279,8 +279,7 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         }
 
         try ConfigurationBackupRotator.removeBackups(
-            backups.dropFirst(Self.maximumBackupCount),
-            fileManager: fileManager
+            backups.dropFirst(Self.maximumBackupCount)
         )
     }
 
