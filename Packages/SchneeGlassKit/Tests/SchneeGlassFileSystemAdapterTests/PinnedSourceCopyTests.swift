@@ -46,19 +46,66 @@ private func makePinnedCopySystem(
     )
 }
 
+private func preparePinnedCopyDirectories(
+    sourceDirectory: URL,
+    destinationDirectory: URL
+) throws {
+    try FileManager.default.createDirectory(
+        at: sourceDirectory,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: destinationDirectory,
+        withIntermediateDirectories: true
+    )
+}
+
+@Test
+func pinnedSourceCopyCopiesUnchangedSourceAndReleasesLease() async throws {
+    let root = try makePinnedCopyRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let system = makePinnedCopySystem(root: root)
+    try preparePinnedCopyDirectories(
+        sourceDirectory: system.sourceDirectory,
+        destinationDirectory: system.destinationDirectory
+    )
+
+    let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
+    let payload = Data("unchanged-payload".utf8)
+    try payload.write(to: source)
+
+    let drop = await system.planner.plan(
+        sourceURLs: [source],
+        destinationAccess: system.access
+    )
+    guard case let .copy(plan) = drop else {
+        Issue.record("Expected copy plan, got \(drop)")
+        return
+    }
+    #expect(await system.leases.activeLeaseCount() == 1)
+
+    let result = await system.copier.copy(
+        AuthorizedCopyBatchRequest(plan: plan, destinationAccess: system.access)
+    )
+
+    #expect(result.failed == nil)
+    #expect(result.succeeded.count == 1)
+    let final = system.destinationDirectory.appendingPathComponent("payload.txt", isDirectory: false)
+    #expect(try Data(contentsOf: final) == payload)
+    #expect(try Data(contentsOf: source) == payload)
+    #expect(await system.leases.activeLeaseCount() == 0)
+}
+
 @Test
 func pinnedSourceCopyRejectsSamePathSameSizeReplacement() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
     let system = makePinnedCopySystem(root: root)
-    try FileManager.default.createDirectory(
-        at: system.sourceDirectory,
-        withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-        at: system.destinationDirectory,
-        withIntermediateDirectories: true
+    try preparePinnedCopyDirectories(
+        sourceDirectory: system.sourceDirectory,
+        destinationDirectory: system.destinationDirectory
     )
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
@@ -98,13 +145,9 @@ func pinnedSourceCopyRejectsInPlaceEditAfterPlanning() async throws {
     defer { try? FileManager.default.removeItem(at: root) }
 
     let system = makePinnedCopySystem(root: root)
-    try FileManager.default.createDirectory(
-        at: system.sourceDirectory,
-        withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-        at: system.destinationDirectory,
-        withIntermediateDirectories: true
+    try preparePinnedCopyDirectories(
+        sourceDirectory: system.sourceDirectory,
+        destinationDirectory: system.destinationDirectory
     )
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
@@ -141,13 +184,9 @@ func rejectedDropPlanReleasesPreparedSourceLease() async throws {
     defer { try? FileManager.default.removeItem(at: root) }
 
     let system = makePinnedCopySystem(root: root)
-    try FileManager.default.createDirectory(
-        at: system.sourceDirectory,
-        withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-        at: system.destinationDirectory,
-        withIntermediateDirectories: true
+    try preparePinnedCopyDirectories(
+        sourceDirectory: system.sourceDirectory,
+        destinationDirectory: system.destinationDirectory
     )
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
