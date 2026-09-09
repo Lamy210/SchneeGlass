@@ -76,6 +76,7 @@ public final class SchneeGlassWorkspaceModel {
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
     private var dropExecutionGate = WorkspaceDropExecutionGate()
+    private var dropPlanningTracker = WorkspaceDropPlanningTracker()
     private var didAttemptInitialRestore = false
 
     public init(
@@ -296,8 +297,19 @@ public final class SchneeGlassWorkspaceModel {
             return rejection
         }
 
+        let planningToken = dropPlanningTracker.begin(glassID)
+        defer { dropPlanningTracker.finish(planningToken, for: glassID) }
+
         updateInteraction(.hovered, for: glassID)
         let plan = await session.planDrop(sourceURLs: sourceURLs)
+
+        guard dropPlanningTracker.isCurrent(planningToken, for: glassID),
+              !isMutatingConfiguration,
+              !isDropBusy(glassID: glassID),
+              sessions[glassID] === session
+        else {
+            return .reject(.destinationUnavailable)
+        }
 
         switch plan {
         case let .copy(copyPlan):
@@ -323,6 +335,7 @@ public final class SchneeGlassWorkspaceModel {
             updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
             return false
         }
+        dropPlanningTracker.invalidate(glassID)
         defer { dropExecutionGate.end(glassID) }
 
         let freshPlan = await session.planDrop(sourceURLs: sourceURLs)
@@ -385,6 +398,7 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func cancelDrop(glassID: GlassID) {
+        dropPlanningTracker.invalidate(glassID)
         guard !isDropBusy(glassID: glassID) else {
             return
         }
