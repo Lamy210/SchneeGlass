@@ -35,11 +35,13 @@ private func makeOwnedStagingRecord(
 }
 
 private func resourceIdentifier(of url: URL) throws -> String {
-    let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    guard let identifier = values.fileResourceIdentifier else {
+    guard let identifier = try PendingCopyFileIdentity.createToken(
+        at: url,
+        fileManager: .default
+    ) else {
         throw OwnedStagingCleanerTestError.missingResourceIdentifier
     }
-    return String(describing: identifier)
+    return identifier
 }
 
 @Test
@@ -82,11 +84,14 @@ func ownedStagingCleanerRejectsResourceIdentityMismatchWithoutMutation() async t
         ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
     )
     try Data("staging".utf8).write(to: stagingURL)
+    let observedIdentity = try resourceIdentifier(of: stagingURL)
+    let recordedIdentity = "xattr-v1:\(UUID().uuidString.lowercased())"
+    #expect(recordedIdentity != observedIdentity)
 
     let record = makeOwnedStagingRecord(
         glassID: glassID,
         operationID: operationID,
-        stagingResourceIdentifier: "different-resource"
+        stagingResourceIdentifier: recordedIdentity
     )
     let cleaner = OwnedStagingRecoveryCleaner()
 
@@ -103,6 +108,48 @@ func ownedStagingCleanerRejectsResourceIdentityMismatchWithoutMutation() async t
     }
 
     #expect(FileManager.default.fileExists(atPath: stagingURL.path))
+}
+
+@Test
+func ownedStagingCleanerRejectsRegularFileReplacementWithoutMutation() async throws {
+    let root = try makeRecoveryCleanupRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let glassID = GlassID()
+    let operationID = UUID()
+    let stagingURL = root.appendingPathComponent(
+        ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+    )
+    let original = Data("staging".utf8)
+    let replacement = Data("replace".utf8)
+    #expect(original.count == replacement.count)
+
+    try original.write(to: stagingURL)
+    let recordedIdentity = try resourceIdentifier(of: stagingURL)
+    let record = makeOwnedStagingRecord(
+        glassID: glassID,
+        operationID: operationID,
+        stagingResourceIdentifier: recordedIdentity
+    )
+
+    try FileManager.default.removeItem(at: stagingURL)
+    try replacement.write(to: stagingURL)
+
+    let cleaner = OwnedStagingRecoveryCleaner()
+    do {
+        try await cleaner.removeOwnedStaging(
+            record: record,
+            destinationAccess: FolderAccessHandle(glassID: glassID, url: root)
+        )
+        Issue.record("Expected replacement to be rejected")
+    } catch let error as OwnedStagingRecoveryCleanupError {
+        #expect(error == .resourceIdentityUnavailable || error == .resourceIdentityMismatch)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(FileManager.default.fileExists(atPath: stagingURL.path))
+    #expect(try Data(contentsOf: stagingURL) == replacement)
 }
 
 @Test

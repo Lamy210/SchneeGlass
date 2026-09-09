@@ -32,8 +32,10 @@ private func makeRecoveryRoot() throws -> URL {
 }
 
 private func resourceIdentifier(for url: URL) throws -> String? {
-    let values = try url.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    return values.fileResourceIdentifier.map { String(describing: $0) }
+    try PendingCopyFileIdentity.createToken(
+        at: url,
+        fileManager: .default
+    )
 }
 
 private func expectedVerification(
@@ -125,11 +127,18 @@ func recoveryAssessmentDetectsStagingIdentityMismatch() async throws {
     let root = try makeRecoveryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
     let glassID = GlassID()
+    let stagingRecord = makeRecoveryRecord(glassID: glassID)
+    let staging = root.appendingPathComponent(stagingRecord.stagingFilename)
+    try Data("payload".utf8).write(to: staging)
+    let observedIdentityCandidate = try resourceIdentifier(for: staging)
+    let observedIdentity = try #require(observedIdentityCandidate)
+    let recordedIdentity = "xattr-v1:\(UUID().uuidString.lowercased())"
+    #expect(recordedIdentity != observedIdentity)
     let record = makeRecoveryRecord(
+        operationID: stagingRecord.operationID,
         glassID: glassID,
-        stagingResourceIdentifier: "definitely-not-the-observed-resource"
+        stagingResourceIdentifier: recordedIdentity
     )
-    try Data("payload".utf8).write(to: root.appendingPathComponent(record.stagingFilename))
     let inspector = PendingCopyRecoveryInspector()
 
     let assessment = await inspector.assess(

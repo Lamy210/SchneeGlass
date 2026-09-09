@@ -146,10 +146,10 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     func resourceIdentifier(at url: URL) -> String? {
         do {
-            let values = try url.standardizedFileURL.resourceValues(
-                forKeys: [.fileResourceIdentifierKey]
+            return try PendingCopyFileIdentity.createToken(
+                at: url.standardizedFileURL,
+                fileManager: fileManager
             )
-            return values.fileResourceIdentifier.map { String(describing: $0) }
         } catch {
             return nil
         }
@@ -394,6 +394,7 @@ public actor SafeFileCopyEngine: FileCopying {
         )
 
         var verifiedRecord = baseRecord
+        let commitAuthorization: StagingCommitAuthorization
         do {
             try await recoveryStore.upsert(baseRecord)
             try await recoveryStore.upsert(baseRecord.updating(state: .staging))
@@ -406,9 +407,16 @@ public actor SafeFileCopyEngine: FileCopying {
                 .updating(state: .verifying)
             try await recoveryStore.upsert(verifiedRecord)
 
-            guard stagedSize == item.sourceSize else {
+            guard stagedSize == item.sourceSize,
+                  let stagingResourceIdentifier
+            else {
                 throw CopyFileSystemError.verificationFailed
             }
+
+            commitAuthorization = StagingCommitAuthorization(
+                expectedSize: stagedSize,
+                expectedResourceIdentifier: stagingResourceIdentifier
+            )
         } catch {
             await removeStaleRecordWhenNoStagingExists(
                 operationID: item.plan.operationID,
@@ -430,7 +438,11 @@ public actor SafeFileCopyEngine: FileCopying {
 
         do {
             try await recoveryStore.upsert(verifiedRecord.updating(state: .committing))
-            try await committer.commit(stagingURL: item.stagingURL, finalURL: item.finalURL)
+            try await committer.commit(
+                stagingURL: item.stagingURL,
+                finalURL: item.finalURL,
+                authorization: commitAuthorization
+            )
         } catch {
             return .failure(
                 CopyItemFailure(
@@ -509,9 +521,16 @@ public actor SafeFileCopyEngine: FileCopying {
             switch commitError {
             case .collision:
                 return .collision
-            case .stagingMissing:
+            case .stagingMissing,
+                 .unexpectedFileType,
+                 .sizeMismatch,
+                 .resourceIdentityUnavailable,
+                 .resourceIdentityMismatch:
                 return .verificationFailed
-            case .invalidStagingFile, .crossDirectoryCommit, .commitFailed:
+            case .invalidStagingFile,
+                 .crossDirectoryCommit,
+                 .coordinationFailed,
+                 .commitFailed:
                 return .unexpected
             }
         }
