@@ -26,7 +26,7 @@ enum PendingCopyFileIdentity {
                 return nil
             }
 
-            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+            let descriptor = open(path, O_RDWR | O_CLOEXEC | O_NOFOLLOW)
             guard descriptor >= 0 else {
                 return nil
             }
