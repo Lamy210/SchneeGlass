@@ -5,6 +5,17 @@ import SchneeGlassApplication
 struct DropSourceInspection: Sendable {
     let candidate: DropCandidate
     let availability: DropCandidateAvailability
+    let sourceLeaseToken: UUID?
+
+    init(
+        candidate: DropCandidate,
+        availability: DropCandidateAvailability,
+        sourceLeaseToken: UUID? = nil
+    ) {
+        self.candidate = candidate
+        self.availability = availability
+        self.sourceLeaseToken = sourceLeaseToken
+    }
 }
 
 protocol DropFileSystemInspecting: Sendable {
@@ -15,12 +26,17 @@ protocol DropFileSystemInspecting: Sendable {
 
 actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
     private let fileManager: FileManager
+    private let sourceLeases: SourceFileLeaseRegistry?
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        sourceLeases: SourceFileLeaseRegistry? = nil
+    ) {
         self.fileManager = fileManager
+        self.sourceLeases = sourceLeases
     }
 
-    func inspectSource(at url: URL) -> DropSourceInspection {
+    func inspectSource(at url: URL) async -> DropSourceInspection {
         let source = url.standardizedFileURL
         let didStart = source.startAccessingSecurityScopedResource()
         defer {
@@ -29,6 +45,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
             }
         }
 
+        var preparedToken: UUID?
         do {
             let attributes = try fileManager.attributesOfItem(atPath: source.path)
             let values = try source.resourceValues(forKeys: [
@@ -62,15 +79,76 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 availability = .available
             }
 
+            guard kind == .regular,
+                  availability == .available,
+                  let sourceLeases
+            else {
+                return DropSourceInspection(
+                    candidate: DropCandidate(
+                        url: source,
+                        kind: kind,
+                        size: (attributes[.size] as? NSNumber)?.int64Value
+                    ),
+                    availability: availability
+                )
+            }
+
+            let prepared = try await sourceLeases.prepareSource(at: source)
+            preparedToken = prepared.token
+
+            // Re-read path-level flags while the original file descriptor is pinned, then verify
+            // the path still names that same inode. Because the original descriptor remains open,
+            // an unlinked inode cannot be immediately recycled underneath this comparison.
+            let pinnedValues = try source.resourceValues(forKeys: [
+                .isAliasFileKey,
+                .isPackageKey,
+                .isUbiquitousItemKey,
+                .ubiquitousItemDownloadingStatusKey,
+            ])
+            guard await sourceLeases.preparedSourceStillMatchesPath(token: prepared.token) else {
+                throw SourceFileLeaseError.sourceChanged
+            }
+
+            if pinnedValues.isAliasFile == true {
+                await sourceLeases.releasePrepared(tokens: [prepared.token])
+                preparedToken = nil
+                return DropSourceInspection(
+                    candidate: DropCandidate(url: source, kind: .alias),
+                    availability: .available
+                )
+            }
+            if pinnedValues.isPackage == true {
+                await sourceLeases.releasePrepared(tokens: [prepared.token])
+                preparedToken = nil
+                return DropSourceInspection(
+                    candidate: DropCandidate(url: source, kind: .package),
+                    availability: .available
+                )
+            }
+            if pinnedValues.isUbiquitousItem == true,
+               pinnedValues.ubiquitousItemDownloadingStatus != .current
+            {
+                await sourceLeases.releasePrepared(tokens: [prepared.token])
+                preparedToken = nil
+                return DropSourceInspection(
+                    candidate: DropCandidate(url: source, kind: .regular, size: prepared.size),
+                    availability: .cloudPlaceholderUnavailable
+                )
+            }
+
             return DropSourceInspection(
                 candidate: DropCandidate(
-                    url: source,
-                    kind: kind,
-                    size: (attributes[.size] as? NSNumber)?.int64Value
+                    url: prepared.standardizedURL,
+                    kind: .regular,
+                    size: prepared.size
                 ),
-                availability: availability
+                availability: .available,
+                sourceLeaseToken: prepared.token
             )
         } catch {
+            if let preparedToken, let sourceLeases {
+                await sourceLeases.releasePrepared(tokens: [preparedToken])
+            }
             return DropSourceInspection(
                 candidate: DropCandidate(url: source, kind: .unsupported),
                 availability: .sourceUnavailable
@@ -133,13 +211,22 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
 public actor NativeDropPlanningAdapter: DropPlanning {
     private let inspector: any DropFileSystemInspecting
+    private let sourceLeases: SourceFileLeaseRegistry?
 
     public init() {
-        self.inspector = FoundationDropFileSystemInspector()
+        let sourceLeases = SourceFileLeaseRegistry()
+        self.sourceLeases = sourceLeases
+        self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
+    }
+
+    public init(sourceLeases: SourceFileLeaseRegistry) {
+        self.sourceLeases = sourceLeases
+        self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
     }
 
     init(inspector: any DropFileSystemInspecting) {
         self.inspector = inspector
+        self.sourceLeases = nil
     }
 
     public func plan(
@@ -150,6 +237,8 @@ public actor NativeDropPlanningAdapter: DropPlanning {
             return .reject(.destinationUnavailable)
         }
 
+        var inspections: [DropSourceInspection] = []
+        inspections.reserveCapacity(sourceURLs.count)
         var candidates: [DropCandidate] = []
         candidates.reserveCapacity(sourceURLs.count)
         var availability: [URL: DropCandidateAvailability] = [:]
@@ -158,6 +247,7 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         for rawURL in sourceURLs {
             let sourceURL = rawURL.standardizedFileURL
             let inspection = await inspector.inspectSource(at: sourceURL)
+            inspections.append(inspection)
             candidates.append(inspection.candidate)
             availability[sourceURL] = inspection.availability
 
@@ -169,7 +259,7 @@ public actor NativeDropPlanningAdapter: DropPlanning {
             }
         }
 
-        return DropPlanner.plan(
+        let result = DropPlanner.plan(
             DropPlanningContext(
                 candidates: candidates,
                 destination: destination,
@@ -177,5 +267,38 @@ public actor NativeDropPlanningAdapter: DropPlanning {
                 collidingSourceURLs: collisions
             )
         )
+
+        guard let sourceLeases else {
+            return result
+        }
+
+        let preparedTokens = inspections.compactMap(\.sourceLeaseToken)
+        guard case let .copy(plan) = result else {
+            await sourceLeases.releasePrepared(tokens: preparedTokens)
+            return result
+        }
+
+        guard plan.items.count == inspections.count else {
+            await sourceLeases.releasePrepared(tokens: preparedTokens)
+            return .reject(.sourceUnavailable)
+        }
+
+        var boundOperationIDs: [UUID] = []
+        boundOperationIDs.reserveCapacity(plan.items.count)
+
+        do {
+            for (item, inspection) in zip(plan.items, inspections) {
+                guard let token = inspection.sourceLeaseToken else {
+                    throw SourceFileLeaseError.sourceUnavailable
+                }
+                try await sourceLeases.bind(token: token, operationID: item.operationID)
+                boundOperationIDs.append(item.operationID)
+            }
+            return result
+        } catch {
+            await sourceLeases.releasePrepared(tokens: preparedTokens)
+            await sourceLeases.releaseBound(operationIDs: boundOperationIDs)
+            return .reject(.sourceUnavailable)
+        }
     }
 }
