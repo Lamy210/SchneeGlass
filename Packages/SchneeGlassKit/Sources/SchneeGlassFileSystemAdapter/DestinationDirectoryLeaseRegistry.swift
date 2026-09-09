@@ -17,8 +17,7 @@ enum DestinationDirectoryLeaseError: Error, Hashable, Sendable {
 /// A selected folder URL is not mutation authority by itself: another process can rename or replace
 /// that pathname after planning. This registry opens the directory with `O_NOFOLLOW`, verifies the
 /// access/plan identity while the path still names that descriptor, and binds every copy operation
-/// ID to the same open directory inode. Production staging creation and commit then use duplicated
-/// descriptors from this lease rather than resolving the destination pathname again.
+/// ID plus its staging/final names to the same open directory inode.
 actor DestinationDirectoryLeaseRegistry {
     private struct Lease {
         let descriptor: Int32
@@ -26,8 +25,15 @@ actor DestinationDirectoryLeaseRegistry {
         let operationIDs: Set<UUID>
     }
 
+    private struct OperationBinding {
+        let batchID: UUID
+        let directoryURL: URL
+        let stagingFilename: String
+        let finalFilename: String
+    }
+
     private var leasesByBatchID: [UUID: Lease] = [:]
-    private var batchIDByOperationID: [UUID: UUID] = [:]
+    private var bindingByOperationID: [UUID: OperationBinding] = [:]
 
     func bind(_ request: AuthorizedCopyBatchRequest) throws {
         let plan = request.plan
@@ -36,6 +42,8 @@ actor DestinationDirectoryLeaseRegistry {
 
         guard access.glassID == plan.destination.glassID,
               destination == plan.destination.url.standardizedFileURL,
+              plan.destination.capabilities.locationKind != .network,
+              plan.destination.capabilities.isWritable,
               leasesByBatchID[plan.batchID] == nil,
               !plan.items.isEmpty
         else {
@@ -44,7 +52,8 @@ actor DestinationDirectoryLeaseRegistry {
 
         let operationIDs = Set(plan.items.map(\.operationID))
         guard operationIDs.count == plan.items.count,
-              operationIDs.allSatisfy({ batchIDByOperationID[$0] == nil })
+              operationIDs.allSatisfy({ bindingByOperationID[$0] == nil }),
+              plan.items.allSatisfy({ Self.isSinglePathComponent($0.destinationFilename) })
         else {
             throw DestinationDirectoryLeaseError.destinationUnavailable
         }
@@ -67,15 +76,60 @@ actor DestinationDirectoryLeaseRegistry {
             url: destination,
             operationIDs: operationIDs
         )
-        for operationID in operationIDs {
-            batchIDByOperationID[operationID] = plan.batchID
+        for item in plan.items {
+            bindingByOperationID[item.operationID] = OperationBinding(
+                batchID: plan.batchID,
+                directoryURL: destination,
+                stagingFilename: Self.stagingFilename(operationID: item.operationID),
+                finalFilename: item.destinationFilename
+            )
         }
+    }
+
+    func isBoundDirectory(_ url: URL) -> Bool {
+        let candidate = url.standardizedFileURL
+        return leasesByBatchID.values.contains { $0.url == candidate }
+    }
+
+    /// Returns whether a known staging/final entry exists in the pinned directory. `nil` means the
+    /// URL is not part of any active destination lease and callers should not infer authority.
+    func itemExists(at url: URL) -> Bool? {
+        let candidate = url.standardizedFileURL
+        let directory = candidate.deletingLastPathComponent().standardizedFileURL
+        let filename = candidate.lastPathComponent
+        guard Self.isSinglePathComponent(filename),
+              let match = bindingByOperationID.first(where: { _, binding in
+                  binding.directoryURL == directory
+                      && (binding.stagingFilename == filename || binding.finalFilename == filename)
+              }),
+              let lease = leasesByBatchID[match.value.batchID]
+        else {
+            return nil
+        }
+
+        return Self.itemExists(
+            directoryDescriptor: lease.descriptor,
+            filename: filename
+        )
+    }
+
+    func operationID(forStagingURL url: URL) -> UUID? {
+        let candidate = url.standardizedFileURL
+        let filename = candidate.lastPathComponent
+        guard let operationID = Self.operationID(fromStagingFilename: filename),
+              let binding = bindingByOperationID[operationID],
+              binding.directoryURL == candidate.deletingLastPathComponent().standardizedFileURL,
+              binding.stagingFilename == filename
+        else {
+            return nil
+        }
+        return operationID
     }
 
     /// Returns a caller-owned duplicate of the pinned directory descriptor. The caller must close it.
     func duplicateDescriptor(operationID: UUID) throws -> Int32 {
-        guard let batchID = batchIDByOperationID[operationID],
-              let lease = leasesByBatchID[batchID],
+        guard let binding = bindingByOperationID[operationID],
+              let lease = leasesByBatchID[binding.batchID],
               lease.operationIDs.contains(operationID)
         else {
             throw DestinationDirectoryLeaseError.operationNotBound
@@ -88,22 +142,6 @@ actor DestinationDirectoryLeaseRegistry {
         return duplicate
     }
 
-    /// Checks the original pinned directory, even if its pathname has since been renamed/replaced.
-    /// This is used only to decide whether pending-copy recovery metadata must be retained.
-    func itemExists(operationID: UUID, filename: String) -> Bool {
-        guard let batchID = batchIDByOperationID[operationID],
-              let lease = leasesByBatchID[batchID],
-              Self.isSinglePathComponent(filename)
-        else {
-            return false
-        }
-
-        return filename.withCString { name in
-            var metadata = stat()
-            return fstatat(lease.descriptor, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0
-        }
-    }
-
     func activeLeaseCount() -> Int {
         leasesByBatchID.count
     }
@@ -112,10 +150,30 @@ actor DestinationDirectoryLeaseRegistry {
         guard let lease = leasesByBatchID.removeValue(forKey: batchID) else {
             return
         }
-        for operationID in lease.operationIDs where batchIDByOperationID[operationID] == batchID {
-            batchIDByOperationID.removeValue(forKey: operationID)
+        for operationID in lease.operationIDs {
+            if bindingByOperationID[operationID]?.batchID == batchID {
+                bindingByOperationID.removeValue(forKey: operationID)
+            }
         }
         close(lease.descriptor)
+    }
+
+    static func stagingFilename(operationID: UUID) -> String {
+        ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+    }
+
+    static func operationID(fromStagingFilename filename: String) -> UUID? {
+        let prefix = ".schneeglass-copy-"
+        let suffix = ".partial"
+        guard filename.hasPrefix(prefix), filename.hasSuffix(suffix) else {
+            return nil
+        }
+        let start = filename.index(filename.startIndex, offsetBy: prefix.count)
+        let end = filename.index(filename.endIndex, offsetBy: -suffix.count)
+        guard start < end else {
+            return nil
+        }
+        return UUID(uuidString: String(filename[start..<end]))
     }
 
     private static func openDirectoryNoFollow(_ url: URL) throws -> Int32 {
@@ -215,6 +273,16 @@ actor DestinationDirectoryLeaseRegistry {
             }
             return descriptorMetadata.st_dev == pathMetadata.st_dev
                 && descriptorMetadata.st_ino == pathMetadata.st_ino
+        }
+    }
+
+    private static func itemExists(
+        directoryDescriptor: Int32,
+        filename: String
+    ) -> Bool {
+        filename.withCString { name in
+            var metadata = stat()
+            return fstatat(directoryDescriptor, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0
         }
     }
 
