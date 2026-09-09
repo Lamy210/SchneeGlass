@@ -110,6 +110,20 @@ test -f "$EVIDENCE" || fail "RELEASE_EVIDENCE.txt is missing"
 
 grep -Fx "version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
   || fail "candidate evidence version mismatch"
+
+for key in bundle_identifier bundle_version bundle_build; do
+  COUNT="$(grep -c "^${key}=" "$EVIDENCE" || true)"
+  [[ "$COUNT" == "1" ]] || fail "candidate evidence must contain exactly one $key"
+done
+
+grep -Fx 'bundle_identifier=io.github.lamy210.schneeglass' "$EVIDENCE" >/dev/null \
+  || fail "candidate bundle identifier evidence mismatch"
+grep -Fx "bundle_version=$RELEASE_VERSION" "$EVIDENCE" >/dev/null \
+  || fail "candidate signed bundle version evidence mismatch"
+BUNDLE_BUILD="$(sed -n 's/^bundle_build=//p' "$EVIDENCE")"
+[[ "$BUNDLE_BUILD" =~ ^[1-9][0-9]*$ ]] \
+  || fail "candidate signed bundle build evidence is invalid: $BUNDLE_BUILD"
+
 grep -Fx 'notarization_status=Accepted' "$EVIDENCE" >/dev/null \
   || fail "candidate is not notarization Accepted"
 grep -Fx 'codesign=verified' "$EVIDENCE" >/dev/null \
