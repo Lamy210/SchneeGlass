@@ -88,13 +88,23 @@ private actor FakeCopyEnvironment: CopyFileSystemAccessing, StagingCommitting {
         stagedResourceIdentifiers[url.standardizedFileURL]
     }
 
-    func commit(stagingURL: URL, finalURL: URL) async throws {
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) async throws {
         let staging = stagingURL.standardizedFileURL
         let final = finalURL.standardizedFileURL
         commitCalls.append((staging, final))
 
         guard existingItems.contains(staging) else {
             throw StagingCommitError.stagingMissing
+        }
+        guard stagedSizes[staging] == authorization.expectedSize else {
+            throw StagingCommitError.sizeMismatch
+        }
+        guard stagedResourceIdentifiers[staging] == authorization.expectedResourceIdentifier else {
+            throw StagingCommitError.resourceIdentityMismatch
         }
 
         if collisionOnCommit {

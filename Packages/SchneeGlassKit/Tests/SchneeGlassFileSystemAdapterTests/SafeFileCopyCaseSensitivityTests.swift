@@ -42,7 +42,12 @@ private actor CaseSensitivityCopyEnvironment: CopyFileSystemAccessing, StagingCo
 
     func resourceIdentifier(at url: URL) async -> String? { nil }
 
-    func commit(stagingURL: URL, finalURL: URL) async throws {
+    func commit(
+        stagingURL: URL,
+        finalURL: URL,
+        authorization: StagingCommitAuthorization
+    ) async throws {
+        _ = authorization
         throw StagingCommitError.commitFailed
     }
 
