@@ -226,7 +226,7 @@ public actor SourceFileLeaseRegistry {
             lease.descriptor,
             destinationDescriptor,
             nil,
-            COPYFILE_ALL
+            copyfile_flags_t(COPYFILE_ALL)
         ) == 0 else {
             throw Self.mapCopyError(errno)
         }
