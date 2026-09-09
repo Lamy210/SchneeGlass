@@ -51,6 +51,7 @@ ARTIFACT_NAME="SchneeGlass-${RELEASE_VERSION}-signed-notarized-candidate"
 ARCHIVE_NAME="SchneeGlass-${RELEASE_VERSION}.zip"
 RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 CANDIDATE_DIR="$RUNNER_TEMP/SchneeGlassReleasePromotion"
+HISTORY_DIR="$CANDIDATE_DIR/published-build-history"
 CREATED_RELEASE=false
 
 cleanup() {
@@ -78,7 +79,7 @@ cleanup() {
 trap cleanup EXIT
 
 rm -rf "$CANDIDATE_DIR"
-mkdir -p "$CANDIDATE_DIR"
+mkdir -p "$CANDIDATE_DIR" "$HISTORY_DIR"
 
 RUN_API="repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID"
 RUN_NAME="$(gh api "$RUN_API" --jq '.name')"
@@ -119,6 +120,31 @@ grep -E "^[0-9a-fA-F]{64}  ${ARCHIVE_NAME}$" "$CHECKSUMS" >/dev/null \
   cd "$CANDIDATE_DIR"
   shasum -a 256 -c SHA256SUMS
 )
+
+# Every public (non-draft) release is distribution history, including prereleases.
+# Download its immutable release evidence and require the new build number to exceed
+# the maximum previously distributed build. Missing/malformed history fails closed.
+HISTORY_INDEX=0
+while IFS= read -r PUBLISHED_TAG; do
+  [[ -n "$PUBLISHED_TAG" ]] || continue
+  HISTORY_INDEX=$((HISTORY_INDEX + 1))
+  RELEASE_HISTORY_DIR="$HISTORY_DIR/$HISTORY_INDEX"
+  mkdir -p "$RELEASE_HISTORY_DIR"
+
+  gh release download "$PUBLISHED_TAG" \
+    --repo "$GITHUB_REPOSITORY" \
+    --pattern 'RELEASE_EVIDENCE.txt' \
+    --dir "$RELEASE_HISTORY_DIR" \
+    || fail "public release $PUBLISHED_TAG is missing readable RELEASE_EVIDENCE.txt"
+
+  test -f "$RELEASE_HISTORY_DIR/RELEASE_EVIDENCE.txt" \
+    || fail "public release $PUBLISHED_TAG did not yield RELEASE_EVIDENCE.txt"
+done < <(
+  gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+    --jq '.[] | select(.draft == false) | .tag_name'
+)
+
+bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$HISTORY_DIR"
 
 git fetch origin main --tags --force
 git cat-file -e "$RUN_HEAD_SHA^{commit}" \
