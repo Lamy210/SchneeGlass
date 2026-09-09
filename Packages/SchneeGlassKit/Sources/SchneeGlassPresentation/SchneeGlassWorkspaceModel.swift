@@ -75,6 +75,7 @@ public final class SchneeGlassWorkspaceModel {
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
+    private var dropExecutionGate = WorkspaceDropExecutionGate()
     private var didAttemptInitialRestore = false
 
     public init(
@@ -192,7 +193,7 @@ public final class SchneeGlassWorkspaceModel {
 
     public func removeGlass(id: GlassID) async {
         guard !isMutatingConfiguration,
-              !isCopying(glassID: id)
+              !isDropBusy(glassID: id)
         else {
             return
         }
@@ -288,7 +289,7 @@ public final class SchneeGlassWorkspaceModel {
     ) async -> DropPlan {
         guard !isMutatingConfiguration,
               let session = sessions[glassID],
-              !isCopying(glassID: glassID)
+              !isDropBusy(glassID: glassID)
         else {
             let rejection = DropPlan.reject(.destinationUnavailable)
             updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
@@ -316,11 +317,13 @@ public final class SchneeGlassWorkspaceModel {
     ) async -> Bool {
         guard !isMutatingConfiguration,
               let session = sessions[glassID],
-              !isCopying(glassID: glassID)
+              !isDropBusy(glassID: glassID),
+              dropExecutionGate.begin(glassID)
         else {
             updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
             return false
         }
+        defer { dropExecutionGate.end(glassID) }
 
         let freshPlan = await session.planDrop(sourceURLs: sourceURLs)
         guard case let .copy(copyPlan) = freshPlan else {
@@ -382,7 +385,7 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func cancelDrop(glassID: GlassID) {
-        guard !isCopying(glassID: glassID) else {
+        guard !isDropBusy(glassID: glassID) else {
             return
         }
         updateInteraction(.idle, for: glassID)
@@ -507,12 +510,19 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     private var hasActiveCopy: Bool {
-        glasses.contains { entry in
+        if dropExecutionGate.hasActiveExecution {
+            return true
+        }
+        return glasses.contains { entry in
             if case .copying = entry.interactionState {
                 return true
             }
             return false
         }
+    }
+
+    private func isDropBusy(glassID: GlassID) -> Bool {
+        dropExecutionGate.contains(glassID) || isCopying(glassID: glassID)
     }
 
     private func isCopying(glassID: GlassID) -> Bool {
