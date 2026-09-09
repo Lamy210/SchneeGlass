@@ -105,12 +105,11 @@ private func makeIdentityCopyRequest(
 }
 
 private func physicalIdentity(of url: URL) throws -> String {
-    try #require(
-        PendingCopyFileIdentity.token(
-            at: url,
-            fileManager: .default
-        )
+    let identity = try PendingCopyFileIdentity.token(
+        at: url,
+        fileManager: .default
     )
+    return try #require(identity)
 }
 
 @Test
