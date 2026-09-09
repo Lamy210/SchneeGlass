@@ -146,10 +146,10 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     func resourceIdentifier(at url: URL) -> String? {
         do {
-            let values = try url.standardizedFileURL.resourceValues(
-                forKeys: [.fileResourceIdentifierKey]
+            return try PendingCopyFileIdentity.token(
+                at: url.standardizedFileURL,
+                fileManager: fileManager
             )
-            return values.fileResourceIdentifier.map { String(describing: $0) }
         } catch {
             return nil
         }
