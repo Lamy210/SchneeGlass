@@ -47,7 +47,7 @@ private func makePinnedCopySystem(
 }
 
 @Test
-func pinnedSourceCopyUsesOriginallyDroppedFileAfterSamePathReplacement() async throws {
+func pinnedSourceCopyRejectsSamePathSameSizeReplacement() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
@@ -84,10 +84,10 @@ func pinnedSourceCopyUsesOriginallyDroppedFileAfterSamePathReplacement() async t
         AuthorizedCopyBatchRequest(plan: plan, destinationAccess: system.access)
     )
 
-    #expect(result.failed == nil)
-    #expect(result.succeeded.count == 1)
+    #expect(result.succeeded.isEmpty)
+    #expect(result.failed?.reason == .verificationFailed)
     let final = system.destinationDirectory.appendingPathComponent("payload.txt", isDirectory: false)
-    #expect(try Data(contentsOf: final) == original)
+    #expect(!FileManager.default.fileExists(atPath: final.path))
     #expect(try Data(contentsOf: source) == replacement)
     #expect(await system.leases.activeLeaseCount() == 0)
 }
