@@ -88,6 +88,13 @@ let package = Package(
             dependencies: ["SchneeGlassApplication"]
         ),
         .testTarget(
+            name: "SchneeGlassPresentationTests",
+            dependencies: [
+                "SchneeGlassPresentation",
+                "SchneeGlassDomain"
+            ]
+        ),
+        .testTarget(
             name: "SchneeGlassPOSIXSupportTests",
             dependencies: ["SchneeGlassPOSIXSupport"]
         ),
