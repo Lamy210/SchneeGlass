@@ -146,7 +146,7 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     func resourceIdentifier(at url: URL) -> String? {
         do {
-            return try PendingCopyFileIdentity.token(
+            return try PendingCopyFileIdentity.createToken(
                 at: url.standardizedFileURL,
                 fileManager: fileManager
             )
