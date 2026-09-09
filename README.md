@@ -43,6 +43,7 @@ v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / n
   - valid backup最大5世代
   - corrupt currentをsilent overwriteしない
   - explicit configuration recovery
+  - app-owned state directory / leaf symlinkをfollowしないphysical topology enforcement
 - Desktop上の1 Glass = 1 `NSPanel`
 - move / resize placement persistence
 - off-screen frame recovery
@@ -97,7 +98,7 @@ Silent overwrite            = 0
 Unknown partial auto-delete = 0
 ```
 
-v0.1で許可するFilesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。RecoveryのFinder inspectionとDestination Reconnectはuser-owned file内容を変更しません。
+v0.1で許可するuser-visible Filesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。Configuration / Pending CopyなどSchneeGlass-owned metadataはApplication Support配下だけで管理し、physical directory / regular-file boundaryを通して保存します。RecoveryのFinder inspectionとDestination Reconnectはuser-owned file内容を変更しません。
 
 ## Architecture
 
@@ -107,12 +108,13 @@ FileDomain
 SchneeGlassApplication
 SchneeGlassPresentation
 SchneeGlassDesignSystem
+SchneeGlassPOSIXSupport
 SchneeGlassFileSystemAdapter
 SchneeGlassPersistenceAdapter
 SchneeGlassMacOSAdapter
 ```
 
-Concrete filesystem / persistence / macOS APIはAdapterへ閉じ、Presentationから直接触りません。
+Concrete filesystem / persistence / macOS APIはAdapterへ閉じ、Presentationから直接触りません。`SchneeGlassPOSIXSupport`はFoundation / Darwinだけに依存するshared infrastructure boundaryで、SchneeGlass-owned metadataのphysical filesystem semanticsだけを共有します。
 
 詳細は [`ARCHITECTURE.md`](ARCHITECTURE.md) を参照してください。
 
