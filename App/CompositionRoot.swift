@@ -28,8 +28,6 @@ final class SchneeGlassCompositionRoot {
         )
         let baseDirectory = applicationSupport
             .appendingPathComponent("io.github.lamy210.schneeglass", isDirectory: true)
-        let fileOperationsDirectory = baseDirectory
-            .appendingPathComponent("FileOperations", isDirectory: true)
 
         let configurationStore = JSONConfigurationStore(baseDirectory: baseDirectory)
         let accessController = SecurityScopedAccessCoordinator()
@@ -37,7 +35,10 @@ final class SchneeGlassCompositionRoot {
         let snapshotReader = NativeFolderSnapshotReader()
         let sourceLeases = SourceFileLeaseRegistry()
         let dropPlanning = NativeDropPlanningAdapter(sourceLeases: sourceLeases)
-        let pendingCopyStore = JSONPendingCopyStore(baseDirectory: fileOperationsDirectory)
+        let pendingCopyStore = JSONPendingCopyStore(
+            applicationSupportRoot: baseDirectory,
+            relativeDirectory: "FileOperations"
+        )
         let activityGate = FileOperationActivityGate()
         let folderSelector = NativeFolderSelector()
         let sourceCreator = SecurityScopedFolderSourceFactory()
