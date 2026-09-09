@@ -42,6 +42,16 @@ private func entryType(at url: URL) throws -> mode_t {
     return metadata.st_mode & S_IFMT
 }
 
+private func entryExists(at url: URL) -> Bool {
+    var metadata = stat()
+    return url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+        guard let path else {
+            return false
+        }
+        return lstat(path, &metadata) == 0
+    }
+}
+
 @Test
 func backupRotationIgnoresBackupNamedDirectoryAndSymlink() async throws {
     let root = try makeBackupSafetyRoot()
@@ -107,4 +117,53 @@ func restoreRejectsBackupNamedSymlinkWithoutReadingTarget() async throws {
 
     #expect(try await store.load() == [expected])
     #expect(try entryType(at: symlinkEntry) == S_IFLNK)
+}
+
+@Test
+func backupRotatorCannotRecursivelyDeleteDirectoryEvenIfCalledDirectly() throws {
+    let root = try makeBackupSafetyRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let directory = root.appendingPathComponent(backupLikeName(timestamp: 1), isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    let sentinel = directory.appendingPathComponent("must-survive.txt", isDirectory: false)
+    try Data("sentinel".utf8).write(to: sentinel)
+
+    let candidates = [directory]
+    do {
+        try ConfigurationBackupRotator.removeBackups(candidates[...])
+        Issue.record("Expected unlink to reject a directory")
+    } catch let error as ConfigurationBackupRotationError {
+        switch error {
+        case .unlinkFailed:
+            break
+        case .invalidPath:
+            Issue.record("Unexpected invalid path")
+        }
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(try entryType(at: directory) == S_IFDIR)
+    #expect(try Data(contentsOf: sentinel) == Data("sentinel".utf8))
+}
+
+@Test
+func backupRotatorUnlinksSymlinkEntryWithoutFollowingTarget() throws {
+    let root = try makeBackupSafetyRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let target = root.appendingPathComponent("target.json", isDirectory: false)
+    let payload = Data("target-must-survive".utf8)
+    try payload.write(to: target)
+
+    let symlink = root.appendingPathComponent(backupLikeName(timestamp: 1), isDirectory: false)
+    try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: target)
+    #expect(try entryType(at: symlink) == S_IFLNK)
+
+    let candidates = [symlink]
+    try ConfigurationBackupRotator.removeBackups(candidates[...])
+
+    #expect(!entryExists(at: symlink))
+    #expect(try Data(contentsOf: target) == payload)
 }
