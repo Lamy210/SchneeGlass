@@ -15,8 +15,11 @@ SchneeGlass currently has CI and workflows for:
 - notarization ticket stapling and validation
 - Gatekeeper assessment
 - signed bundle metadata evidence derived from the final ZIP
+- strict `RELEASE_EVIDENCE.txt` schema v1 validation
+- exact Production Release Candidate workflow identity validation
 - final SHA-256 integrity manifest
 - signed/notarized candidate artifact and release evidence
+- public build-number monotonicity validation
 - Manual QA-gated promotion to an immutable GitHub Release
 
 The remaining production gates are operational validation: configure the protected release environment and credentials, verify repository release governance, produce the first real signed/notarized candidate, complete Manual QA, and publish the first immutable v0.1 Release. These are tracked in Issue #33.
@@ -38,10 +41,22 @@ Rules:
 1. Debug and Release configurations must use the same `MARKETING_VERSION`.
 2. Debug and Release configurations must use the same `CURRENT_PROJECT_VERSION`.
 3. A release tag must exactly match `MARKETING_VERSION` after removing the leading `v`.
-4. `CURRENT_PROJECT_VERSION` must increase for a newly distributed build of the same or a later marketing version.
+4. `CURRENT_PROJECT_VERSION` must increase for every newly distributed public build, including later marketing versions.
 5. Do not move or reuse a published release tag. A bad release gets a new version/build.
 
-`Scripts/verify-release-metadata.sh` enforces rules 1–3 and validates the bundle identifier. Monotonic build-number history is a release-process requirement until a release ledger is added.
+`Scripts/verify-release-metadata.sh` enforces rules 1–3 and validates the bundle identifier.
+
+Rule 4 is enforced automatically during production publication by `Scripts/verify-release-build-history.sh`. The workflow downloads `RELEASE_EVIDENCE.txt` from all existing non-draft Releases, treats prereleases as distribution history, computes the maximum published `bundle_build`, and requires:
+
+```text
+first public Release:
+  history count == 0 → PASS
+
+subsequent public Release:
+  candidate bundle_build > max(published bundle_build)
+```
+
+Missing, malformed, or unsupported historical evidence fails closed before Draft Release creation.
 
 ## Unsigned release candidate validation
 
@@ -77,7 +92,7 @@ The actual signing job only runs when all of the following are true:
 - credential-free preflight passed
 - protected `production-release` environment permits the job
 
-PR validation runs only credential-free checks. It verifies shell syntax, production preflight, fail-closed behavior without credentials, and a synthetic signed-bundle metadata fixture. PR validation must never produce a signed production artifact.
+PR validation runs only credential-free checks. It verifies shell syntax, production preflight, fail-closed behavior without credentials, strict evidence-schema fixtures, and unknown-key rejection. PR validation must never produce a signed production artifact.
 
 Production flow:
 
@@ -106,16 +121,22 @@ Gatekeeper assessment
   ↓
 final signed ZIP
   ↓
-read signed ZIP Info.plist
+SHA-256 manifest
   ↓
-record bundle identifier / version / build in RELEASE_EVIDENCE.txt
+initialize RELEASE_EVIDENCE.txt schema v1
   ↓
-SHA-256 manifest + source commit evidence
+read final signed ZIP Info.plist
+  ↓
+record bundle identifier / version / build
+  ↓
+record exact source commit SHA
+  ↓
+strict complete evidence validation
   ↓
 Actions artifact for Manual QA
 ```
 
-The signed ZIP itself is the authority for these evidence fields:
+The signed ZIP itself is the authority for:
 
 ```text
 bundle_identifier=io.github.lamy210.schneeglass
@@ -123,7 +144,43 @@ bundle_version=X.Y.Z
 bundle_build=<positive integer>
 ```
 
-Publication requires each field exactly once. The candidate is **not** automatically published.
+### RELEASE_EVIDENCE schema v1
+
+`RELEASE_EVIDENCE.txt` is a strict contract, not a free-form log.
+
+Required keys, each exactly once:
+
+```text
+schema_version
+version
+notarization_id
+notarization_status
+codesign
+stapler
+gatekeeper
+bundle_identifier
+bundle_version
+bundle_build
+commit_sha
+```
+
+Validation rules include:
+
+- `schema_version=1`
+- no unknown keys
+- no blank or malformed lines
+- requested version must match
+- notarization ID must have UUID shape
+- `notarization_status=Accepted`
+- `codesign=verified`
+- `stapler=validated`
+- `gatekeeper=accepted`
+- `bundle_identifier=io.github.lamy210.schneeglass`
+- `bundle_version` must equal requested version
+- `bundle_build` must be a positive integer
+- `commit_sha` must equal the exact candidate workflow head SHA
+
+The candidate is **not** automatically published.
 
 App Sandbox remains enabled even though direct Developer ID distribution does not require it. Hardened Runtime remains mandatory for the notarized production path.
 
@@ -145,23 +202,38 @@ The publication job is restricted to:
 
 `confirm_release_governance=true` is a human attestation that `main` branch protection/ruleset, required CI, and the release-source governance required for this release were reviewed. This gate exists because the release workflow cannot reliably read all repository Administration settings itself.
 
+### Candidate workflow identity
+
+Publication does not trust the display name alone. The selected Actions run must satisfy all of the following:
+
+```text
+name       = Production Release Candidate
+path       = .github/workflows/production-release.yml
+event      = workflow_dispatch
+status     = completed
+conclusion = success
+branch     = main
+head_sha   = 40-character lowercase commit SHA
+```
+
+This prevents a lookalike workflow with the same display name from being promoted.
+
+### Publication revalidation
+
 Before creating a Release it revalidates:
 
-- candidate run belongs to `Production Release Candidate`
-- candidate event is `workflow_dispatch`
-- candidate run completed successfully
-- candidate was built from `main`
-- candidate workflow head SHA is valid
-- `RELEASE_EVIDENCE.txt` version matches the requested version
-- signed bundle identifier equals `io.github.lamy210.schneeglass`
-- signed bundle version equals the requested version
-- signed bundle build is a positive integer
-- each signed bundle metadata evidence key occurs exactly once
-- notarization status is `Accepted`
-- codesign / stapler / Gatekeeper evidence is present
+- exact candidate workflow identity above
+- strict schema v1 `RELEASE_EVIDENCE.txt`
+- requested version
+- signed bundle identifier
+- signed bundle version
+- positive signed bundle build
+- notarization / codesign / stapler / Gatekeeper state
 - evidence commit SHA equals candidate workflow head SHA
 - expected archive is present in `SHA256SUMS`
 - SHA-256 self-check passes
+- all existing public Release build evidence is readable and valid
+- candidate `bundle_build` is greater than the maximum public Release build when history exists
 - candidate commit exists and is an ancestor of current `main`
 - target tag does not already exist
 - target GitHub Release does not already exist
@@ -214,6 +286,8 @@ A production macOS release must not be published until all of the following are 
 - App Sandbox entitlements verified after signing
 - `codesign --verify --deep --strict` PASS
 - signed ZIP bundle metadata matches requested version/build/bundle identity
+- `RELEASE_EVIDENCE.txt` schema v1 validation PASS
+- candidate workflow exact-name/path/event/branch/success identity validation PASS
 - Apple notarization status = `Accepted`
 - notarization ticket stapled to the distributed app
 - `xcrun stapler validate` PASS
@@ -222,6 +296,7 @@ A production macOS release must not be published until all of the following are 
 - final install/launch Manual QA on the supported macOS baseline
 - repository release immutability enabled
 - release governance explicitly reviewed
+- public build-number monotonicity validation PASS
 - publication workflow revalidation PASS
 - final GitHub Release reports `isImmutable=true`
 
@@ -272,7 +347,8 @@ The remaining work is operational, not missing release-pipeline code:
 2. enable and verify repository release immutability
 3. verify `main` branch/release governance
 4. run the first real Developer ID signed/notarized candidate
-5. verify signed ZIP bundle evidence, including actual `bundle_build`
+5. verify schema v1 signed ZIP evidence, including actual `bundle_build`
 6. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
 7. run `Publish Production Release` with all confirmations, including release governance
-8. verify the first immutable public v0.1 Release and record its run/tag/checksum/evidence
+8. verify exact candidate workflow provenance and build-history gate PASS
+9. verify the first immutable public v0.1 Release and record its run/tag/checksum/evidence
