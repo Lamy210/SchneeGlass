@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
@@ -24,6 +25,18 @@ private func makeConfiguration(
         placement: GlassPlacement(x: 40, y: 80),
         createdAt: createdAt
     )
+}
+
+private func setConfigurationFileMode(_ url: URL, mode: mode_t) throws {
+    let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+        guard let path else {
+            return Int32(-1)
+        }
+        return chmod(path, mode)
+    }
+    guard result == 0 else {
+        throw CocoaError(.fileWriteUnknown)
+    }
 }
 
 @Test
@@ -180,6 +193,75 @@ func explicitRestorePreservesCorruptCurrentBeforeReplacingIt() async throws {
     )
     #expect(preservedFiles.count == 1)
     #expect(try Data(contentsOf: preservedFiles[0]) == corruptData)
+}
+
+@Test
+func explicitRestoreDoesNotOverwriteUnsupportedFutureSchema() async throws {
+    let root = try makeRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let versionA = try makeConfiguration(title: "Version A")
+    let versionB = try makeConfiguration(title: "Version B")
+    let store = JSONConfigurationStore(baseDirectory: root)
+
+    try await store.save([versionA])
+    try await store.save([versionB])
+    let backup = try #require(try await store.availableBackups().first)
+
+    let currentURL = root.appendingPathComponent("Configuration/config.json", isDirectory: false)
+    let futureData = Data("{\"glasses\":[],\"schemaVersion\":99}".utf8)
+    try futureData.write(to: currentURL, options: .atomic)
+
+    do {
+        _ = try await store.restoreBackup(id: backup.id)
+        Issue.record("Expected future schema to block explicit restore")
+    } catch let error as ConfigurationPersistenceError {
+        #expect(error == .unsupportedSchemaVersion(99))
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(try Data(contentsOf: currentURL) == futureData)
+    let preservedDirectory = root.appendingPathComponent("Configuration/Preserved", isDirectory: true)
+    let preservedEntries = try FileManager.default.contentsOfDirectory(
+        at: preservedDirectory,
+        includingPropertiesForKeys: nil
+    )
+    #expect(preservedEntries.isEmpty)
+}
+
+@Test
+func explicitRestoreDoesNotOverwriteUnreadableCurrent() async throws {
+    let root = try makeRoot()
+    let currentURL = root.appendingPathComponent("Configuration/config.json", isDirectory: false)
+    defer {
+        try? setConfigurationFileMode(currentURL, mode: 0o600)
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    let versionA = try makeConfiguration(title: "Version A")
+    let versionB = try makeConfiguration(title: "Version B")
+    let store = JSONConfigurationStore(baseDirectory: root)
+
+    try await store.save([versionA])
+    try await store.save([versionB])
+    let backup = try #require(try await store.availableBackups().first)
+    let currentData = try Data(contentsOf: currentURL)
+
+    try setConfigurationFileMode(currentURL, mode: 0)
+
+    do {
+        _ = try await store.restoreBackup(id: backup.id)
+        Issue.record("Expected unreadable current configuration to block explicit restore")
+    } catch let error as ConfigurationPersistenceError {
+        #expect(error == .corruptCurrent)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    try setConfigurationFileMode(currentURL, mode: 0o600)
+    #expect(try Data(contentsOf: currentURL) == currentData)
+    #expect(try await store.load() == [versionB])
 }
 
 @Test
