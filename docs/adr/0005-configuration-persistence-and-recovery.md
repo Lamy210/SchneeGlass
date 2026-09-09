@@ -79,29 +79,32 @@ Corrupt, unreadable, replaced, or non-regular backup entries remain non-restorab
 
 ### Explicit restore
 
-Backup restore is always an explicit recovery action.
+Backup restore is always an explicit recovery action, but explicit user intent does not waive preservation and schema-safety requirements.
 
 Before restore:
 
-- a valid current configuration is itself backed up,
-- an unreadable current configuration is preserved byte-for-byte under `Configuration/Preserved`,
+- a valid supported current configuration is itself backed up,
+- malformed **but readable** current bytes are preserved byte-for-byte under `Configuration/Preserved`,
+- a current configuration that cannot be read from the filesystem blocks restore because SchneeGlass cannot preserve what it cannot read,
+- an unknown/future schema blocks restore with `unsupportedSchemaVersion`; it is not treated as corruption and is never overwritten by an older binary,
 - the selected backup is fully decoded and validated before current state is replaced.
 
-The selected validated backup is then written atomically to `config.json`.
+Only after all applicable current-state preservation checks and backup validation succeed is the selected backup written atomically to `config.json`.
 
 ### No silent rollback
 
 SchneeGlass never automatically changes configuration generations merely because the current configuration failed to decode.
 
-Recovery UI must present the failure and let the user select an available valid backup or another recovery path.
+Recovery UI must present the failure and let the user select an available valid backup or another recovery path. An explicit restore still fails closed when the existing current state is unreadable or belongs to an unsupported schema.
 
 ## Consequences
 
 Advantages:
 
 - corrupt current state is not silently hidden,
-- future-schema data is protected from older binaries,
-- explicit restore preserves potentially useful corrupt bytes,
+- future-schema data is protected from older binaries during normal save and explicit restore,
+- explicit restore preserves potentially useful readable corrupt bytes,
+- unreadable current state cannot be destroyed merely because it could not be preserved,
 - backup rotation is bounded,
 - backup reads and rotation do not follow symlink replacements,
 - destructive application-metadata cleanup remains in a narrow auditable non-recursive boundary.
@@ -109,5 +112,6 @@ Advantages:
 Trade-offs:
 
 - startup recovery requires an explicit UI path,
+- filesystem-level read failures may require the user to repair permissions or storage before restoring,
 - preserved corrupt configurations may require later retention/cleanup policy,
 - JSON remains less suitable than a database for future operation journals and Undo.
