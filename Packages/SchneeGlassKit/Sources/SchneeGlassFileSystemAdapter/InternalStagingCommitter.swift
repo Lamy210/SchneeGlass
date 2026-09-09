@@ -52,7 +52,7 @@ public actor InternalStagingCommitter: StagingCommitting {
         self.fileManager = fileManager
     }
 
-    func commit(stagingURL: URL, finalURL: URL) throws {
+    func commit(stagingURL: URL, finalURL: URL) async throws {
         let staging = stagingURL.standardizedFileURL
         guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
             throw StagingCommitError.invalidStagingFile
@@ -62,7 +62,7 @@ public actor InternalStagingCommitter: StagingCommitting {
             at: staging,
             fileManager: fileManager
         )
-        try commit(
+        try await commit(
             stagingURL: staging,
             finalURL: finalURL,
             authorization: authorization
@@ -73,7 +73,7 @@ public actor InternalStagingCommitter: StagingCommitting {
         stagingURL: URL,
         finalURL: URL,
         authorization: StagingCommitAuthorization
-    ) throws {
+    ) async throws {
         let staging = stagingURL.standardizedFileURL
         let final = finalURL.standardizedFileURL
         let destinationDirectory = final.deletingLastPathComponent().standardizedFileURL
@@ -86,9 +86,7 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.invalidStagingFile
         }
 
-        guard let stagingDescriptor = Self.openReadOnlyNoFollow(staging) else {
-            throw StagingCommitError.stagingMissing
-        }
+        let stagingDescriptor = try Self.openReadOnlyNoFollow(staging)
         defer { close(stagingDescriptor) }
 
         // Pin the exact inode for the whole coordinated commit. Even if another process unlinks
@@ -309,13 +307,35 @@ public actor InternalStagingCommitter: StagingCommitting {
         }
     }
 
-    private static func openReadOnlyNoFollow(_ url: URL) -> Int32? {
-        url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+    private static func openReadOnlyNoFollow(_ url: URL) throws -> Int32 {
+        let candidate = url.standardizedFileURL
+        return try candidate.withUnsafeFileSystemRepresentation { path in
             guard let path else {
-                return nil
+                throw StagingCommitError.commitFailed
             }
+
+            var pathStat = stat()
+            guard lstat(path, &pathStat) == 0 else {
+                if errno == ENOENT {
+                    throw StagingCommitError.stagingMissing
+                }
+                throw StagingCommitError.commitFailed
+            }
+            guard (pathStat.st_mode & S_IFMT) == S_IFREG else {
+                throw StagingCommitError.unexpectedFileType
+            }
+
             let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-            return descriptor >= 0 ? descriptor : nil
+            guard descriptor >= 0 else {
+                if errno == ENOENT {
+                    throw StagingCommitError.stagingMissing
+                }
+                if errno == ELOOP {
+                    throw StagingCommitError.unexpectedFileType
+                }
+                throw StagingCommitError.commitFailed
+            }
+            return descriptor
         }
     }
 
