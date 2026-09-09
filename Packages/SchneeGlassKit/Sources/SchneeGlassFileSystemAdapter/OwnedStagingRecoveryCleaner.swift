@@ -132,7 +132,10 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
-        guard let observedIdentity = PendingCopyFileIdentity.token(from: attributes) else {
+        guard let observedIdentity = try PendingCopyFileIdentity.token(
+            at: candidate,
+            fileManager: fileManager
+        ) else {
             throw OwnedStagingRecoveryCleanupError.resourceIdentityUnavailable
         }
         guard observedIdentity == recordedIdentity else {
