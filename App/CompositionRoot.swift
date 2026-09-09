@@ -33,23 +33,18 @@ final class SchneeGlassCompositionRoot {
         let accessController = SecurityScopedAccessCoordinator()
         let eventHub = FileEventHub()
         let snapshotReader = NativeFolderSnapshotReader()
-        let sourceLeases = SourceFileLeaseRegistry()
-        let dropPlanning = NativeDropPlanningAdapter(sourceLeases: sourceLeases)
         let pendingCopyStore = JSONPendingCopyStore(
             applicationSupportRoot: baseDirectory,
             relativeDirectory: "FileOperations"
         )
+        let dropCopyPipeline = PinnedDropCopyPipeline(recoveryStore: pendingCopyStore)
         let activityGate = FileOperationActivityGate()
         let folderSelector = NativeFolderSelector()
         let sourceCreator = SecurityScopedFolderSourceFactory()
         let fileActor = NSWorkspaceFileActionAdapter()
 
-        let rawFileCopying = PinnedSourceFileCopying(
-            recoveryStore: pendingCopyStore,
-            sourceLeases: sourceLeases
-        )
         let fileCopying = ActivityTrackedFileCopying(
-            delegate: rawFileCopying,
+            delegate: dropCopyPipeline.fileCopying,
             activityGate: activityGate
         )
 
@@ -94,7 +89,7 @@ final class SchneeGlassCompositionRoot {
             eventStreaming: eventHub,
             snapshotReader: snapshotReader,
             accessController: accessController,
-            dropPlanning: dropPlanning,
+            dropPlanning: dropCopyPipeline.dropPlanning,
             fileCopying: fileCopying
         )
 

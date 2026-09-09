@@ -213,13 +213,16 @@ public actor NativeDropPlanningAdapter: DropPlanning {
     private let inspector: any DropFileSystemInspecting
     private let sourceLeases: SourceFileLeaseRegistry?
 
-    public init() {
+    /// Standalone construction is intentionally module-internal. Executable native Drop plans must
+    /// be paired with a copier that consumes the same source lease authority; production callers
+    /// should use `PinnedDropCopyPipeline` instead.
+    init() {
         let sourceLeases = SourceFileLeaseRegistry()
         self.sourceLeases = sourceLeases
         self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
     }
 
-    public init(sourceLeases: SourceFileLeaseRegistry) {
+    init(sourceLeases: SourceFileLeaseRegistry) {
         self.sourceLeases = sourceLeases
         self.inspector = FoundationDropFileSystemInspector(sourceLeases: sourceLeases)
     }
