@@ -124,6 +124,44 @@ Source leaseは:
 
 DescriptorそのものをDomain/Application modelへ渡さず、actor外ではopaque token / operation IDだけを扱います。
 
+### Owned Metadata Topology
+
+Configuration / Pending Copy metadataはSchneeGlass-ownedですが、「owned pathだからsymlinkをfollowしてよい」とは扱いません。
+
+Application Support配下のowned rootとそのdescendant directoryは、`SchneeGlassPOSIXSupport.PhysicalStateStore`がdirectory FDから次の形で開きます。
+
+```text
+openat(parentFD, component, O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+```
+
+state leafは:
+
+```text
+openat(..., O_NOFOLLOW)
+→ fstat
+→ physical regular file
+→ pinned FDからread
+```
+
+のみ許可します。
+
+Atomic state writeは同一physical directory内にexclusive temporary regular fileを作り、`fsync`後に`renameat`でcommitします。既存final entryがsymlink / directory / non-regular fileなら置換せずfail-closedします。
+
+対象:
+
+```text
+Configuration/config.json
+Configuration/Backups/*
+Configuration/Preserved/*
+FileOperations/pending-copies.json
+```
+
+`Configuration` / `Backups` / `Preserved` / `FileOperations` directory自体がsymlinkの場合もリンク先へread/writeしません。
+
+POSIX mutation primitive (`mkdirat` / `renameat` / `unlinkat` / state-file `O_CREAT`) は `PhysicalStateStore.swift`だけをFile Safety Guardでallowlistします。
+
+この境界はuser-owned file mutation permissionを拡張しません。
+
 ## 5. Security-Scoped Access
 
 Folder accessはSecurity-Scoped Bookmarkを使用します。

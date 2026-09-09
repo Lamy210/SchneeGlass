@@ -15,9 +15,10 @@ check_forbidden_imports() {
   fi
 }
 
-check_forbidden_imports "$SRC/SchneeGlassDomain" 'SwiftUI|AppKit|CoreServices|GRDB'
-check_forbidden_imports "$SRC/FileDomain" 'SwiftUI|AppKit|CoreServices|GRDB'
-check_forbidden_imports "$SRC/SchneeGlassPresentation" 'SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter'
+check_forbidden_imports "$SRC/SchneeGlassDomain" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassPOSIXSupport'
+check_forbidden_imports "$SRC/FileDomain" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassPOSIXSupport'
+check_forbidden_imports "$SRC/SchneeGlassPresentation" 'SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassPOSIXSupport'
+check_forbidden_imports "$SRC/SchneeGlassPOSIXSupport" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassDomain|FileDomain|SchneeGlassApplication|SchneeGlassPresentation|SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassMacOSAdapter'
 
 if grep -RInE '(^|[^A-Za-z0-9_])@unchecked[[:space:]]+Sendable' "$SRC" --include='*.swift'; then
   echo 'Architecture violation: @unchecked Sendable requires an approved ADR.' >&2

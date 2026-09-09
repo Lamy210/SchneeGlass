@@ -51,6 +51,7 @@ FileDomain
 SchneeGlassApplication
 SchneeGlassPresentation
 SchneeGlassDesignSystem
+SchneeGlassPOSIXSupport
 SchneeGlassFileSystemAdapter
 SchneeGlassPersistenceAdapter
 SchneeGlassMacOSAdapter
@@ -77,6 +78,10 @@ SchneeGlassApplication
 SchneeGlassDesignSystem
   └ SwiftUI
 
+SchneeGlassPOSIXSupport
+  ├ Foundation
+  └ Darwin
+
 SchneeGlassPresentation
   ├ SchneeGlassApplication
   ├ SchneeGlassDomain
@@ -86,12 +91,14 @@ SchneeGlassPresentation
 SchneeGlassFileSystemAdapter
   ├ SchneeGlassApplication
   ├ FileDomain
+  ├ SchneeGlassPOSIXSupport
   ├ Foundation
   └ CoreServices / macOS filesystem APIs
 
 SchneeGlassPersistenceAdapter
   ├ SchneeGlassApplication
   ├ SchneeGlassDomain
+  ├ SchneeGlassPOSIXSupport
   └ Foundation
 
 SchneeGlassMacOSAdapter
@@ -101,9 +108,11 @@ SchneeGlassMacOSAdapter
   └ Foundation
 ```
 
-`SchneeGlassPresentation` から `SchneeGlassFileSystemAdapter` / `SchneeGlassPersistenceAdapter` への直接依存は禁止します。
+`SchneeGlassPresentation` から `SchneeGlassFileSystemAdapter` / `SchneeGlassPersistenceAdapter` / `SchneeGlassPOSIXSupport` への直接依存は禁止します。
 
-`SchneeGlassDomain` / `FileDomain` から Presentation / AppKit / Concrete Adapter への依存は禁止します。
+`SchneeGlassDomain` / `FileDomain` から Presentation / AppKit / Concrete Adapter / `SchneeGlassPOSIXSupport` への依存は禁止します。
+
+`SchneeGlassPOSIXSupport` から Domain / Application / Presentation / Concrete Adapter への依存は禁止します。
 
 ---
 
@@ -212,7 +221,30 @@ Viewから禁止:
 - Config direct write
 - Concrete adapter import
 
-### 4.5 SchneeGlassFileSystemAdapter
+### 4.5 SchneeGlassPOSIXSupport
+
+Darwin / Foundationだけに依存するshared infrastructure primitiveです。
+
+配置:
+
+- `PhysicalStateStore`
+- app-owned physical directory traversal
+- `O_NOFOLLOW` regular-file read
+- same-directory atomic state write
+- physical regular-file listing / removal
+
+禁止:
+
+- Domain model
+- Application use case
+- Presentation state
+- Security-Scoped Bookmark orchestration
+- user-owned file mutation policy
+- Concrete Adapter import
+
+このTargetはPersistenceAdapterとFileSystemAdapterが同じPOSIX safety semanticsを共有するためだけに使用します。
+
+### 4.6 SchneeGlassFileSystemAdapter
 
 Read Pathで実装済み:
 
@@ -220,25 +252,29 @@ Read Pathで実装済み:
 - `NativeFolderSnapshotReader`
 - `FileEventHub`
 
-Safe Copyで実装予定:
+Safe Copyで実装済み:
 
 - `SafeFileCopyEngine`
 - `InternalStagingCommitter`
-- `RecoveryMetadataStore`
+- `SourceFileLeaseRegistry`
+- `JSONPendingCopyStore`
 
-Runtimeでdestination filesystemに対するmutationを実行できる唯一のTargetです。
+Runtimeでdestination filesystemに対するuser-visible copy mutationを実行できる唯一のConcrete Adapterです。
 
-### 4.6 SchneeGlassPersistenceAdapter
+Pending-copy metadataのapp-owned state mutationは`SchneeGlassPOSIXSupport`へ委譲します。
 
-配置予定:
+### 4.7 SchneeGlassPersistenceAdapter
+
+配置:
 
 - `JSONConfigurationStore`
-- `ConfigurationBackupStore`
-- `AtomicConfigurationWriter`
+- Configuration backup / restore orchestration
 
-### 4.7 SchneeGlassMacOSAdapter
+Configuration-owned filesystem I/Oは`SchneeGlassPOSIXSupport`へ委譲します。
 
-配置予定:
+### 4.8 SchneeGlassMacOSAdapter
+
+配置:
 
 - `GlassWindowCoordinator`
 - `NSPanel` subclass
@@ -363,7 +399,9 @@ Write
 
 この処理は `InternalStagingCommitter` のみ実行できます。
 
-CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceItem` 使用を拒否します。
+SchneeGlass-owned metadata (`Configuration` / `FileOperations`) のmutationはuser-owned mutationとは別boundaryとして`SchneeGlassPOSIXSupport.PhysicalStateStore`だけに限定します。
+
+CIのFile Safety Guardでallowlist外の `removeItem` / `moveItem` / `replaceItem` / `mkdirat` / `renameat` / `unlinkat` / state-file `O_CREAT` 使用を拒否します。
 
 ---
 
@@ -468,8 +506,9 @@ v0.1は `Codable JSON` を使用します。
 Application Support/<bundle-id>/
 ├ Configuration/
 │  ├ config.json
-│  └ Backups/
-└ Recovery/
+│  ├ Backups/
+│  └ Preserved/
+└ FileOperations/
    └ pending-copies.json
 ```
 
@@ -480,6 +519,11 @@ Application Support/<bundle-id>/
 - Silent automatic rollback禁止
 - Config corruptionはRecovery/Safe Modeへ遷移
 - Unknown `.glass-*` fileは自動削除禁止
+- app-owned root / descendant directoryはphysical directoryのみ
+- state leafは`O_NOFOLLOW`でopenしたphysical regular fileのみ
+- unsafe owned-state topologyはfail-closed
+
+詳細はADR 0007を参照します。
 
 ---
 
@@ -502,8 +546,9 @@ v0.1:
 
 CIで最低限以下を検出します。
 
-- Domain → SwiftUI/AppKit/CoreServices/GRDB import
-- Presentation → FileSystem/Persistence Concrete Adapter import
+- Domain → SwiftUI/AppKit/CoreServices/GRDB/POSIXSupport import
+- Presentation → FileSystem/Persistence/POSIXSupport import
+- POSIXSupport → Domain/Application/Presentation/Concrete Adapter import
 - Private CGS symbol
 - Filesystem mutation APIのallowlist外利用
 - `@unchecked Sendable` の無承認利用

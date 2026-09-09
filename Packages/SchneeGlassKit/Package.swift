@@ -38,6 +38,7 @@ let package = Package(
             dependencies: ["SchneeGlassDomain", "FileDomain"]
         ),
         .target(name: "SchneeGlassDesignSystem"),
+        .target(name: "SchneeGlassPOSIXSupport"),
         .target(
             name: "SchneeGlassPresentation",
             dependencies: [
@@ -49,11 +50,19 @@ let package = Package(
         ),
         .target(
             name: "SchneeGlassFileSystemAdapter",
-            dependencies: ["SchneeGlassApplication", "FileDomain"]
+            dependencies: [
+                "SchneeGlassApplication",
+                "FileDomain",
+                "SchneeGlassPOSIXSupport"
+            ]
         ),
         .target(
             name: "SchneeGlassPersistenceAdapter",
-            dependencies: ["SchneeGlassApplication", "SchneeGlassDomain"]
+            dependencies: [
+                "SchneeGlassApplication",
+                "SchneeGlassDomain",
+                "SchneeGlassPOSIXSupport"
+            ]
         ),
         .target(
             name: "SchneeGlassMacOSAdapter",
@@ -79,12 +88,17 @@ let package = Package(
             dependencies: ["SchneeGlassApplication"]
         ),
         .testTarget(
+            name: "SchneeGlassPOSIXSupportTests",
+            dependencies: ["SchneeGlassPOSIXSupport"]
+        ),
+        .testTarget(
             name: "SchneeGlassFileSystemAdapterTests",
             dependencies: [
                 "SchneeGlassFileSystemAdapter",
                 "SchneeGlassApplication",
                 "SchneeGlassDomain",
-                "FileDomain"
+                "FileDomain",
+                "SchneeGlassPOSIXSupport"
             ]
         ),
         .testTarget(

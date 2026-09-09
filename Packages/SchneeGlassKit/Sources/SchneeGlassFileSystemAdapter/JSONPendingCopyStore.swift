@@ -1,21 +1,32 @@
 import Foundation
 import SchneeGlassApplication
+import SchneeGlassPOSIXSupport
 
 public actor JSONPendingCopyStore: PendingCopyRecording {
     public static let filename = "pending-copies.json"
 
-    private let directoryURL: URL
-    private let fileURL: URL
-    private let fileManager: FileManager
+    private let stateStore: PhysicalStateStore
+    private let directoryComponents: [String]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
+    /// Uses `baseDirectory` itself as the app-owned physical root. This initializer remains useful
+    /// for isolated tests and callers that already pass the final FileOperations directory.
     public init(baseDirectory: URL) {
-        self.directoryURL = baseDirectory.standardizedFileURL
-        self.fileURL = baseDirectory
-            .appendingPathComponent(Self.filename, isDirectory: false)
-            .standardizedFileURL
-        self.fileManager = .default
+        self.stateStore = PhysicalStateStore(rootURL: baseDirectory.standardizedFileURL)
+        self.directoryComponents = []
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        self.encoder = encoder
+        self.decoder = JSONDecoder()
+    }
+
+    /// Production initializer. The application-support bundle directory is the physical trust root,
+    /// and `relativeDirectory` is opened beneath it with `O_DIRECTORY | O_NOFOLLOW`.
+    public init(applicationSupportRoot: URL, relativeDirectory: String) {
+        self.stateStore = PhysicalStateStore(rootURL: applicationSupportRoot.standardizedFileURL)
+        self.directoryComponents = [relativeDirectory]
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -47,20 +58,16 @@ public actor JSONPendingCopyStore: PendingCopyRecording {
     }
 
     private func loadRecords() throws -> [PendingCopyRecord] {
-        guard fileManager.fileExists(atPath: fileURL.path) else {
+        guard let data = try stateStore.readRegularFile(
+            in: directoryComponents,
+            named: Self.filename
+        ) else {
             return []
         }
-
-        let data = try Data(contentsOf: fileURL)
         return try decoder.decode([PendingCopyRecord].self, from: data)
     }
 
     private func persist(_ records: [PendingCopyRecord]) throws {
-        try fileManager.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true
-        )
-
         let sorted = records.sorted {
             if $0.createdAt == $1.createdAt {
                 return $0.operationID.uuidString < $1.operationID.uuidString
@@ -68,6 +75,10 @@ public actor JSONPendingCopyStore: PendingCopyRecording {
             return $0.createdAt < $1.createdAt
         }
         let data = try encoder.encode(sorted)
-        try data.write(to: fileURL, options: .atomic)
+        try stateStore.writeAtomically(
+            data,
+            in: directoryComponents,
+            named: Self.filename
+        )
     }
 }

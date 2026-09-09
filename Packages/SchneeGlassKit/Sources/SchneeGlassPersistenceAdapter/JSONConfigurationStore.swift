@@ -1,11 +1,16 @@
-import Darwin
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 
 public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecoveryProviding {
     public static let schemaVersion = 1
     public static let maximumBackupCount = 5
+
+    private static let configurationDirectory = ["Configuration"]
+    private static let backupDirectory = ["Configuration", "Backups"]
+    private static let preservedDirectory = ["Configuration", "Preserved"]
+    private static let configurationFilename = "config.json"
 
     private struct Envelope: Codable, Sendable {
         let schemaVersion: Int
@@ -17,33 +22,12 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         case unsupportedSchema(Int)
     }
 
-    private enum BackupReadFailure: Error {
-        case openFailed(Int32)
-        case metadataFailed(Int32)
-        case readFailed(Int32)
-    }
-
-    private let configurationDirectoryURL: URL
-    private let backupDirectoryURL: URL
-    private let preservedDirectoryURL: URL
-    private let configurationURL: URL
-    private let fileManager: FileManager
+    private let stateStore: PhysicalStateStore
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
     public init(baseDirectory: URL) {
-        let root = baseDirectory.standardizedFileURL
-        self.configurationDirectoryURL = root.appendingPathComponent("Configuration", isDirectory: true)
-        self.backupDirectoryURL = root
-            .appendingPathComponent("Configuration", isDirectory: true)
-            .appendingPathComponent("Backups", isDirectory: true)
-        self.preservedDirectoryURL = root
-            .appendingPathComponent("Configuration", isDirectory: true)
-            .appendingPathComponent("Preserved", isDirectory: true)
-        self.configurationURL = root
-            .appendingPathComponent("Configuration", isDirectory: true)
-            .appendingPathComponent("config.json", isDirectory: false)
-        self.fileManager = .default
+        self.stateStore = PhysicalStateStore(rootURL: baseDirectory.standardizedFileURL)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -52,15 +36,17 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
     }
 
     public func load() async throws -> [GlassConfiguration] {
-        guard fileManager.fileExists(atPath: configurationURL.path) else {
-            return []
-        }
-
         let data: Data
         do {
-            data = try Data(contentsOf: configurationURL)
+            guard let current = try stateStore.readRegularFile(
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            ) else {
+                return []
+            }
+            data = current
         } catch {
-            throw ConfigurationPersistenceError.corruptCurrent
+            throw Self.mapCurrentReadError(error)
         }
 
         do {
@@ -74,16 +60,19 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
 
     public func save(_ configurations: [GlassConfiguration]) async throws {
         let newData = try validatedEncodedData(configurations)
-        try createDirectories()
+        try ensureStorageDirectories()
 
-        if fileManager.fileExists(atPath: configurationURL.path) {
-            let currentData: Data
-            do {
-                currentData = try Data(contentsOf: configurationURL)
-            } catch {
-                throw ConfigurationPersistenceError.corruptCurrent
-            }
+        let currentData: Data?
+        do {
+            currentData = try stateStore.readRegularFile(
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            )
+        } catch {
+            throw Self.mapCurrentReadError(error)
+        }
 
+        if let currentData {
             do {
                 _ = try decodeEnvelope(currentData)
             } catch let failure as DecodingFailure {
@@ -95,45 +84,49 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             try writeBackup(data: currentData)
         }
 
-        // Finish fallible backup housekeeping before replacing the current configuration. Once
-        // the atomic replacement succeeds, save must not report failure for unrelated cleanup
-        // after the committed configuration state has already changed.
+        // Finish fallible backup housekeeping before replacing current state. The atomic rename in
+        // PhysicalStateStore is the final fallible commit step for the visible configuration.
         try rotateBackups()
-        try newData.write(to: configurationURL, options: .atomic)
+        do {
+            try stateStore.writeAtomically(
+                newData,
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            )
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
     }
 
     public func availableBackups() async throws -> [ConfigurationBackupDescriptor] {
-        guard fileManager.fileExists(atPath: backupDirectoryURL.path) else {
-            return []
+        let names: [String]
+        do {
+            names = try stateStore.regularFileNames(in: Self.backupDirectory)
+        } catch {
+            try Self.rethrowStorageMutation(error)
         }
 
-        let urls = try fileManager.contentsOfDirectory(
-            at: backupDirectoryURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
-
         var descriptors: [ConfigurationBackupDescriptor] = []
-        descriptors.reserveCapacity(urls.count)
+        descriptors.reserveCapacity(names.count)
 
-        for url in urls where Self.isBackupFilename(url.lastPathComponent) {
-            guard let createdAt = Self.backupCreatedAt(from: url.lastPathComponent) else {
+        for name in names where Self.isBackupFilename(name) {
+            guard let createdAt = Self.backupCreatedAt(from: name) else {
                 continue
             }
 
             do {
-                guard let data = try Self.readPhysicalRegularFile(at: url) else {
+                guard let data = try stateStore.readRegularFile(
+                    in: Self.backupDirectory,
+                    named: name
+                ) else {
                     continue
                 }
                 _ = try decodeEnvelope(data)
                 descriptors.append(
-                    ConfigurationBackupDescriptor(
-                        id: url.lastPathComponent,
-                        createdAt: createdAt
-                    )
+                    ConfigurationBackupDescriptor(id: name, createdAt: createdAt)
                 )
             } catch {
-                // Corrupt, unreadable, replaced, or non-regular backups are intentionally not surfaced.
+                // Corrupt, unreadable, replaced, or non-regular individual backups are not surfaced.
             }
         }
 
@@ -152,11 +145,22 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             throw ConfigurationPersistenceError.invalidBackupIdentifier
         }
 
-        let backupURL = backupDirectoryURL.appendingPathComponent(id, isDirectory: false)
+        let names: [String]
+        do {
+            names = try stateStore.regularFileNames(in: Self.backupDirectory)
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
+        guard names.contains(id) else {
+            throw ConfigurationPersistenceError.backupNotFound
+        }
 
         let backupData: Data
         do {
-            guard let data = try Self.readPhysicalRegularFile(at: backupURL) else {
+            guard let data = try stateStore.readRegularFile(
+                in: Self.backupDirectory,
+                named: id
+            ) else {
                 throw ConfigurationPersistenceError.backupNotFound
             }
             backupData = data
@@ -180,14 +184,17 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             throw ConfigurationPersistenceError.corruptBackup
         }
 
-        try createDirectories()
         try preserveOrBackupCurrentBeforeExplicitRestore()
-
-        // Complete fallible backup housekeeping before replacing the current configuration. Once
-        // the atomic replacement succeeds, this method must not report failure for work that is
-        // unrelated to the committed configuration state.
         try rotateBackups()
-        try backupData.write(to: configurationURL, options: .atomic)
+        do {
+            try stateStore.writeAtomically(
+                backupData,
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            )
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
         return backupEnvelope.glasses
     }
 
@@ -215,41 +222,41 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         return envelope
     }
 
-    private func createDirectories() throws {
-        try fileManager.createDirectory(
-            at: configurationDirectoryURL,
-            withIntermediateDirectories: true
-        )
-        try fileManager.createDirectory(
-            at: backupDirectoryURL,
-            withIntermediateDirectories: true
-        )
-        try fileManager.createDirectory(
-            at: preservedDirectoryURL,
-            withIntermediateDirectories: true
-        )
+    private func ensureStorageDirectories() throws {
+        do {
+            try stateStore.ensureDirectory(Self.configurationDirectory)
+            try stateStore.ensureDirectory(Self.backupDirectory)
+            try stateStore.ensureDirectory(Self.preservedDirectory)
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
     }
 
     private func writeBackup(data: Data) throws {
-        let url = backupDirectoryURL.appendingPathComponent(
-            Self.makeBackupFilename(),
-            isDirectory: false
-        )
-        try data.write(to: url, options: .atomic)
+        do {
+            try stateStore.writeAtomically(
+                data,
+                in: Self.backupDirectory,
+                named: Self.makeBackupFilename(),
+                replaceExisting: false
+            )
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
     }
 
     private func preserveOrBackupCurrentBeforeExplicitRestore() throws {
-        guard fileManager.fileExists(atPath: configurationURL.path) else {
-            return
-        }
-
         let currentData: Data
         do {
-            currentData = try Data(contentsOf: configurationURL)
+            guard let data = try stateStore.readRegularFile(
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            ) else {
+                return
+            }
+            currentData = data
         } catch {
-            // Recovery must not overwrite current state that it could not read and therefore could
-            // not preserve. Treat the current configuration as unavailable/corrupt and fail closed.
-            throw ConfigurationPersistenceError.corruptCurrent
+            throw Self.mapCurrentReadError(error)
         }
 
         do {
@@ -257,135 +264,81 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
         } catch let failure as DecodingFailure {
             switch failure {
             case .corrupt:
-                // Malformed but readable bytes may still be useful for manual recovery. Preserve
-                // them byte-for-byte before replacing current state with the explicitly selected backup.
-                let preservedURL = preservedDirectoryURL.appendingPathComponent(
-                    Self.makePreservedFilename(),
-                    isDirectory: false
-                )
-                try currentData.write(to: preservedURL, options: .atomic)
+                do {
+                    try stateStore.writeAtomically(
+                        currentData,
+                        in: Self.preservedDirectory,
+                        named: Self.makePreservedFilename(),
+                        replaceExisting: false
+                    )
+                } catch {
+                    try Self.rethrowStorageMutation(error)
+                }
                 return
             case let .unsupportedSchema(version):
-                // A newer/future schema is not corruption. An older app must never overwrite data
-                // it does not understand, even as part of an explicit backup restore.
                 throw ConfigurationPersistenceError.unsupportedSchemaVersion(version)
             }
         } catch {
             throw ConfigurationPersistenceError.corruptCurrent
         }
 
-        // The current configuration is valid and supported. Backup I/O failures are not corruption
-        // and therefore propagate unchanged while still blocking the restore before current mutation.
         try writeBackup(data: currentData)
     }
 
     private func rotateBackups() throws {
-        guard fileManager.fileExists(atPath: backupDirectoryURL.path) else {
-            return
+        let names: [String]
+        do {
+            names = try stateStore.regularFileNames(in: Self.backupDirectory)
+        } catch {
+            try Self.rethrowStorageMutation(error)
         }
 
-        let backups = try fileManager.contentsOfDirectory(
-            at: backupDirectoryURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
-        .filter {
-            Self.isBackupFilename($0.lastPathComponent)
-                && Self.isPhysicalRegularFile($0)
-        }
-        .sorted { lhs, rhs in
-            let lhsDate = Self.backupCreatedAt(from: lhs.lastPathComponent) ?? .distantPast
-            let rhsDate = Self.backupCreatedAt(from: rhs.lastPathComponent) ?? .distantPast
-            if lhsDate == rhsDate {
-                return lhs.lastPathComponent > rhs.lastPathComponent
+        let backups = names
+            .filter(Self.isBackupFilename)
+            .sorted { lhs, rhs in
+                let lhsDate = Self.backupCreatedAt(from: lhs) ?? .distantPast
+                let rhsDate = Self.backupCreatedAt(from: rhs) ?? .distantPast
+                if lhsDate == rhsDate {
+                    return lhs > rhs
+                }
+                return lhsDate > rhsDate
             }
-            return lhsDate > rhsDate
-        }
 
         guard backups.count > Self.maximumBackupCount else {
             return
         }
 
-        try ConfigurationBackupRotator.removeBackups(
-            backups.dropFirst(Self.maximumBackupCount)
-        )
+        for name in backups.dropFirst(Self.maximumBackupCount) {
+            do {
+                try stateStore.removeRegularFile(in: Self.backupDirectory, named: name)
+            } catch {
+                try Self.rethrowStorageMutation(error)
+            }
+        }
     }
 
-    private static func isPhysicalRegularFile(_ url: URL) -> Bool {
-        var metadata = stat()
-        let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
-            guard let path else {
-                return Int32(-1)
+    private static func mapCurrentReadError(_ error: Error) -> ConfigurationPersistenceError {
+        if let physical = error as? PhysicalStateStoreError {
+            switch physical {
+            case .unsafeTopology, .invalidPathComponent:
+                return .unsafeStorageTopology
+            case .alreadyExists, .ioFailure:
+                return .corruptCurrent
             }
-            return lstat(path, &metadata)
         }
-        guard result == 0 else {
-            return false
-        }
-        return (metadata.st_mode & S_IFMT) == S_IFREG
+        return .corruptCurrent
     }
 
-    /// Opens the directory entry itself with O_NOFOLLOW and reads bytes from that pinned FD.
-    /// Returning nil means the entry is missing or non-regular; thrown errors mean a regular-file
-    /// candidate could not be read safely. This closes the lstat -> Data(contentsOf:) symlink race.
-    private static func readPhysicalRegularFile(at url: URL) throws -> Data? {
-        let candidate = url.standardizedFileURL
-        let openResult = candidate.withUnsafeFileSystemRepresentation { path -> (descriptor: Int32, error: Int32)? in
-            guard let path else {
-                return nil
+    private static func rethrowStorageMutation(_ error: Error) throws -> Never {
+        if let physical = error as? PhysicalStateStoreError {
+            switch physical {
+            case .unsafeTopology, .invalidPathComponent:
+                throw ConfigurationPersistenceError.unsafeStorageTopology
+            case .alreadyExists, .ioFailure:
+                throw physical
             }
-            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-            return (descriptor, descriptor >= 0 ? 0 : errno)
         }
-
-        guard let openResult else {
-            throw BackupReadFailure.openFailed(EINVAL)
-        }
-        guard openResult.descriptor >= 0 else {
-            if openResult.error == ENOENT || openResult.error == ELOOP {
-                return nil
-            }
-            throw BackupReadFailure.openFailed(openResult.error)
-        }
-
-        let descriptor = openResult.descriptor
-        defer { close(descriptor) }
-
-        var metadata = stat()
-        guard fstat(descriptor, &metadata) == 0 else {
-            throw BackupReadFailure.metadataFailed(errno)
-        }
-        guard (metadata.st_mode & S_IFMT) == S_IFREG else {
-            return nil
-        }
-
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
-
-        while true {
-            var observedErrno = Int32(0)
-            let count = buffer.withUnsafeMutableBytes { bytes -> Int in
-                let result = Darwin.read(descriptor, bytes.baseAddress, bytes.count)
-                if result < 0 {
-                    observedErrno = errno
-                }
-                return result
-            }
-
-            if count == 0 {
-                break
-            }
-            if count < 0 {
-                if observedErrno == EINTR {
-                    continue
-                }
-                throw BackupReadFailure.readFailed(observedErrno)
-            }
-
-            data.append(contentsOf: buffer.prefix(count))
-        }
-
-        return data
+        throw error
     }
 
     private static func mapCurrentFailure(_ failure: DecodingFailure) -> ConfigurationPersistenceError {
