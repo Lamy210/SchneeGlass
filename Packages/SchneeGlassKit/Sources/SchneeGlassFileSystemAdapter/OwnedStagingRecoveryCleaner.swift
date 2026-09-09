@@ -55,8 +55,25 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.invalidRecord
         }
 
-        guard let stagingDescriptor = Self.openReadOnlyNoFollow(stagingURL) else {
+        // Classify the directory entry itself before opening it. `O_NOFOLLOW` intentionally rejects
+        // symlinks with ELOOP, but a symlink is not the same state as a missing staging file. Keeping
+        // this distinction explicit preserves the recovery contract and avoids presenting a replaced
+        // symlink as if the owned partial simply disappeared.
+        switch Self.pathEntryType(at: stagingURL) {
+        case .missing:
             throw OwnedStagingRecoveryCleanupError.stagingMissing
+        case .regular:
+            break
+        case .other:
+            throw OwnedStagingRecoveryCleanupError.unexpectedFileType
+        case .unavailable:
+            throw OwnedStagingRecoveryCleanupError.removalFailed
+        }
+
+        guard let stagingDescriptor = Self.openReadOnlyNoFollow(stagingURL) else {
+            // The entry was regular at the classification point but changed before open. Do not
+            // follow the replacement and do not claim ownership of it.
+            throw OwnedStagingRecoveryCleanupError.resourceIdentityMismatch
         }
         defer { close(stagingDescriptor) }
 
@@ -112,6 +129,29 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
         if coordinationError != nil {
             throw OwnedStagingRecoveryCleanupError.coordinationFailed
         }
+    }
+
+    private enum PathEntryType {
+        case missing
+        case regular
+        case other
+        case unavailable
+    }
+
+    private static func pathEntryType(at url: URL) -> PathEntryType {
+        var pathStat = stat()
+        let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return Int32(-1)
+            }
+            return lstat(path, &pathStat)
+        }
+
+        guard result == 0 else {
+            return errno == ENOENT ? .missing : .unavailable
+        }
+
+        return (pathStat.st_mode & S_IFMT) == S_IFREG ? .regular : .other
     }
 
     private static func revalidateOwnedStaging(
