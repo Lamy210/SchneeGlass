@@ -6,13 +6,18 @@ import Testing
 private func destination(
     url: URL = URL(fileURLWithPath: "/tmp/SchneeGlassDestination", isDirectory: true),
     locationKind: StorageLocationKind = .localFixed,
-    isWritable: Bool = true
+    isWritable: Bool = true,
+    supportsSafeDestinationCommit: Bool? = true
 ) -> DestinationDescriptor {
     DestinationDescriptor(
         glassID: GlassID(),
         folderIdentity: FolderIdentity(resourceIdentifier: nil, standardizedURL: url),
         url: url,
-        capabilities: StorageCapabilities(locationKind: locationKind, isWritable: isWritable)
+        capabilities: StorageCapabilities(
+            locationKind: locationKind,
+            isWritable: isWritable,
+            supportsSafeDestinationCommit: supportsSafeDestinationCommit
+        )
     )
 }
 
@@ -84,6 +89,22 @@ func readOnlyDestinationIsRejected() {
         )
     )
     #expect(result == .reject(.destinationReadOnly))
+}
+
+@Test(
+    "unsafe or unknown destination commit support is rejected",
+    arguments: [false, nil] as [Bool?]
+)
+func unsafeDestinationCommitIsRejected(supportsSafeDestinationCommit: Bool?) {
+    let result = DropPlanner.plan(
+        DropPlanningContext(
+            candidates: [candidate()],
+            destination: destination(
+                supportsSafeDestinationCommit: supportsSafeDestinationCommit
+            )
+        )
+    )
+    #expect(result == .reject(.destinationUnavailable))
 }
 
 @Test("a source marked as colliding is rejected")

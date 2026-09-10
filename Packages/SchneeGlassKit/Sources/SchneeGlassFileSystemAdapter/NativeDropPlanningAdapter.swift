@@ -172,6 +172,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 .volumeIsRemovableKey,
                 .volumeIsReadOnlyKey,
                 .volumeSupportsCaseSensitiveNamesKey,
+                .volumeSupportsExclusiveRenamingKey,
             ])
 
             let locationKind: StorageLocationKind
@@ -185,6 +186,9 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
             let isWritable = values.volumeIsReadOnly != true
                 && fileManager.isWritableFile(atPath: destination.path)
+            let hasDirectoryIdentity = values.fileResourceIdentifier != nil
+            let supportsSafeDestinationCommit = hasDirectoryIdentity
+                && values.volumeSupportsExclusiveRenaming == true
 
             return DestinationDescriptor(
                 glassID: access.glassID,
@@ -196,7 +200,8 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 capabilities: StorageCapabilities(
                     locationKind: locationKind,
                     isWritable: isWritable,
-                    supportsCaseSensitiveNames: values.volumeSupportsCaseSensitiveNames
+                    supportsCaseSensitiveNames: values.volumeSupportsCaseSensitiveNames,
+                    supportsSafeDestinationCommit: supportsSafeDestinationCommit
                 )
             )
         } catch {

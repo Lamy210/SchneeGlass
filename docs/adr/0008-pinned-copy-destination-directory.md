@@ -84,6 +84,12 @@ fails closed. Likewise, if no directory-specific resource identity is available 
 and execution, production Drop execution fails closed. v0.1 does not silently fall back to a weaker
 path-based or volume-only identity implementation.
 
+`FoundationDropFileSystemInspector` exposes the same prerequisite as
+`StorageCapabilities.supportsSafeDestinationCommit`. Native Drop preview and authoritative planning
+both require that capability to be explicitly `true`; `false` and unknown (`nil`) are rejected before
+showing an executable copy plan. The descriptor-bound execution checks remain authoritative and are
+repeated at mutation time rather than trusting preview state.
+
 Network destinations remain unsupported independently of this decision.
 
 ## Recovery semantics
@@ -112,7 +118,8 @@ Regression tests must cover:
 - missing directory-specific identity rejection,
 - existing final entry preservation,
 - descriptor-relative commit after destination pathname replacement,
-- source/destination lease cleanup on failure and success.
+- source/destination lease cleanup on failure and success,
+- Drop preview/planning rejection when safe destination commit capability is false or unknown.
 
 ## Consequences
 
@@ -122,7 +129,9 @@ Advantages:
 - destination replacement cannot redirect a copy,
 - no-overwrite commit is atomic at the filesystem boundary,
 - source, destination, staging, and recovery identity now all have explicit descriptor-backed
-  boundaries.
+  boundaries,
+- drag feedback no longer advertises a copy that production execution already knows it cannot safely
+  commit.
 
 Costs:
 

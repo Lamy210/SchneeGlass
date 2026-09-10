@@ -43,7 +43,8 @@ private func dropDestination(
     url: URL = URL(fileURLWithPath: "/tmp/DropDestination", isDirectory: true),
     locationKind: StorageLocationKind = .localFixed,
     isWritable: Bool = true,
-    supportsCaseSensitiveNames: Bool? = false
+    supportsCaseSensitiveNames: Bool? = false,
+    supportsSafeDestinationCommit: Bool? = true
 ) -> (FolderAccessHandle, DestinationDescriptor) {
     let glassID = GlassID()
     let access = FolderAccessHandle(glassID: glassID, url: url)
@@ -54,7 +55,8 @@ private func dropDestination(
         capabilities: StorageCapabilities(
             locationKind: locationKind,
             isWritable: isWritable,
-            supportsCaseSensitiveNames: supportsCaseSensitiveNames
+            supportsCaseSensitiveNames: supportsCaseSensitiveNames,
+            supportsSafeDestinationCommit: supportsSafeDestinationCommit
         )
     )
     return (access, descriptor)
@@ -86,6 +88,31 @@ func nativeDropPlanningBuildsCopyPlanForRegularFile() async throws {
     #expect(plan.items[0].sourceURL == source.standardizedFileURL)
     #expect(plan.items[0].destinationFilename == "report.txt")
     #expect(plan.items[0].expectedSize == 42)
+}
+
+@Test
+func nativeDropPreviewAndPlanningRejectUnsafeDestinationCommit() async {
+    let source = URL(fileURLWithPath: "/tmp/Source/report.txt")
+    let (access, descriptor) = dropDestination(supportsSafeDestinationCommit: false)
+    let inspector = FakeDropInspector(
+        destination: descriptor,
+        inspections: [
+            source: DropSourceInspection(
+                candidate: DropCandidate(url: source, kind: .regular, size: 42),
+                availability: .available
+            )
+        ]
+    )
+    let planner = NativeDropPlanningAdapter(inspector: inspector)
+
+    #expect(
+        await planner.preview(sourceURLs: [source], destinationAccess: access)
+            == .reject(.destinationUnavailable)
+    )
+    #expect(
+        await planner.plan(sourceURLs: [source], destinationAccess: access)
+            == .reject(.destinationUnavailable)
+    )
 }
 
 @Test
@@ -178,6 +205,7 @@ func realDropInspectorPlansLocalRegularFileWithoutMutation() async throws {
         Issue.record("Expected real filesystem copy plan, got \(result)")
         return
     }
+    #expect(plan.destination.capabilities.supportsSafeDestinationCommit == true)
     #expect(plan.items.count == 1)
     #expect(plan.items[0].destinationFilename == "payload.txt")
     #expect(!FileManager.default.fileExists(
