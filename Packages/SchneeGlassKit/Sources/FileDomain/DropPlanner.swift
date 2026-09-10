@@ -39,7 +39,7 @@ public enum DropPlanner {
             return .reject(.destinationReadOnly)
         }
 
-        if context.destination.capabilities.supportsSafeDestinationCommit == false {
+        guard context.destination.capabilities.supportsSafeDestinationCommit == true else {
             return .reject(.destinationUnavailable)
         }
 
