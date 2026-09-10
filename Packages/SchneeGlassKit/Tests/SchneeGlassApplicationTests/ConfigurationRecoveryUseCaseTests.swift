@@ -46,8 +46,56 @@ private actor ConfigurationRecoveryProviderSpy: ConfigurationRecoveryProviding {
     }
 }
 
+private actor ConfigurationRecoveryPendingCopyStore: PendingCopyRecording {
+    private let loaded: [PendingCopyRecord]
+    private let failLoad: Bool
+    private var readCount = 0
+
+    init(
+        loaded: [PendingCopyRecord] = [],
+        failLoad: Bool = false
+    ) {
+        self.loaded = loaded
+        self.failLoad = failLoad
+    }
+
+    func records() async throws -> [PendingCopyRecord] {
+        readCount += 1
+        if failLoad {
+            throw ConfigurationRecoveryProviderTestError.injected
+        }
+        return loaded
+    }
+
+    func upsert(_ record: PendingCopyRecord) async throws {
+        _ = record
+    }
+
+    func remove(operationID: UUID) async throws {
+        _ = operationID
+    }
+
+    func reads() -> Int {
+        readCount
+    }
+}
+
+private func configurationRecoveryPendingRecord() -> PendingCopyRecord {
+    let operationID = UUID()
+    return PendingCopyRecord(
+        operationID: operationID,
+        batchID: UUID(),
+        destinationGlassID: GlassID(),
+        stagingFilename: ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial",
+        finalFilename: "payload.txt",
+        expectedSize: 7,
+        stagingResourceIdentifier: "xattr-v1:\(UUID().uuidString.lowercased())",
+        state: .verifying
+    )
+}
+
 @Test
-func configurationRecoveryListsBackupsWithoutReordering() async throws {
+func configurationRecoveryListsBackupsWithoutReorderingOrReadingPendingCopies() async throws {
     let newer = ConfigurationBackupDescriptor(
         id: "backup-newer.json",
         createdAt: Date(timeIntervalSince1970: 2_000)
@@ -57,28 +105,42 @@ func configurationRecoveryListsBackupsWithoutReordering() async throws {
         createdAt: Date(timeIntervalSince1970: 1_000)
     )
     let provider = ConfigurationRecoveryProviderSpy(backups: [newer, older])
-    let useCase = ConfigurationRecoveryUseCase(recoveryProvider: provider)
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore(failLoad: true)
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
 
     let result = try await useCase.availableBackups()
 
     #expect(result == [newer, older])
+    #expect(await pendingCopyStore.reads() == 0)
 }
 
 @Test
-func configurationRecoveryRestoresExactlyRequestedBackup() async throws {
+func configurationRecoveryRestoresExactlyRequestedBackupWhenNoPendingCopyExists() async throws {
     let provider = ConfigurationRecoveryProviderSpy()
-    let useCase = ConfigurationRecoveryUseCase(recoveryProvider: provider)
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore()
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
 
     let result = try await useCase.restoreBackup(id: "backup-selected.json")
 
     #expect(result.isEmpty)
+    #expect(await pendingCopyStore.reads() == 1)
     #expect(await provider.requestedRestoreIDs() == ["backup-selected.json"])
 }
 
 @Test
-func configurationRecoveryPropagatesListingFailure() async {
+func configurationRecoveryPropagatesListingFailureWithoutReadingPendingCopies() async {
     let provider = ConfigurationRecoveryProviderSpy(failListing: true)
-    let useCase = ConfigurationRecoveryUseCase(recoveryProvider: provider)
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore(failLoad: true)
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
 
     do {
         _ = try await useCase.availableBackups()
@@ -88,12 +150,63 @@ func configurationRecoveryPropagatesListingFailure() async {
     } catch {
         Issue.record("Unexpected error: \(error)")
     }
+
+    #expect(await pendingCopyStore.reads() == 0)
 }
 
 @Test
-func configurationRecoveryPropagatesRestoreFailureForRequestedBackup() async {
+func configurationRecoveryFailsClosedWhenPendingCopyMetadataCannotBeLoaded() async {
+    let provider = ConfigurationRecoveryProviderSpy()
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore(failLoad: true)
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    do {
+        _ = try await useCase.restoreBackup(id: "backup-selected.json")
+        Issue.record("Expected pending-copy load failure")
+    } catch let error as ConfigurationRecoveryUseCaseError {
+        #expect(error == .pendingCopyLoadFailed)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await provider.requestedRestoreIDs().isEmpty)
+}
+
+@Test
+func configurationRecoveryRefusesRestoreWhileAnyPendingCopyExists() async {
+    let provider = ConfigurationRecoveryProviderSpy()
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore(
+        loaded: [configurationRecoveryPendingRecord()]
+    )
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    do {
+        _ = try await useCase.restoreBackup(id: "backup-selected.json")
+        Issue.record("Expected pending-copy recovery requirement")
+    } catch let error as ConfigurationRecoveryUseCaseError {
+        #expect(error == .pendingCopyRecoveryRequired)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await pendingCopyStore.reads() == 1)
+    #expect(await provider.requestedRestoreIDs().isEmpty)
+}
+
+@Test
+func configurationRecoveryPropagatesRestoreFailureAfterPendingCopyCheck() async {
     let provider = ConfigurationRecoveryProviderSpy(failRestore: true)
-    let useCase = ConfigurationRecoveryUseCase(recoveryProvider: provider)
+    let pendingCopyStore = ConfigurationRecoveryPendingCopyStore()
+    let useCase = ConfigurationRecoveryUseCase(
+        recoveryProvider: provider,
+        pendingCopyStore: pendingCopyStore
+    )
 
     do {
         _ = try await useCase.restoreBackup(id: "backup-failing.json")
@@ -104,5 +217,6 @@ func configurationRecoveryPropagatesRestoreFailureForRequestedBackup() async {
         Issue.record("Unexpected error: \(error)")
     }
 
+    #expect(await pendingCopyStore.reads() == 1)
     #expect(await provider.requestedRestoreIDs() == ["backup-failing.json"])
 }
