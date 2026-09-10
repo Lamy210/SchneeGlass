@@ -4,7 +4,7 @@ import SchneeGlassApplication
 import SchneeGlassDomain
 import Testing
 
-private actor LayoutRestoreConfigurationStore: ConfigurationPersisting {
+private actor LayoutRestoreConfigurationStore: ConditionalConfigurationPersisting {
     let configurations: [GlassConfiguration]
 
     init(configurations: [GlassConfiguration]) {
@@ -16,6 +16,13 @@ private actor LayoutRestoreConfigurationStore: ConfigurationPersisting {
     }
 
     func save(_ configurations: [GlassConfiguration]) async throws {}
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        expectedCurrent == self.configurations
+    }
 }
 
 private actor LayoutRestoreFailingAccessController: FolderAccessControlling {
