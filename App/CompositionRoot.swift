@@ -79,7 +79,7 @@ final class SchneeGlassCompositionRoot {
         )
 
         let configurationRecoveryUseCase = ConfigurationRecoveryUseCase(
-            recoveryProvider: configurationStore,
+            recoveryStore: configurationStore,
             pendingCopyStore: pendingCopyStore
         )
 
