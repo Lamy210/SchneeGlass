@@ -7,20 +7,23 @@ private enum ResetPositionsStoreTestError: Error, Sendable {
     case injected
 }
 
-private actor ResetPositionsConfigurationStore: ConfigurationPersisting {
+private actor ResetPositionsConfigurationStore: ConditionalConfigurationPersisting {
     private let loaded: [GlassConfiguration]
     private let failLoad: Bool
     private let failSave: Bool
+    private let rejectConditionalSave: Bool
     private var saved: [[GlassConfiguration]] = []
 
     init(
         loaded: [GlassConfiguration],
         failLoad: Bool = false,
-        failSave: Bool = false
+        failSave: Bool = false,
+        rejectConditionalSave: Bool = false
     ) {
         self.loaded = loaded
         self.failLoad = failLoad
         self.failSave = failSave
+        self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
@@ -31,6 +34,18 @@ private actor ResetPositionsConfigurationStore: ConfigurationPersisting {
     func save(_ configurations: [GlassConfiguration]) async throws {
         if failSave { throw ResetPositionsStoreTestError.injected }
         saved.append(configurations)
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        if failSave { throw ResetPositionsStoreTestError.injected }
+        guard !rejectConditionalSave, expectedCurrent == loaded else {
+            return false
+        }
+        saved.append(configurations)
+        return true
     }
 
     func savedValues() -> [[GlassConfiguration]] { saved }
@@ -111,6 +126,31 @@ func resetPositionsRejectsPersistedGlassMissingFromWorkspaceSnapshot() async thr
         _ = try await useCase.execute(
             placements: [
                 first.id: try GlassPlacement(x: 40, y: 600),
+            ]
+        )
+        Issue.record("Expected configurationChanged")
+    } catch let error as ResetGlassPositionsError {
+        #expect(error == .configurationChanged)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
+    #expect(await store.savedValues().isEmpty)
+}
+
+@Test
+func resetPositionsRejectsPersistenceRaceWithoutWriting() async throws {
+    let persisted = try resetPositionConfiguration(x: 100, y: 120)
+    let store = ResetPositionsConfigurationStore(
+        loaded: [persisted],
+        rejectConditionalSave: true
+    )
+    let useCase = ResetGlassPositionsUseCase(configurationStore: store)
+
+    do {
+        _ = try await useCase.execute(
+            placements: [
+                persisted.id: try GlassPlacement(x: 40, y: 600),
             ]
         )
         Issue.record("Expected configurationChanged")
