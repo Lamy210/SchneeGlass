@@ -20,23 +20,26 @@ private actor RestoreTrace {
     }
 }
 
-private actor RestoreConfigurationStore: ConfigurationPersisting {
+private actor RestoreConfigurationStore: ConditionalConfigurationPersisting {
     let configurations: [GlassConfiguration]
     let trace: RestoreTrace
     let failLoad: Bool
     let failSave: Bool
+    let rejectConditionalSave: Bool
     private var saves: [[GlassConfiguration]] = []
 
     init(
         configurations: [GlassConfiguration],
         trace: RestoreTrace,
         failLoad: Bool = false,
-        failSave: Bool = false
+        failSave: Bool = false,
+        rejectConditionalSave: Bool = false
     ) {
         self.configurations = configurations
         self.trace = trace
         self.failLoad = failLoad
         self.failSave = failSave
+        self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
@@ -49,6 +52,19 @@ private actor RestoreConfigurationStore: ConfigurationPersisting {
         await trace.append("save")
         if failSave { throw RestoreTestError.injected }
         saves.append(configurations)
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        await trace.append("save")
+        if failSave { throw RestoreTestError.injected }
+        guard !rejectConditionalSave, expectedCurrent == self.configurations else {
+            return false
+        }
+        saves.append(configurations)
+        return true
     }
 
     func lastSaved() -> [GlassConfiguration]? {
@@ -299,6 +315,43 @@ func refreshedBookmarkIsPersistedAfterSuccessfulRestore() async throws {
     #expect(result.seeds.first?.configuration.source == refreshed)
     #expect(saved.first?.source == refreshed)
     #expect(result.refreshedConfigurationSavePending == false)
+}
+
+@Test
+func staleRefreshedBookmarkSaveKeepsLiveSeedAndReportsPendingSave() async throws {
+    let trace = RestoreTrace()
+    let configuration = try restoreConfiguration(title: "StaleSave", marker: 1)
+    let refreshed = FolderSource(
+        bookmarkData: Data([9]),
+        lastKnownPath: configuration.source.lastKnownPath,
+        fingerprint: nil
+    )
+    let store = RestoreConfigurationStore(
+        configurations: [configuration],
+        trace: trace,
+        rejectConditionalSave: true
+    )
+    let access = RestoreAccessController(
+        trace: trace,
+        refreshedSources: [configuration.id: refreshed]
+    )
+    let events = RestoreEventStreaming(trace: trace)
+    let reader = RestoreSnapshotReader(trace: trace)
+    let useCase = RestoreApplicationUseCase(
+        configurationStore: store,
+        accessController: access,
+        eventStreaming: events,
+        snapshotReader: reader
+    )
+
+    let result = try await useCase.execute()
+
+    #expect(result.seeds.count == 1)
+    #expect(result.seeds.first?.configuration.source == refreshed)
+    #expect(result.refreshedConfigurationSavePending)
+    #expect(await store.lastSaved() == nil)
+    #expect(await access.releaseCount() == 0)
+    #expect(await events.stopCount() == 0)
 }
 
 @Test
