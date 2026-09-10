@@ -47,5 +47,6 @@ public enum CreateGlassError: Error, Hashable, Sendable {
     case folderAccess(FolderAccessError)
     case eventStreamFailed
     case snapshotFailed
+    case configurationChanged
     case configurationSaveFailed
 }
