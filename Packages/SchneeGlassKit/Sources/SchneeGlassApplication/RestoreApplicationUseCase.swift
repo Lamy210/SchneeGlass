@@ -52,13 +52,13 @@ public enum RestoreApplicationError: Error, Hashable, Sendable {
 }
 
 public actor RestoreApplicationUseCase {
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
     private let accessController: any FolderAccessControlling
     private let eventStreaming: any FileEventStreaming
     private let snapshotReader: any FolderSnapshotReading
 
     public init(
-        configurationStore: any ConfigurationPersisting,
+        configurationStore: any ConditionalConfigurationPersisting,
         accessController: any FolderAccessControlling,
         eventStreaming: any FileEventStreaming,
         snapshotReader: any FolderSnapshotReading
@@ -171,7 +171,10 @@ public actor RestoreApplicationUseCase {
         var refreshedConfigurationSavePending = false
         if refreshedConfigurationExists {
             do {
-                try await configurationStore.save(effectiveConfigurations)
+                refreshedConfigurationSavePending = try await !configurationStore.save(
+                    effectiveConfigurations,
+                    ifCurrentMatches: configurations
+                )
             } catch {
                 refreshedConfigurationSavePending = true
             }
