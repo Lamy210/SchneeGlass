@@ -78,7 +78,8 @@ public struct SchneeGlassWorkspaceView: View {
                     ForEach(model.glasses) { entry in
                         GlassPreviewSurface(
                             entry: entry,
-                            canRemove: !model.isMutatingConfiguration && !Self.isCopying(entry),
+                            canRemove: !model.isMutatingConfiguration
+                                && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
                             onOpen: model.open,
                             onReveal: model.revealInFinder,
                             onRemove: {
@@ -178,13 +179,6 @@ public struct SchneeGlassWorkspaceView: View {
         }
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private static func isCopying(_ entry: GlassWorkspaceEntry) -> Bool {
-        if case .copying = entry.interactionState {
-            return true
-        }
-        return false
     }
 }
 
