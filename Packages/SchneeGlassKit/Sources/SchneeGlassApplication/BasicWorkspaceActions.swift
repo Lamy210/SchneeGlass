@@ -80,6 +80,6 @@ public final class WorkspaceFileActionUseCase {
     }
 
     public func reveal(_ item: GlassItem) {
-        actor.reveal(item)
+        actor.reveal(url: item.url)
     }
 }
