@@ -39,6 +39,10 @@ public enum DropPlanner {
             return .reject(.destinationReadOnly)
         }
 
+        if context.destination.capabilities.supportsSafeDestinationCommit == false {
+            return .reject(.destinationUnavailable)
+        }
+
         let standardizedDestination = context.destination.url.standardizedFileURL
         let supportsCaseSensitiveNames =
             context.destination.capabilities.supportsCaseSensitiveNames ?? false
