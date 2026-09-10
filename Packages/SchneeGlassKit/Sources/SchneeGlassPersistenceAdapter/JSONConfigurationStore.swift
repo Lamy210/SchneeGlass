@@ -3,7 +3,7 @@ import SchneeGlassApplication
 import SchneeGlassDomain
 import SchneeGlassPOSIXSupport
 
-public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecoveryProviding {
+public actor JSONConfigurationStore: ConditionalConfigurationPersisting, ConfigurationRecoveryProviding {
     public static let schemaVersion = 1
     public static let maximumBackupCount = 5
 
@@ -36,66 +36,27 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
     }
 
     public func load() async throws -> [GlassConfiguration] {
-        let data: Data
-        do {
-            guard let current = try stateStore.readRegularFile(
-                in: Self.configurationDirectory,
-                named: Self.configurationFilename
-            ) else {
-                return []
-            }
-            data = current
-        } catch {
-            throw Self.mapCurrentReadError(error)
-        }
-
-        do {
-            return try decodeEnvelope(data).glasses
-        } catch let failure as DecodingFailure {
-            throw Self.mapCurrentFailure(failure)
-        } catch {
-            throw ConfigurationPersistenceError.corruptCurrent
-        }
+        try readCurrentConfigurations()
     }
 
     public func save(_ configurations: [GlassConfiguration]) async throws {
-        let newData = try validatedEncodedData(configurations)
-        try ensureStorageDirectories()
+        try saveReplacingCurrent(configurations)
+    }
 
-        let currentData: Data?
-        do {
-            currentData = try stateStore.readRegularFile(
-                in: Self.configurationDirectory,
-                named: Self.configurationFilename
-            )
-        } catch {
-            throw Self.mapCurrentReadError(error)
+    public func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        let current = try readCurrentConfigurations()
+        guard current == expectedCurrent else {
+            return false
         }
 
-        if let currentData {
-            do {
-                _ = try decodeEnvelope(currentData)
-            } catch let failure as DecodingFailure {
-                throw Self.mapCurrentFailure(failure)
-            } catch {
-                throw ConfigurationPersistenceError.corruptCurrent
-            }
-
-            try writeBackup(data: currentData)
-        }
-
-        // Finish fallible backup housekeeping before replacing current state. The atomic rename in
-        // PhysicalStateStore is the final fallible commit step for the visible configuration.
-        try rotateBackups()
-        do {
-            try stateStore.writeAtomically(
-                newData,
-                in: Self.configurationDirectory,
-                named: Self.configurationFilename
-            )
-        } catch {
-            try Self.rethrowStorageMutation(error)
-        }
+        // `readCurrentConfigurations()` and `saveReplacingCurrent(_:)` contain no suspension point.
+        // Actor isolation therefore makes the comparison and commit one serialized in-process
+        // persistence operation; another SchneeGlass writer cannot interleave a stale overwrite.
+        try saveReplacingCurrent(configurations)
+        return true
     }
 
     public func availableBackups() async throws -> [ConfigurationBackupDescriptor] {
@@ -196,6 +157,69 @@ public actor JSONConfigurationStore: ConfigurationPersisting, ConfigurationRecov
             try Self.rethrowStorageMutation(error)
         }
         return backupEnvelope.glasses
+    }
+
+    private func readCurrentConfigurations() throws -> [GlassConfiguration] {
+        let data: Data
+        do {
+            guard let current = try stateStore.readRegularFile(
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            ) else {
+                return []
+            }
+            data = current
+        } catch {
+            throw Self.mapCurrentReadError(error)
+        }
+
+        do {
+            return try decodeEnvelope(data).glasses
+        } catch let failure as DecodingFailure {
+            throw Self.mapCurrentFailure(failure)
+        } catch {
+            throw ConfigurationPersistenceError.corruptCurrent
+        }
+    }
+
+    private func saveReplacingCurrent(_ configurations: [GlassConfiguration]) throws {
+        let newData = try validatedEncodedData(configurations)
+        try ensureStorageDirectories()
+
+        let currentData: Data?
+        do {
+            currentData = try stateStore.readRegularFile(
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            )
+        } catch {
+            throw Self.mapCurrentReadError(error)
+        }
+
+        if let currentData {
+            do {
+                _ = try decodeEnvelope(currentData)
+            } catch let failure as DecodingFailure {
+                throw Self.mapCurrentFailure(failure)
+            } catch {
+                throw ConfigurationPersistenceError.corruptCurrent
+            }
+
+            try writeBackup(data: currentData)
+        }
+
+        // Finish fallible backup housekeeping before replacing current state. The atomic rename in
+        // PhysicalStateStore is the final fallible commit step for the visible configuration.
+        try rotateBackups()
+        do {
+            try stateStore.writeAtomically(
+                newData,
+                in: Self.configurationDirectory,
+                named: Self.configurationFilename
+            )
+        } catch {
+            try Self.rethrowStorageMutation(error)
+        }
     }
 
     private func validatedEncodedData(_ configurations: [GlassConfiguration]) throws -> Data {

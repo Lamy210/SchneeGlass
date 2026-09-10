@@ -13,9 +13,9 @@ public enum ResetGlassPositionsError: Error, Hashable, Sendable {
 /// This type deliberately knows nothing about AppKit or displays; its only responsibility is to
 /// replace the requested placement values in one configuration transaction.
 public actor ResetGlassPositionsUseCase {
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
 
-    public init(configurationStore: any ConfigurationPersisting) {
+    public init(configurationStore: any ConditionalConfigurationPersisting) {
         self.configurationStore = configurationStore
     }
 
@@ -74,8 +74,16 @@ public actor ResetGlassPositionsUseCase {
         }
 
         do {
-            // One save is the atomic boundary. Never persist Glass placements one-by-one here.
-            try await configurationStore.save(updatedConfigurations)
+            // The store compares and commits as one serialized persistence operation. Never let a
+            // layout calculated from an older snapshot overwrite a newer configuration generation.
+            guard try await configurationStore.save(
+                updatedConfigurations,
+                ifCurrentMatches: configurations
+            ) else {
+                throw ResetGlassPositionsError.configurationChanged
+            }
+        } catch let error as ResetGlassPositionsError {
+            throw error
         } catch {
             throw ResetGlassPositionsError.configurationSaveFailed
         }

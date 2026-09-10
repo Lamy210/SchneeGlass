@@ -8,20 +8,23 @@ private enum BasicWorkspaceActionsTestError: Error, Sendable {
     case injected
 }
 
-private actor BasicActionsConfigurationStore: ConfigurationPersisting {
+private actor BasicActionsConfigurationStore: ConditionalConfigurationPersisting {
     private let loaded: [GlassConfiguration]
     private let failLoad: Bool
     private let failSave: Bool
+    private let rejectConditionalSave: Bool
     private var savedValues: [[GlassConfiguration]] = []
 
     init(
         loaded: [GlassConfiguration],
         failLoad: Bool = false,
-        failSave: Bool = false
+        failSave: Bool = false,
+        rejectConditionalSave: Bool = false
     ) {
         self.loaded = loaded
         self.failLoad = failLoad
         self.failSave = failSave
+        self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
@@ -36,6 +39,20 @@ private actor BasicActionsConfigurationStore: ConfigurationPersisting {
             throw BasicWorkspaceActionsTestError.injected
         }
         savedValues.append(configurations)
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        if failSave {
+            throw BasicWorkspaceActionsTestError.injected
+        }
+        guard !rejectConditionalSave, expectedCurrent == loaded else {
+            return false
+        }
+        savedValues.append(configurations)
+        return true
     }
 
     func saves() -> [[GlassConfiguration]] {
@@ -260,6 +277,33 @@ func removeGlassIgnoresPendingRecoveryForDifferentGlass() async throws {
 
     #expect(didRemove)
     #expect(await store.saves() == [[kept]])
+}
+
+@Test
+func removeGlassRejectsStaleConfigurationWithoutWriting() async throws {
+    let removedID = GlassID()
+    let removed = try basicActionsConfiguration(id: removedID, title: "Removed")
+    let kept = try basicActionsConfiguration(title: "Kept")
+    let store = BasicActionsConfigurationStore(
+        loaded: [removed, kept],
+        rejectConditionalSave: true
+    )
+    let pendingCopyStore = BasicActionsPendingCopyStore()
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    do {
+        _ = try await useCase.execute(glassID: removedID)
+        Issue.record("Expected configurationChanged")
+    } catch let error as RemoveGlassError {
+        #expect(error == .configurationChanged)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+
+    #expect(await store.saves().isEmpty)
 }
 
 @Test

@@ -6,15 +6,16 @@ public enum RemoveGlassError: Error, Hashable, Sendable {
     case configurationLoadFailed
     case pendingCopyLoadFailed
     case pendingCopyRecoveryRequired
+    case configurationChanged
     case configurationSaveFailed
 }
 
 public actor RemoveGlassUseCase {
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
     private let pendingCopyStore: any PendingCopyRecording
 
     public init(
-        configurationStore: any ConfigurationPersisting,
+        configurationStore: any ConditionalConfigurationPersisting,
         pendingCopyStore: any PendingCopyRecording
     ) {
         self.configurationStore = configurationStore
@@ -46,7 +47,14 @@ public actor RemoveGlassUseCase {
 
         let remaining = configurations.filter { $0.id != glassID }
         do {
-            try await configurationStore.save(remaining)
+            guard try await configurationStore.save(
+                remaining,
+                ifCurrentMatches: configurations
+            ) else {
+                throw RemoveGlassError.configurationChanged
+            }
+        } catch let error as RemoveGlassError {
+            throw error
         } catch {
             throw RemoveGlassError.configurationSaveFailed
         }

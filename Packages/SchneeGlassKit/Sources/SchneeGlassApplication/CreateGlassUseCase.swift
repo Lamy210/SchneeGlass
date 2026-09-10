@@ -7,7 +7,7 @@ public final class CreateGlassUseCase {
     private let folderSelector: any FolderSelecting
     private let sourceCreator: any FolderSourceCreating
     private let placementProvider: any InitialGlassPlacementProviding
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
     private let accessController: any FolderAccessControlling
     private let eventStreaming: any FileEventStreaming
     private let snapshotReader: any FolderSnapshotReading
@@ -16,7 +16,7 @@ public final class CreateGlassUseCase {
         folderSelector: any FolderSelecting,
         sourceCreator: any FolderSourceCreating,
         placementProvider: any InitialGlassPlacementProviding,
-        configurationStore: any ConfigurationPersisting,
+        configurationStore: any ConditionalConfigurationPersisting,
         accessController: any FolderAccessControlling,
         eventStreaming: any FileEventStreaming,
         snapshotReader: any FolderSnapshotReading
@@ -117,9 +117,14 @@ public final class CreateGlassUseCase {
             }
 
             do {
-                try await configurationStore.save(
-                    existingConfigurations + [persistedConfiguration]
-                )
+                guard try await configurationStore.save(
+                    existingConfigurations + [persistedConfiguration],
+                    ifCurrentMatches: existingConfigurations
+                ) else {
+                    throw CreateGlassError.configurationSaveFailed
+                }
+            } catch let error as CreateGlassError {
+                throw error
             } catch {
                 throw CreateGlassError.configurationSaveFailed
             }

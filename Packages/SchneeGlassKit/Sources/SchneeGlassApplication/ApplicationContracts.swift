@@ -191,6 +191,18 @@ public protocol ConfigurationPersisting: Sendable {
     func save(_ configurations: [GlassConfiguration]) async throws
 }
 
+/// Persistence capability for read-modify-write configuration commands.
+///
+/// Implementations must compare `expectedCurrent` and commit `configurations` as one serialized
+/// persistence operation. Returning `false` means another writer changed the current configuration;
+/// callers must not retry with their stale derived value.
+public protocol ConditionalConfigurationPersisting: ConfigurationPersisting {
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool
+}
+
 public protocol FileEventStreaming: Sendable {
     func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription
     func stop(subscriptionID: UUID) async
