@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassApplication
 
@@ -122,6 +123,17 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
     }
 
     private func observeRegularFile(_ url: URL) -> FileObservation {
+        switch Self.pathEntryType(at: url) {
+        case .missing:
+            return .absent
+        case .regular:
+            break
+        case .other:
+            return .unexpectedType
+        case .unavailable:
+            return .unavailable
+        }
+
         do {
             let attributes = try fileManager.attributesOfItem(atPath: url.path)
             let values = try url.resourceValues(forKeys: [
@@ -143,15 +155,30 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             )
             return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
-            let cocoa = error as NSError
-            if cocoa.domain == NSCocoaErrorDomain,
-               cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
-                || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
-            {
-                return .absent
-            }
-            return .unavailable
+            return Self.pathEntryType(at: url) == .missing ? .absent : .unavailable
         }
+    }
+
+    private enum PathEntryType: Equatable {
+        case missing
+        case regular
+        case other
+        case unavailable
+    }
+
+    private static func pathEntryType(at url: URL) -> PathEntryType {
+        var metadata = stat()
+        let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return Int32(-1)
+            }
+            return lstat(path, &metadata)
+        }
+
+        guard result == 0 else {
+            return errno == ENOENT ? .missing : .unavailable
+        }
+        return (metadata.st_mode & S_IFMT) == S_IFREG ? .regular : .other
     }
 
     private static func verification(
