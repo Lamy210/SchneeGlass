@@ -44,7 +44,7 @@ private func dropDestination(
     locationKind: StorageLocationKind = .localFixed,
     isWritable: Bool = true,
     supportsCaseSensitiveNames: Bool? = false,
-    supportsSafeDestinationCommit: Bool? = nil
+    supportsSafeDestinationCommit: Bool? = true
 ) -> (FolderAccessHandle, DestinationDescriptor) {
     let glassID = GlassID()
     let access = FolderAccessHandle(glassID: glassID, url: url)
