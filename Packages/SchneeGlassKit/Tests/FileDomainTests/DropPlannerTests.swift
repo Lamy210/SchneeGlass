@@ -7,7 +7,7 @@ private func destination(
     url: URL = URL(fileURLWithPath: "/tmp/SchneeGlassDestination", isDirectory: true),
     locationKind: StorageLocationKind = .localFixed,
     isWritable: Bool = true,
-    supportsSafeDestinationCommit: Bool? = nil
+    supportsSafeDestinationCommit: Bool? = true
 ) -> DestinationDescriptor {
     DestinationDescriptor(
         glassID: GlassID(),
@@ -91,12 +91,17 @@ func readOnlyDestinationIsRejected() {
     #expect(result == .reject(.destinationReadOnly))
 }
 
-@Test("destination without safe commit support is rejected")
-func unsafeDestinationCommitIsRejected() {
+@Test(
+    "unsafe or unknown destination commit support is rejected",
+    arguments: [false, nil] as [Bool?]
+)
+func unsafeDestinationCommitIsRejected(supportsSafeDestinationCommit: Bool?) {
     let result = DropPlanner.plan(
         DropPlanningContext(
             candidates: [candidate()],
-            destination: destination(supportsSafeDestinationCommit: false)
+            destination: destination(
+                supportsSafeDestinationCommit: supportsSafeDestinationCommit
+            )
         )
     )
     #expect(result == .reject(.destinationUnavailable))
