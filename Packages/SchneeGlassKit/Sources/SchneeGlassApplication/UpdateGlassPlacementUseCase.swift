@@ -2,14 +2,15 @@ import SchneeGlassDomain
 
 public enum UpdateGlassPlacementError: Error, Hashable, Sendable {
     case configurationLoadFailed
+    case configurationChanged
     case invalidConfiguration
     case configurationSaveFailed
 }
 
 public actor UpdateGlassPlacementUseCase {
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
 
-    public init(configurationStore: any ConfigurationPersisting) {
+    public init(configurationStore: any ConditionalConfigurationPersisting) {
         self.configurationStore = configurationStore
     }
 
@@ -24,6 +25,7 @@ public actor UpdateGlassPlacementUseCase {
         } catch {
             throw UpdateGlassPlacementError.configurationLoadFailed
         }
+        let expectedCurrent = configurations
 
         guard let index = configurations.firstIndex(where: { $0.id == glassID }) else {
             return false
@@ -50,7 +52,14 @@ public actor UpdateGlassPlacementUseCase {
 
         configurations[index] = updated
         do {
-            try await configurationStore.save(configurations)
+            guard try await configurationStore.save(
+                configurations,
+                ifCurrentMatches: expectedCurrent
+            ) else {
+                throw UpdateGlassPlacementError.configurationChanged
+            }
+        } catch let error as UpdateGlassPlacementError {
+            throw error
         } catch {
             throw UpdateGlassPlacementError.configurationSaveFailed
         }
