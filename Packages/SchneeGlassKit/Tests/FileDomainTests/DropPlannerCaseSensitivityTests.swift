@@ -14,7 +14,8 @@ private func caseSensitivityDestination(
         capabilities: StorageCapabilities(
             locationKind: .localFixed,
             isWritable: true,
-            supportsCaseSensitiveNames: supportsCaseSensitiveNames
+            supportsCaseSensitiveNames: supportsCaseSensitiveNames,
+            supportsSafeDestinationCommit: true
         )
     )
 }
