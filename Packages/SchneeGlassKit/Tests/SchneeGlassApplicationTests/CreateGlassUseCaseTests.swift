@@ -1,6 +1,6 @@
 import FileDomain
 import Foundation
-import SchneeGlassApplication
+@testable import SchneeGlassApplication
 import SchneeGlassDomain
 import Testing
 
@@ -384,9 +384,9 @@ func snapshotFailureStopsWatcherThenReleasesSecurityScopeAndDoesNotSave() async 
 
 @Test
 @MainActor
-func staleCreateStopsWatcherReleasesSecurityScopeAndDoesNotOverwriteConfiguration() async throws {
+func staleConfigurationStopsWatcherThenReleasesSecurityScopeWithoutSaving() async throws {
     let trace = CreateGlassTrace()
-    let selected = URL(fileURLWithPath: "/tmp/StaleCreate", isDirectory: true)
+    let selected = URL(fileURLWithPath: "/tmp/StaleConfiguration", isDirectory: true)
     let setup = try makeUseCase(
         selectedURL: selected,
         trace: trace,
@@ -396,7 +396,7 @@ func staleCreateStopsWatcherReleasesSecurityScopeAndDoesNotOverwriteConfiguratio
 
     do {
         _ = try await setup.useCase.execute()
-        Issue.record("Expected stale configuration save rejection")
+        Issue.record("Expected configuration save failure")
     } catch let error as CreateGlassError {
         #expect(error == .configurationSaveFailed)
     }
