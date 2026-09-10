@@ -64,23 +64,26 @@ private final class FakePlacementProvider: InitialGlassPlacementProviding {
     }
 }
 
-private actor FakeConfigurationStore: ConfigurationPersisting {
+private actor FakeConfigurationStore: ConditionalConfigurationPersisting {
     let trace: CreateGlassTrace
     let loaded: [GlassConfiguration]
     let failLoad: Bool
     let failSave: Bool
+    let rejectConditionalSave: Bool
     private var saved: [[GlassConfiguration]] = []
 
     init(
         trace: CreateGlassTrace,
         loaded: [GlassConfiguration] = [],
         failLoad: Bool = false,
-        failSave: Bool = false
+        failSave: Bool = false,
+        rejectConditionalSave: Bool = false
     ) {
         self.trace = trace
         self.loaded = loaded
         self.failLoad = failLoad
         self.failSave = failSave
+        self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
@@ -93,6 +96,19 @@ private actor FakeConfigurationStore: ConfigurationPersisting {
         await trace.append("save")
         if failSave { throw CreateGlassTestError.injected }
         saved.append(configurations)
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        await trace.append("save")
+        if failSave { throw CreateGlassTestError.injected }
+        guard !rejectConditionalSave, expectedCurrent == loaded else {
+            return false
+        }
+        saved.append(configurations)
+        return true
     }
 
     func lastSaved() -> [GlassConfiguration]? {
@@ -210,6 +226,7 @@ private func makeUseCase(
     refreshedSource: FolderSource? = nil,
     failLoad: Bool = false,
     failSave: Bool = false,
+    rejectConditionalSave: Bool = false,
     failEvents: Bool = false,
     failSnapshot: Bool = false
 ) throws -> (
@@ -221,7 +238,8 @@ private func makeUseCase(
     let store = FakeConfigurationStore(
         trace: trace,
         failLoad: failLoad,
-        failSave: failSave
+        failSave: failSave,
+        rejectConditionalSave: rejectConditionalSave
     )
     let access = FakeAccessController(
         trace: trace,
@@ -362,6 +380,33 @@ func snapshotFailureStopsWatcherThenReleasesSecurityScopeAndDoesNotSave() async 
     #expect(await setup.events.stopCount() == 1)
     #expect(await setup.access.counts().released == 1)
     #expect(await setup.store.lastSaved() == nil)
+}
+
+@Test
+@MainActor
+func staleCreateStopsWatcherReleasesSecurityScopeAndDoesNotOverwriteConfiguration() async throws {
+    let trace = CreateGlassTrace()
+    let selected = URL(fileURLWithPath: "/tmp/StaleCreate", isDirectory: true)
+    let setup = try makeUseCase(
+        selectedURL: selected,
+        trace: trace,
+        initialSource: source(path: selected.path, marker: 1),
+        rejectConditionalSave: true
+    )
+
+    do {
+        _ = try await setup.useCase.execute()
+        Issue.record("Expected stale configuration save rejection")
+    } catch let error as CreateGlassError {
+        #expect(error == .configurationSaveFailed)
+    }
+
+    #expect(await trace.snapshot() == [
+        "select", "source", "load", "acquire", "subscribe", "snapshot", "save", "stopEvents", "release",
+    ])
+    #expect(await setup.store.lastSaved() == nil)
+    #expect(await setup.events.stopCount() == 1)
+    #expect(await setup.access.counts().released == 1)
 }
 
 @Test
