@@ -8,6 +8,7 @@ SchneeGlass はファイルを扱うため、テストを「実装後の確認�
 Source file loss = 0
 Silent overwrite = 0
 User-owned Move/Rename/Delete = 0
+Destination pathname redirection = 0
 Unknown partial auto-delete = 0
 Security scope leak = 0
 UI -> concrete filesystem mutation adapter = 0
@@ -119,9 +120,9 @@ swift test --package-path Packages/SchneeGlassKit
 
 ### File Safety Guard
 
-user-visible mutationの`removeItem` / `moveItem` / `replaceItem`、source-copy authorityの`fcopyfile` / `O_CREAT`、owned metadata mutationの`mkdirat` / `renameat` / `unlinkat` / `O_CREAT`相当APIをallowlist方式で検査します。
+user-visible mutationの`removeItem` / `moveItem` / `replaceItem` / `renameatx_np`、source-copy authorityの`fcopyfile` / `O_CREAT`、owned metadata mutationの`mkdirat` / `renameat` / `unlinkat` / `O_CREAT`相当APIをallowlist方式で検査します。
 
-user-visible destination mutationは`SchneeGlassFileSystemAdapter`、SchneeGlass-owned metadata mutationは`SchneeGlassPOSIXSupport.PhysicalStateStore`へ限定します。
+Production destination mutationは`SchneeGlassFileSystemAdapter`内でも、descriptor-relative staging作成と`PinnedDestinationStagingCommitter`のexclusive final commitへ限定します。SchneeGlass-owned metadata mutationは`SchneeGlassPOSIXSupport.PhysicalStateStore`へ限定します。
 
 新しいmutation APIやallowlist対象を追加する場合は、同一PRでSafety rationaleと実Filesystem testを追加します。
 
@@ -152,6 +153,9 @@ user-visible destination mutationは`SchneeGlassFileSystemAdapter`、SchneeGlass
 - disk full / I/O fault injection
 - source disappears
 - destination disappears
+- destination rename/recreate between planning and execution
+- destination pathname replacement after physical directory bind
+- exclusive final-name collision / no overwrite
 - commit collision race
 - partial recovery
 - unknown `.glass-*` safety
@@ -177,6 +181,7 @@ Fault injectionとFoundation/FileManager/NSFileCoordinator/POSIX primitiveを使
 permissionDenied
 sourceMissing
 destinationMissing
+destinationReplaced
 diskFull(afterBytes:)
 commitCollision
 cancelled
@@ -507,6 +512,7 @@ Release blockerの代表例:
 
 - source file loss / silent overwrite
 - user-owned Move/Rename/Delete
+- destination pathname replacementによるmutation redirection
 - ownership proofなしのRecovery deletion
 - stale stateをauthorityにしたmutation
 - owned metadata symlink traversal / unsafe topology mutation

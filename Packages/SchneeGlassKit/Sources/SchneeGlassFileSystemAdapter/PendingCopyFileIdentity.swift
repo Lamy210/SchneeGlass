@@ -96,6 +96,46 @@ enum PendingCopyFileIdentity {
         )
     }
 
+    /// Descriptor-relative variant used by the production pinned-destination copy path. It never
+    /// re-resolves the destination directory pathname while minting recovery authority.
+    static func prepareAppOwnedStaging(
+        onFileDescriptor descriptor: Int32,
+        directoryDescriptor: Int32,
+        filename: String
+    ) -> PreparedPendingCopyStaging? {
+        var metadata = stat()
+        guard isSinglePathComponent(filename),
+              fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG,
+              descriptorMatchesDirectoryEntry(
+                  descriptor,
+                  directoryDescriptor: directoryDescriptor,
+                  filename: filename
+              ),
+              removeInheritedTokenFromAppOwnedStaging(onFileDescriptor: descriptor)
+        else {
+            return nil
+        }
+
+        let resourceIdentifier = createToken(onFileDescriptor: descriptor)
+
+        guard descriptorMatchesDirectoryEntry(
+                  descriptor,
+                  directoryDescriptor: directoryDescriptor,
+                  filename: filename
+              ),
+              fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG
+        else {
+            return nil
+        }
+
+        return PreparedPendingCopyStaging(
+            size: Int64(metadata.st_size),
+            resourceIdentifier: resourceIdentifier
+        )
+    }
+
     /// Removes only a proof inherited through `COPYFILE_ALL` from a staging inode that the app
     /// just created with `O_EXCL`. This is deliberately separate from `createToken`: an existing
     /// proof on an arbitrary path must never be reissued or overwritten.
@@ -192,5 +232,38 @@ enum PendingCopyFileIdentity {
             return descriptorStat.st_dev == pathStat.st_dev
                 && descriptorStat.st_ino == pathStat.st_ino
         }
+    }
+
+    static func descriptorMatchesDirectoryEntry(
+        _ descriptor: Int32,
+        directoryDescriptor: Int32,
+        filename: String
+    ) -> Bool {
+        guard isSinglePathComponent(filename) else {
+            return false
+        }
+
+        var descriptorStat = stat()
+        guard fstat(descriptor, &descriptorStat) == 0 else {
+            return false
+        }
+
+        return filename.withCString { name in
+            var entryStat = stat()
+            guard fstatat(
+                directoryDescriptor,
+                name,
+                &entryStat,
+                AT_SYMLINK_NOFOLLOW
+            ) == 0 else {
+                return false
+            }
+            return descriptorStat.st_dev == entryStat.st_dev
+                && descriptorStat.st_ino == entryStat.st_ino
+        }
+    }
+
+    private static func isSinglePathComponent(_ value: String) -> Bool {
+        !value.isEmpty && (value as NSString).lastPathComponent == value
     }
 }

@@ -15,11 +15,16 @@ Filesystem mutation は `SchneeGlassFileSystemAdapter` の allowlisted implement
 
 唯一の内部例外として、現在の operation が作成し recovery metadata を持つ staging file を同一 destination directory 内で final name へ commit する rename を許可する。
 
+Production Safe Copyでは、authoritative requestに対してphysical destination directoryをdescriptorでpinし、staging作成とfinal commitをそのdescriptor相対で実行する。final commitは`RENAME_EXCL`を使用し、既存final entryをatomicに上書き禁止とする。詳細はADR-0008を参照する。
+
 実装責務:
 
 ```text
 SafeFileCopyEngine
-InternalStagingCommitter
+SourceFileLeaseRegistry
+DestinationDirectoryLeaseRegistry
+PinnedDestinationStagingCommitter
+InternalStagingCommitter (internal test/support path)
 ```
 
 Presentation/Application/Domain から Concrete mutation adapter への直接依存を禁止する。
