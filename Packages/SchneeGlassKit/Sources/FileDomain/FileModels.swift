@@ -193,6 +193,7 @@ public enum DropRejection: Error, Hashable, Sendable {
     case containsSameDirectoryItem
     case destinationUnavailable
     case destinationReadOnly
+    case destinationCopySafetyUnsupported
     case networkDestinationUnsupported
     case sourceUnavailable
     case cloudPlaceholderUnavailable
