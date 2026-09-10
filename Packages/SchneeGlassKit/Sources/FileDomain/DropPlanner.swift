@@ -40,7 +40,7 @@ public enum DropPlanner {
         }
 
         guard context.destination.capabilities.supportsSafeDestinationCommit == true else {
-            return .reject(.destinationUnavailable)
+            return .reject(.destinationCopySafetyUnsupported)
         }
 
         let standardizedDestination = context.destination.url.standardizedFileURL
