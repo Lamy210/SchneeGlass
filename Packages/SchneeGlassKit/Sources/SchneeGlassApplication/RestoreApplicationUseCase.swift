@@ -171,10 +171,11 @@ public actor RestoreApplicationUseCase {
         var refreshedConfigurationSavePending = false
         if refreshedConfigurationExists {
             do {
-                refreshedConfigurationSavePending = try await !configurationStore.save(
+                let didSave = try await configurationStore.save(
                     effectiveConfigurations,
                     ifCurrentMatches: configurations
                 )
+                refreshedConfigurationSavePending = !didSave
             } catch {
                 refreshedConfigurationSavePending = true
             }
