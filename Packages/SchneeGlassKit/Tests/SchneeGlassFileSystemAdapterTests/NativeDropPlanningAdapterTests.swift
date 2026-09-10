@@ -107,11 +107,11 @@ func nativeDropPreviewAndPlanningRejectUnsafeDestinationCommit() async {
 
     #expect(
         await planner.preview(sourceURLs: [source], destinationAccess: access)
-            == .reject(.destinationUnavailable)
+            == .reject(.destinationCopySafetyUnsupported)
     )
     #expect(
         await planner.plan(sourceURLs: [source], destinationAccess: access)
-            == .reject(.destinationUnavailable)
+            == .reject(.destinationCopySafetyUnsupported)
     )
 }
 

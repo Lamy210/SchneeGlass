@@ -453,6 +453,8 @@ private struct GlassPreviewSurface: View {
             return "Folder unavailable"
         case .destinationReadOnly:
             return "Folder is read-only"
+        case .destinationCopySafetyUnsupported:
+            return "Copy isn't supported for this folder"
         case .networkDestinationUnsupported:
             return "Network folders aren't supported for copy yet"
         case .sourceUnavailable:
@@ -476,6 +478,8 @@ private struct GlassPreviewSurface: View {
             return "Reconnect the Glass before copying files."
         case .destinationReadOnly:
             return "SchneeGlass can't write to this folder."
+        case .destinationCopySafetyUnsupported:
+            return "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
         case .networkDestinationUnsupported:
             return "Open the folder in Finder instead."
         case .sourceUnavailable:
