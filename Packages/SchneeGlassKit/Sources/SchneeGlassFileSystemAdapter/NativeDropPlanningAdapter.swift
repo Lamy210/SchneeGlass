@@ -215,6 +215,11 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 }
 
 public actor NativeDropPlanningAdapter: DropPlanning {
+    /// Each accepted source is kept open from authoritative planning through copy execution.
+    /// Bounding one plan prevents a single drag from exhausting the process file-descriptor table.
+    /// The limit is deliberately conservative for v0.1; larger transfers should be split by users.
+    static let maximumSourceItemsPerPlan = 128
+
     private let inspector: any DropFileSystemInspecting
     private let previewInspector: any DropFileSystemInspecting
     private let sourceLeases: SourceFileLeaseRegistry?
@@ -245,7 +250,11 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         sourceURLs: [URL],
         destinationAccess: FolderAccessHandle
     ) async -> DropPlan {
-        await makePlan(
+        guard sourceURLs.count <= Self.maximumSourceItemsPerPlan else {
+            return .reject(.sourceUnavailable)
+        }
+
+        return await makePlan(
             sourceURLs: sourceURLs,
             destinationAccess: destinationAccess,
             inspector: previewInspector,
@@ -257,7 +266,11 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         sourceURLs: [URL],
         destinationAccess: FolderAccessHandle
     ) async -> DropPlan {
-        await makePlan(
+        guard sourceURLs.count <= Self.maximumSourceItemsPerPlan else {
+            return .reject(.sourceUnavailable)
+        }
+
+        return await makePlan(
             sourceURLs: sourceURLs,
             destinationAccess: destinationAccess,
             inspector: inspector,
