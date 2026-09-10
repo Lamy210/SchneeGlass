@@ -24,7 +24,7 @@ public enum PendingCopyDestinationReconnectError: Error, Hashable, Sendable {
 /// must still exactly match the preflight state before any configuration write is attempted.
 public actor PendingCopyDestinationReconnectUseCase {
     private let pendingCopyStore: any PendingCopyRecording
-    private let configurationStore: any ConfigurationPersisting
+    private let configurationStore: any ConditionalConfigurationPersisting
     private let folderSelector: any FolderSelecting
     private let sourceCreator: any FolderSourceCreating
     private let accessController: any FolderAccessControlling
@@ -32,7 +32,7 @@ public actor PendingCopyDestinationReconnectUseCase {
 
     public init(
         pendingCopyStore: any PendingCopyRecording,
-        configurationStore: any ConfigurationPersisting,
+        configurationStore: any ConditionalConfigurationPersisting,
         folderSelector: any FolderSelecting,
         sourceCreator: any FolderSourceCreating,
         accessController: any FolderAccessControlling,
@@ -177,7 +177,14 @@ public actor PendingCopyDestinationReconnectUseCase {
         updated[index] = updatedConfiguration
 
         do {
-            try await configurationStore.save(updated)
+            guard try await configurationStore.save(
+                updated,
+                ifCurrentMatches: configurations
+            ) else {
+                throw PendingCopyDestinationReconnectError.staleRecoveryState
+            }
+        } catch let error as PendingCopyDestinationReconnectError {
+            throw error
         } catch {
             throw PendingCopyDestinationReconnectError.configurationSaveFailed
         }
