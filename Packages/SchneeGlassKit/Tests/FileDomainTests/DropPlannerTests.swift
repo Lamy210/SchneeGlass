@@ -92,7 +92,7 @@ func readOnlyDestinationIsRejected() {
 }
 
 @Test(
-    "unsafe or unknown destination commit support is rejected",
+    "unsafe or unknown destination commit support has a distinct rejection",
     arguments: [false, nil] as [Bool?]
 )
 func unsafeDestinationCommitIsRejected(supportsSafeDestinationCommit: Bool?) {
@@ -104,7 +104,7 @@ func unsafeDestinationCommitIsRejected(supportsSafeDestinationCommit: Bool?) {
             )
         )
     )
-    #expect(result == .reject(.destinationUnavailable))
+    #expect(result == .reject(.destinationCopySafetyUnsupported))
 }
 
 @Test("a source marked as colliding is rejected")
