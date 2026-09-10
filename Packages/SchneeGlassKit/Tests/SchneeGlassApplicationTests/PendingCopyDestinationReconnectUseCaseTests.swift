@@ -20,16 +20,35 @@ private actor ReconnectRecordStore: PendingCopyRecording {
     }
 }
 
-private actor ReconnectConfigurationStore: ConfigurationPersisting {
+private actor ReconnectConfigurationStore: ConditionalConfigurationPersisting {
     private var values: [GlassConfiguration]
     private var saves: [[GlassConfiguration]] = []
+    private let rejectConditionalSave: Bool
 
-    init(configurations: [GlassConfiguration]) { self.values = configurations }
+    init(
+        configurations: [GlassConfiguration],
+        rejectConditionalSave: Bool = false
+    ) {
+        self.values = configurations
+        self.rejectConditionalSave = rejectConditionalSave
+    }
 
     func load() async throws -> [GlassConfiguration] { values }
     func save(_ configurations: [GlassConfiguration]) async throws {
         saves.append(configurations)
         values = configurations
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        guard !rejectConditionalSave, values == expectedCurrent else {
+            return false
+        }
+        saves.append(configurations)
+        values = configurations
+        return true
     }
 
     func replaceForTest(_ configurations: [GlassConfiguration]) {
@@ -262,6 +281,44 @@ func reconnectRejectsConfigurationChangedWhilePickerWasOpen() async throws {
     }
 
     #expect(await store.savedValues().isEmpty)
+}
+
+@Test
+@MainActor
+func reconnectRejectsConfigurationChangedAfterFinalRead() async throws {
+    let glassID = GlassID()
+    let record = reconnectRecord(glassID: glassID)
+    let original = try reconnectConfiguration(glassID: glassID)
+    let selected = FolderSource(
+        bookmarkData: Data([8]),
+        lastKnownPath: "/new/Documents",
+        fingerprint: reconnectFingerprint(resource: "folder-1")
+    )
+    let store = ReconnectConfigurationStore(
+        configurations: [original],
+        rejectConditionalSave: true
+    )
+    let access = ReconnectAccessController()
+    let gate = FileOperationActivityGate()
+    let useCase = reconnectUseCase(
+        record: record,
+        configurationStore: store,
+        selectedSource: selected,
+        access: access,
+        gate: gate
+    )
+
+    do {
+        _ = try await useCase.execute(operationID: record.operationID)
+        Issue.record("Expected staleRecoveryState")
+    } catch let error as PendingCopyDestinationReconnectError {
+        #expect(error == .staleRecoveryState)
+    }
+
+    #expect(await store.savedValues().isEmpty)
+    #expect(await access.acquireCount() == 1)
+    #expect(await access.releaseCount() == 1)
+    #expect(!(await gate.hasActiveRecoveryMutation()))
 }
 
 @Test
