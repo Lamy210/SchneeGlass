@@ -347,6 +347,8 @@ private struct DesktopGlassSurface: View {
             return "Folder unavailable"
         case .destinationReadOnly:
             return "Folder is read-only"
+        case .destinationCopySafetyUnsupported:
+            return "Copy isn't supported for this folder"
         case .networkDestinationUnsupported:
             return "Network destinations aren't supported yet"
         case .sourceUnavailable:
@@ -364,6 +366,8 @@ private struct DesktopGlassSurface: View {
             return "SchneeGlass won't start an unexpected cloud download."
         case .unsupportedFolder:
             return "v0.1 copies regular files only."
+        case .destinationCopySafetyUnsupported:
+            return "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
         default:
             return nil
         }
