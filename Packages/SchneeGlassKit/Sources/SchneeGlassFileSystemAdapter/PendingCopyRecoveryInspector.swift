@@ -155,11 +155,18 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             )
             return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
-            return Self.pathEntryType(at: url) == .missing ? .absent : .unavailable
+            switch Self.pathEntryType(at: url) {
+            case .missing:
+                return .absent
+            case .other:
+                return .unexpectedType
+            case .regular, .unavailable:
+                return .unavailable
+            }
         }
     }
 
-    private enum PathEntryType: Equatable {
+    private enum PathEntryType {
         case missing
         case regular
         case other
