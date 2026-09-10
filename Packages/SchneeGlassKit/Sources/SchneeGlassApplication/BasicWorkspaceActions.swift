@@ -4,14 +4,21 @@ import SchneeGlassDomain
 
 public enum RemoveGlassError: Error, Hashable, Sendable {
     case configurationLoadFailed
+    case pendingCopyLoadFailed
+    case pendingCopyRecoveryRequired
     case configurationSaveFailed
 }
 
 public actor RemoveGlassUseCase {
     private let configurationStore: any ConfigurationPersisting
+    private let pendingCopyStore: any PendingCopyRecording
 
-    public init(configurationStore: any ConfigurationPersisting) {
+    public init(
+        configurationStore: any ConfigurationPersisting,
+        pendingCopyStore: any PendingCopyRecording
+    ) {
         self.configurationStore = configurationStore
+        self.pendingCopyStore = pendingCopyStore
     }
 
     public func execute(glassID: GlassID) async throws -> Bool {
@@ -22,11 +29,22 @@ public actor RemoveGlassUseCase {
             throw RemoveGlassError.configurationLoadFailed
         }
 
-        let remaining = configurations.filter { $0.id != glassID }
-        guard remaining.count != configurations.count else {
+        guard configurations.contains(where: { $0.id == glassID }) else {
             return false
         }
 
+        let pendingCopies: [PendingCopyRecord]
+        do {
+            pendingCopies = try await pendingCopyStore.records()
+        } catch {
+            throw RemoveGlassError.pendingCopyLoadFailed
+        }
+
+        guard !pendingCopies.contains(where: { $0.destinationGlassID == glassID }) else {
+            throw RemoveGlassError.pendingCopyRecoveryRequired
+        }
+
+        let remaining = configurations.filter { $0.id != glassID }
         do {
             try await configurationStore.save(remaining)
         } catch {

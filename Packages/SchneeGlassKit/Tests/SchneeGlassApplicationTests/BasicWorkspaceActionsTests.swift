@@ -43,6 +43,40 @@ private actor BasicActionsConfigurationStore: ConfigurationPersisting {
     }
 }
 
+private actor BasicActionsPendingCopyStore: PendingCopyRecording {
+    private let loaded: [PendingCopyRecord]
+    private let failLoad: Bool
+    private var readCount = 0
+
+    init(
+        loaded: [PendingCopyRecord] = [],
+        failLoad: Bool = false
+    ) {
+        self.loaded = loaded
+        self.failLoad = failLoad
+    }
+
+    func records() async throws -> [PendingCopyRecord] {
+        readCount += 1
+        if failLoad {
+            throw BasicWorkspaceActionsTestError.injected
+        }
+        return loaded
+    }
+
+    func upsert(_ record: PendingCopyRecord) async throws {
+        _ = record
+    }
+
+    func remove(operationID: UUID) async throws {
+        _ = operationID
+    }
+
+    func reads() -> Int {
+        readCount
+    }
+}
+
 @MainActor
 private final class FakeWorkspaceFileActor: WorkspaceFileActing {
     var openResult = true
@@ -75,6 +109,20 @@ private func basicActionsConfiguration(
     )
 }
 
+private func basicActionsPendingCopy(glassID: GlassID) -> PendingCopyRecord {
+    let operationID = UUID()
+    return PendingCopyRecord(
+        operationID: operationID,
+        batchID: UUID(),
+        destinationGlassID: glassID,
+        stagingFilename: ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial",
+        finalFilename: "payload.txt",
+        expectedSize: 7,
+        stagingResourceIdentifier: "xattr-v1:\(UUID().uuidString.lowercased())",
+        state: .verifying
+    )
+}
+
 private func basicActionsItem(path: String = "/tmp/report.txt") -> GlassItem {
     let url = URL(fileURLWithPath: path)
     return GlassItem(
@@ -92,30 +140,44 @@ func removeGlassPersistsOnlyRemainingConfigurations() async throws {
     let removed = try basicActionsConfiguration(id: removedID, title: "Removed")
     let kept = try basicActionsConfiguration(title: "Kept")
     let store = BasicActionsConfigurationStore(loaded: [removed, kept])
-    let useCase = RemoveGlassUseCase(configurationStore: store)
+    let pendingCopyStore = BasicActionsPendingCopyStore()
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
 
     let didRemove = try await useCase.execute(glassID: removedID)
 
     #expect(didRemove)
     #expect(await store.saves() == [[kept]])
+    #expect(await pendingCopyStore.reads() == 1)
 }
 
 @Test
-func removeGlassMissingIDDoesNotWriteConfiguration() async throws {
+func removeGlassMissingIDDoesNotReadRecoveryOrWriteConfiguration() async throws {
     let existing = try basicActionsConfiguration(title: "Existing")
     let store = BasicActionsConfigurationStore(loaded: [existing])
-    let useCase = RemoveGlassUseCase(configurationStore: store)
+    let pendingCopyStore = BasicActionsPendingCopyStore(failLoad: true)
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
 
     let didRemove = try await useCase.execute(glassID: GlassID())
 
     #expect(!didRemove)
+    #expect(await pendingCopyStore.reads() == 0)
     #expect(await store.saves().isEmpty)
 }
 
 @Test
-func removeGlassMapsLoadFailureWithoutWriting() async throws {
+func removeGlassMapsConfigurationLoadFailureWithoutReadingRecovery() async throws {
     let store = BasicActionsConfigurationStore(loaded: [], failLoad: true)
-    let useCase = RemoveGlassUseCase(configurationStore: store)
+    let pendingCopyStore = BasicActionsPendingCopyStore()
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
 
     do {
         _ = try await useCase.execute(glassID: GlassID())
@@ -126,7 +188,78 @@ func removeGlassMapsLoadFailureWithoutWriting() async throws {
         Issue.record("Unexpected error type: \(error)")
     }
 
+    #expect(await pendingCopyStore.reads() == 0)
     #expect(await store.saves().isEmpty)
+}
+
+@Test
+func removeGlassFailsClosedWhenRecoveryMetadataCannotBeLoaded() async throws {
+    let removedID = GlassID()
+    let removed = try basicActionsConfiguration(id: removedID, title: "Removed")
+    let store = BasicActionsConfigurationStore(loaded: [removed])
+    let pendingCopyStore = BasicActionsPendingCopyStore(failLoad: true)
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    do {
+        _ = try await useCase.execute(glassID: removedID)
+        Issue.record("Expected pending-copy load failure")
+    } catch let error as RemoveGlassError {
+        #expect(error == .pendingCopyLoadFailed)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+
+    #expect(await pendingCopyStore.reads() == 1)
+    #expect(await store.saves().isEmpty)
+}
+
+@Test
+func removeGlassPreservesConfigurationWhileTargetHasPendingRecovery() async throws {
+    let removedID = GlassID()
+    let removed = try basicActionsConfiguration(id: removedID, title: "Removed")
+    let kept = try basicActionsConfiguration(title: "Kept")
+    let store = BasicActionsConfigurationStore(loaded: [removed, kept])
+    let pendingCopyStore = BasicActionsPendingCopyStore(
+        loaded: [basicActionsPendingCopy(glassID: removedID)]
+    )
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    do {
+        _ = try await useCase.execute(glassID: removedID)
+        Issue.record("Expected pending-copy recovery requirement")
+    } catch let error as RemoveGlassError {
+        #expect(error == .pendingCopyRecoveryRequired)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+
+    #expect(await store.saves().isEmpty)
+}
+
+@Test
+func removeGlassIgnoresPendingRecoveryForDifferentGlass() async throws {
+    let removedID = GlassID()
+    let removed = try basicActionsConfiguration(id: removedID, title: "Removed")
+    let kept = try basicActionsConfiguration(title: "Kept")
+    let store = BasicActionsConfigurationStore(loaded: [removed, kept])
+    let pendingCopyStore = BasicActionsPendingCopyStore(
+        loaded: [basicActionsPendingCopy(glassID: kept.id)]
+    )
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
+
+    let didRemove = try await useCase.execute(glassID: removedID)
+
+    #expect(didRemove)
+    #expect(await store.saves() == [[kept]])
 }
 
 @Test
@@ -138,7 +271,11 @@ func removeGlassSaveFailureNeverReportsSuccess() async throws {
         loaded: [removed, kept],
         failSave: true
     )
-    let useCase = RemoveGlassUseCase(configurationStore: store)
+    let pendingCopyStore = BasicActionsPendingCopyStore()
+    let useCase = RemoveGlassUseCase(
+        configurationStore: store,
+        pendingCopyStore: pendingCopyStore
+    )
 
     do {
         _ = try await useCase.execute(glassID: removedID)

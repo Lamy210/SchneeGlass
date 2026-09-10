@@ -66,7 +66,8 @@ final class SchneeGlassCompositionRoot {
         )
 
         let removeGlassUseCase = RemoveGlassUseCase(
-            configurationStore: configurationStore
+            configurationStore: configurationStore,
+            pendingCopyStore: pendingCopyStore
         )
 
         let updateGlassPlacementUseCase = UpdateGlassPlacementUseCase(
