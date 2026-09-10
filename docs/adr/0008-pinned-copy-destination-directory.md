@@ -87,8 +87,11 @@ path-based or volume-only identity implementation.
 `FoundationDropFileSystemInspector` exposes the same prerequisite as
 `StorageCapabilities.supportsSafeDestinationCommit`. Native Drop preview and authoritative planning
 both require that capability to be explicitly `true`; `false` and unknown (`nil`) are rejected before
-showing an executable copy plan. The descriptor-bound execution checks remain authoritative and are
-repeated at mutation time rather than trusting preview state.
+showing an executable copy plan. The planner reports this specifically as
+`DropRejection.destinationCopySafetyUnsupported`, rather than conflating it with a disconnected or
+missing destination. Presentation can therefore explain the filesystem limitation without suggesting
+that reconnecting the same folder will fix it. The descriptor-bound execution checks remain
+authoritative and are repeated at mutation time rather than trusting preview state.
 
 Network destinations remain unsupported independently of this decision.
 
@@ -119,7 +122,8 @@ Regression tests must cover:
 - existing final entry preservation,
 - descriptor-relative commit after destination pathname replacement,
 - source/destination lease cleanup on failure and success,
-- Drop preview/planning rejection when safe destination commit capability is false or unknown.
+- Drop preview/planning rejection when safe destination commit capability is false or unknown,
+- preservation of the distinct destination-copy-safety rejection through native preview/planning.
 
 ## Consequences
 
@@ -131,7 +135,8 @@ Advantages:
 - source, destination, staging, and recovery identity now all have explicit descriptor-backed
   boundaries,
 - drag feedback no longer advertises a copy that production execution already knows it cannot safely
-  commit.
+  commit,
+- unsupported filesystem safety is not misreported as a reconnectable destination outage.
 
 Costs:
 
