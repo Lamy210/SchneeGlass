@@ -90,15 +90,18 @@ public struct StorageCapabilities: Hashable, Sendable {
     public let locationKind: StorageLocationKind
     public let isWritable: Bool
     public let supportsCaseSensitiveNames: Bool?
+    public let supportsSafeDestinationCommit: Bool?
 
     public init(
         locationKind: StorageLocationKind,
         isWritable: Bool,
-        supportsCaseSensitiveNames: Bool? = nil
+        supportsCaseSensitiveNames: Bool? = nil,
+        supportsSafeDestinationCommit: Bool? = nil
     ) {
         self.locationKind = locationKind
         self.isWritable = isWritable
         self.supportsCaseSensitiveNames = supportsCaseSensitiveNames
+        self.supportsSafeDestinationCommit = supportsSafeDestinationCommit
     }
 }
 
