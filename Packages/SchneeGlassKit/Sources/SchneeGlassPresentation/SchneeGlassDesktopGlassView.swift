@@ -17,7 +17,8 @@ public struct SchneeGlassDesktopGlassView: View {
             if let entry = model.glasses.first(where: { $0.id == glassID }) {
                 DesktopGlassSurface(
                     entry: entry,
-                    canRemove: !model.isMutatingConfiguration && !Self.isCopying(entry),
+                    canRemove: !model.isMutatingConfiguration
+                        && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
                     onOpen: model.open,
                     onReveal: model.revealInFinder,
                     onRemove: {
@@ -49,13 +50,6 @@ public struct SchneeGlassDesktopGlassView: View {
                 Color.clear
             }
         }
-    }
-
-    private static func isCopying(_ entry: GlassWorkspaceEntry) -> Bool {
-        if case .copying = entry.interactionState {
-            return true
-        }
-        return false
     }
 }
 
