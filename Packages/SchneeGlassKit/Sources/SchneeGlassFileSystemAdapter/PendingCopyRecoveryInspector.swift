@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SchneeGlassApplication
 
@@ -122,34 +123,112 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
     }
 
     private func observeRegularFile(_ url: URL) -> FileObservation {
+        let candidate = url.standardizedFileURL
+        switch Self.pathEntryType(at: candidate) {
+        case .missing:
+            return .absent
+        case .regular:
+            break
+        case .other:
+            return .unexpectedType
+        case .unavailable:
+            return .unavailable
+        }
+
+        let openResult = candidate.withUnsafeFileSystemRepresentation { path -> (Int32, Int32) in
+            guard let path else {
+                return (-1, EINVAL)
+            }
+            let descriptor = open(
+                path,
+                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK
+            )
+            return (descriptor, descriptor >= 0 ? 0 : errno)
+        }
+        guard openResult.0 >= 0 else {
+            if openResult.1 == ENOENT {
+                return .absent
+            }
+            if openResult.1 == ELOOP {
+                return .unexpectedType
+            }
+            return Self.observationAfterEntryChanged(at: candidate)
+        }
+
+        let descriptor = openResult.0
+        defer { close(descriptor) }
+
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0 else {
+            return .unavailable
+        }
+        guard (metadata.st_mode & S_IFMT) == S_IFREG else {
+            return .unexpectedType
+        }
+        guard PendingCopyFileIdentity.descriptorMatchesPath(
+            descriptor,
+            pathURL: candidate
+        ) else {
+            return Self.observationAfterEntryChanged(at: candidate)
+        }
+
+        let values: URLResourceValues
         do {
-            let attributes = try fileManager.attributesOfItem(atPath: url.path)
-            let values = try url.resourceValues(forKeys: [
+            values = try candidate.resourceValues(forKeys: [
                 .isAliasFileKey,
                 .isPackageKey,
             ])
-
-            guard attributes[.type] as? FileAttributeType == .typeRegular,
-                  values.isAliasFile != true,
-                  values.isPackage != true
-            else {
-                return .unexpectedType
-            }
-
-            let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            let resourceIdentifier = try PendingCopyFileIdentity.token(
-                at: url,
-                fileManager: fileManager
-            )
-            return .regular(size: size, resourceIdentifier: resourceIdentifier)
         } catch {
-            let cocoa = error as NSError
-            if cocoa.domain == NSCocoaErrorDomain,
-               cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
-                || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
-            {
-                return .absent
+            return Self.observationAfterEntryChanged(at: candidate)
+        }
+
+        guard PendingCopyFileIdentity.descriptorMatchesPath(
+            descriptor,
+            pathURL: candidate
+        ) else {
+            return Self.observationAfterEntryChanged(at: candidate)
+        }
+        guard values.isAliasFile != true,
+              values.isPackage != true
+        else {
+            return .unexpectedType
+        }
+
+        return .regular(
+            size: Int64(metadata.st_size),
+            resourceIdentifier: PendingCopyFileIdentity.token(onFileDescriptor: descriptor)
+        )
+    }
+
+    private enum PathEntryType {
+        case missing
+        case regular
+        case other
+        case unavailable
+    }
+
+    private static func pathEntryType(at url: URL) -> PathEntryType {
+        var metadata = stat()
+        let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else {
+                return Int32(-1)
             }
+            return lstat(path, &metadata)
+        }
+
+        guard result == 0 else {
+            return errno == ENOENT ? .missing : .unavailable
+        }
+        return (metadata.st_mode & S_IFMT) == S_IFREG ? .regular : .other
+    }
+
+    private static func observationAfterEntryChanged(at url: URL) -> FileObservation {
+        switch pathEntryType(at: url) {
+        case .missing:
+            return .absent
+        case .other:
+            return .unexpectedType
+        case .regular, .unavailable:
             return .unavailable
         }
     }
