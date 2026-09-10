@@ -7,20 +7,23 @@ private enum PlacementStoreTestError: Error, Sendable {
     case injected
 }
 
-private actor PlacementConfigurationStore: ConfigurationPersisting {
+private actor PlacementConfigurationStore: ConditionalConfigurationPersisting {
     private let loaded: [GlassConfiguration]
     private let failLoad: Bool
     private let failSave: Bool
+    private let rejectConditionalSave: Bool
     private var saved: [[GlassConfiguration]] = []
 
     init(
         loaded: [GlassConfiguration],
         failLoad: Bool = false,
-        failSave: Bool = false
+        failSave: Bool = false,
+        rejectConditionalSave: Bool = false
     ) {
         self.loaded = loaded
         self.failLoad = failLoad
         self.failSave = failSave
+        self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
@@ -31,6 +34,18 @@ private actor PlacementConfigurationStore: ConfigurationPersisting {
     func save(_ configurations: [GlassConfiguration]) async throws {
         if failSave { throw PlacementStoreTestError.injected }
         saved.append(configurations)
+    }
+
+    func save(
+        _ configurations: [GlassConfiguration],
+        ifCurrentMatches expectedCurrent: [GlassConfiguration]
+    ) async throws -> Bool {
+        if failSave { throw PlacementStoreTestError.injected }
+        guard !rejectConditionalSave, expectedCurrent == loaded else {
+            return false
+        }
+        saved.append(configurations)
+        return true
     }
 
     func savedValues() -> [[GlassConfiguration]] { saved }
@@ -103,6 +118,30 @@ func unchangedPlacementDoesNotWriteAnotherConfigurationVersion() async throws {
     )
 
     #expect(updated)
+    #expect(await store.savedValues().isEmpty)
+}
+
+@Test
+func placementRejectsStaleConfigurationWithoutWriting() async throws {
+    let existing = try placementConfiguration()
+    let store = PlacementConfigurationStore(
+        loaded: [existing],
+        rejectConditionalSave: true
+    )
+    let useCase = UpdateGlassPlacementUseCase(configurationStore: store)
+
+    do {
+        _ = try await useCase.execute(
+            glassID: existing.id,
+            placement: try GlassPlacement(x: 700, y: 720)
+        )
+        Issue.record("Expected stale configuration rejection")
+    } catch let error as UpdateGlassPlacementError {
+        #expect(error == .configurationChanged)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+
     #expect(await store.savedValues().isEmpty)
 }
 
