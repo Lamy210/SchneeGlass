@@ -121,7 +121,7 @@ public final class CreateGlassUseCase {
                     existingConfigurations + [persistedConfiguration],
                     ifCurrentMatches: existingConfigurations
                 ) else {
-                    throw CreateGlassError.configurationChanged
+                    throw CreateGlassError.configurationSaveFailed
                 }
             } catch let error as CreateGlassError {
                 throw error
