@@ -6,7 +6,8 @@ public enum RecoveryMutationAdmission: Hashable, Sendable {
     case recoveryInProgress
 }
 
-/// Coordinates file-copy execution with explicit Recovery mutations.
+/// Coordinates file-copy execution with explicit Recovery mutations, including configuration backup
+/// restore and Pending Copy Recovery changes.
 ///
 /// Copies may run concurrently with other copies according to their existing per-Glass runtime
 /// rules, but no new copy is admitted while a Recovery mutation holds the lease. Recovery mutation
