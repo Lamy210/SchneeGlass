@@ -13,10 +13,12 @@ func newerWorkspaceSessionTaskSupersedesOlderGeneration() {
     #expect(!tracker.isCurrent(oldToken, for: glassID))
     #expect(tracker.isCurrent(newToken, for: glassID))
 
-    #expect(!tracker.finish(oldToken, for: glassID))
+    let oldDidFinish = tracker.finish(oldToken, for: glassID)
+    #expect(!oldDidFinish)
     #expect(tracker.isCurrent(newToken, for: glassID))
 
-    #expect(tracker.finish(newToken, for: glassID))
+    let newDidFinish = tracker.finish(newToken, for: glassID)
+    #expect(newDidFinish)
     #expect(!tracker.isCurrent(newToken, for: glassID))
 }
 
@@ -29,7 +31,8 @@ func invalidatedWorkspaceSessionTaskCannotFinishLate() {
     tracker.invalidate(glassID)
 
     #expect(!tracker.isCurrent(token, for: glassID))
-    #expect(!tracker.finish(token, for: glassID))
+    let didFinish = tracker.finish(token, for: glassID)
+    #expect(!didFinish)
 }
 
 @Test
@@ -44,6 +47,8 @@ func invalidatingAllWorkspaceSessionTasksMakesEveryGenerationStale() {
 
     #expect(!tracker.isCurrent(firstToken, for: firstGlassID))
     #expect(!tracker.isCurrent(secondToken, for: secondGlassID))
-    #expect(!tracker.finish(firstToken, for: firstGlassID))
-    #expect(!tracker.finish(secondToken, for: secondGlassID))
+    let firstDidFinish = tracker.finish(firstToken, for: firstGlassID)
+    let secondDidFinish = tracker.finish(secondToken, for: secondGlassID)
+    #expect(!firstDidFinish)
+    #expect(!secondDidFinish)
 }
