@@ -333,6 +333,8 @@ private struct DesktopGlassSurface: View {
             return "Symbolic links aren't supported"
         case .unsupportedItem:
             return "This item can't be copied by SchneeGlass"
+        case .tooManyItems:
+            return "Too many files to copy at once"
         case .collision:
             return "A file with this name already exists"
         case .containsSameDirectoryItem:
@@ -354,6 +356,8 @@ private struct DesktopGlassSurface: View {
 
     private func rejectionDetail(_ reason: DropRejection) -> String? {
         switch reason {
+        case let .tooManyItems(maximum):
+            return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
         case .collision:
             return "Nothing will be overwritten."
         case .cloudPlaceholderUnavailable:
