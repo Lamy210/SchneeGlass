@@ -22,8 +22,7 @@ public actor GlassRuntimeSession {
     private let eventStreaming: any FileEventStreaming
     private let snapshotReader: any FolderSnapshotReading
     private let accessController: any FolderAccessControlling
-    private let dropPlanning: any DropPlanning
-    private let copyAbandoner: any AuthorizedCopyBatchAbandoning
+    private let dropPlanning: any DropPlanning & AuthorizedCopyBatchAbandoning
     private let fileCopying: any FileCopying
     private let initialSnapshot: FolderSnapshot
 
@@ -40,8 +39,7 @@ public actor GlassRuntimeSession {
         eventStreaming: any FileEventStreaming,
         snapshotReader: any FolderSnapshotReading,
         accessController: any FolderAccessControlling,
-        dropPlanning: any DropPlanning,
-        copyAbandoner: any AuthorizedCopyBatchAbandoning,
+        dropPlanning: any DropPlanning & AuthorizedCopyBatchAbandoning,
         fileCopying: any FileCopying
     ) {
         self.configuration = seed.configuration
@@ -51,7 +49,6 @@ public actor GlassRuntimeSession {
         self.snapshotReader = snapshotReader
         self.accessController = accessController
         self.dropPlanning = dropPlanning
-        self.copyAbandoner = copyAbandoner
         self.fileCopying = fileCopying
         self.initialSnapshot = seed.snapshot
         self.generation = seed.snapshot.generation
@@ -120,7 +117,7 @@ public actor GlassRuntimeSession {
         // return the stale authority to Presentation; release only the plan produced by this call.
         guard lifecycle == .running else {
             if case let .copy(copyPlan) = plan {
-                await copyAbandoner.abandon(
+                await dropPlanning.abandon(
                     AuthorizedCopyBatchRequest(
                         plan: copyPlan,
                         destinationAccess: access
