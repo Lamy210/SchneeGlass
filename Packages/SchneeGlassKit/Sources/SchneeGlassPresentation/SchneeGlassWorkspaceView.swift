@@ -9,7 +9,7 @@ public struct SchneeGlassWorkspaceView: View {
         self._model = Bindable(wrappedValue: model)
     }
 
-    public var body: some Scene {
+    public var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
