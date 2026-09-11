@@ -30,6 +30,17 @@ public actor ConfigurationRecoveryUseCase {
         self.activityGate = activityGate
     }
 
+    /// Test-only/module-internal construction keeps focused recovery-policy tests independent while
+    /// production composition must inject the shared activity gate explicitly.
+    init(
+        recoveryStore: any ConfigurationRecoveryProviding & ConfigurationPersisting,
+        pendingCopyStore: any PendingCopyRecording
+    ) {
+        self.recoveryStore = recoveryStore
+        self.pendingCopyStore = pendingCopyStore
+        self.activityGate = FileOperationActivityGate()
+    }
+
     public func availableBackups() async throws -> [ConfigurationBackupDescriptor] {
         try await recoveryStore.availableBackups()
     }
