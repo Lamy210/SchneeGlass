@@ -350,6 +350,8 @@ private struct DesktopGlassSurface: View {
             return "Network destinations aren't supported yet"
         case .sourceUnavailable:
             return "A source file is unavailable"
+        case .sourceCapacityReached:
+            return "Copy capacity is busy"
         case .cloudPlaceholderUnavailable:
             return "Download the cloud file first"
         }
@@ -359,6 +361,8 @@ private struct DesktopGlassSurface: View {
         switch reason {
         case let .tooManyItems(maximum):
             return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
+        case let .sourceCapacityReached(maximum):
+            return "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
         case .collision:
             return "Nothing will be overwritten."
         case .cloudPlaceholderUnavailable:
