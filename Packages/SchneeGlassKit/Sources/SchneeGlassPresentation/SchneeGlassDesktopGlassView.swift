@@ -144,10 +144,10 @@ private struct DesktopGlassSurface: View {
             Image(systemName: "exclamationmark.circle")
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Unavailable")
-        case .failed:
+        case let .failed(error):
             Image(systemName: "arrow.clockwise.circle")
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Refresh failed")
+                .accessibilityLabel(GlassContentFailurePresentation.make(for: error).status)
         }
     }
 
@@ -204,15 +204,16 @@ private struct DesktopGlassSurface: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        case .failed:
+        case let .failed(error):
+            let presentation = GlassContentFailurePresentation.make(for: error)
             VStack(spacing: 8) {
                 Spacer()
                 Image(systemName: "arrow.clockwise.circle")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text("Couldn't refresh this folder")
+                Text(presentation.title)
                     .font(.callout.weight(.medium))
-                Text("SchneeGlass will retry when the folder changes.")
+                Text(presentation.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
