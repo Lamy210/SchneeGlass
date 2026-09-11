@@ -42,6 +42,7 @@ public struct CreatedGlassRuntimeSeed: Sendable {
 
 public enum CreateGlassError: Error, Hashable, Sendable {
     case sourceCreationFailed
+    case sourceIdentityUnavailable
     case placementUnavailable
     case invalidConfiguration
     case configurationLoadFailed
