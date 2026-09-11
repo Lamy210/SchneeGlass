@@ -23,11 +23,18 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
             throw FolderSourceCreationError.bookmarkCreationFailed
         }
 
-        let fingerprint: ResourceFingerprint?
+        let fingerprint: ResourceFingerprint
         do {
-            fingerprint = try await resourceAccessor.fingerprint(for: url)
+            guard let observedFingerprint = try await resourceAccessor.fingerprint(for: url),
+                  observedFingerprint.resourceIdentifier != nil
+            else {
+                throw FolderSourceCreationError.resourceIdentityUnavailable
+            }
+            fingerprint = observedFingerprint
+        } catch let error as FolderSourceCreationError {
+            throw error
         } catch {
-            fingerprint = nil
+            throw FolderSourceCreationError.resourceIdentityUnavailable
         }
 
         return FolderSource(
