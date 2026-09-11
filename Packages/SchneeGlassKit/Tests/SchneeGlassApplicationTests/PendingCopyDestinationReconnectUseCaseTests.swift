@@ -100,7 +100,8 @@ private actor ReconnectAccessController: FolderAccessControlling {
         return FolderAccessAcquisition(
             handle: FolderAccessHandle(
                 glassID: glassID,
-                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true)
+                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true),
+                fingerprint: source.fingerprint
             )
         )
     }
