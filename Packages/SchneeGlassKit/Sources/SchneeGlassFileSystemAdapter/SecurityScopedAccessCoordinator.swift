@@ -101,6 +101,17 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             actualFingerprint = nil
         }
 
+        // A saved identity is useful only if every identifier it recorded can still be observed.
+        // Treat missing comparison data as an access-establishment failure rather than silently
+        // accepting a folder whose physical identity can no longer be proven.
+        if Self.identityVerificationIsUnavailable(
+            expected: source.fingerprint,
+            actual: actualFingerprint
+        ) {
+            await resourceAccessor.stopAccessing(resolved.url)
+            throw FolderAccessError.bookmarkResolutionFailed
+        }
+
         if Self.representsReplacement(expected: source.fingerprint, actual: actualFingerprint) {
             await resourceAccessor.stopAccessing(resolved.url)
             throw FolderAccessError.resourceReplacementDetected
@@ -151,6 +162,32 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         for access in active {
             await resourceAccessor.stopAccessing(access.url)
         }
+    }
+
+    private static func identityVerificationIsUnavailable(
+        expected: ResourceFingerprint?,
+        actual: ResourceFingerprint?
+    ) -> Bool {
+        guard let expected else {
+            return false
+        }
+
+        let expectsVolume = expected.volumeIdentifier != nil
+        let expectsResource = expected.resourceIdentifier != nil
+        guard expectsVolume || expectsResource else {
+            return false
+        }
+        guard let actual else {
+            return true
+        }
+
+        if expectsVolume, actual.volumeIdentifier == nil {
+            return true
+        }
+        if expectsResource, actual.resourceIdentifier == nil {
+            return true
+        }
+        return false
     }
 
     private static func representsReplacement(
