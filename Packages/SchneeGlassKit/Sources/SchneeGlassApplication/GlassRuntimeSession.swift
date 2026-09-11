@@ -165,18 +165,22 @@ public actor GlassRuntimeSession {
             lifecycle = .stopping
         }
 
-        eventTask?.cancel()
-        eventTask = nil
+        // A filesystem refresh runs inside the event task. Cancellation is only a request: the
+        // concrete snapshot reader may still be unwinding filesystem work. Keep the security-scoped
+        // destination access alive until that task has actually returned.
+        let task = eventTask
+        task?.cancel()
         stateContinuation?.finish()
         stateContinuation = nil
 
         await stopSubscriptionIfNeeded()
 
-        if let activeCopyTask {
-            _ = await activeCopyTask.value
-            self.activeCopyTask = nil
+        if let task {
+            await task.value
+            eventTask = nil
         }
 
+        await waitForActiveCopyIfNeeded()
         await releaseAccessIfNeeded()
         lifecycle = .stopped
     }
@@ -190,7 +194,7 @@ public actor GlassRuntimeSession {
             switch event {
             case .rootChanged:
                 stateContinuation?.yield(.unavailable(.sourceMissing))
-                await stop()
+                await stopFromEventLoop()
                 return
 
             case .changed, .requiresFullRescan:
@@ -200,8 +204,14 @@ public actor GlassRuntimeSession {
                         for: access,
                         generation: generation
                     )
+                    guard !Task.isCancelled, lifecycle == .running else {
+                        return
+                    }
                     stateContinuation?.yield(Self.contentState(for: snapshot))
                 } catch {
+                    guard !Task.isCancelled, lifecycle == .running else {
+                        return
+                    }
                     stateContinuation?.yield(.failed(.enumerationFailed))
                 }
             }
@@ -209,7 +219,33 @@ public actor GlassRuntimeSession {
 
         if !Task.isCancelled, lifecycle == .running {
             stateContinuation?.yield(.failed(.unexpected))
-            await stop()
+            await stopFromEventLoop()
+        }
+    }
+
+    /// Event-driven termination already runs inside `eventTask`, so it must not await that same task.
+    /// There is no snapshot suspension active when this method is entered: changed/rescan handling
+    /// returns from its snapshot await before the event loop can process another termination event.
+    private func stopFromEventLoop() async {
+        guard lifecycle == .running else {
+            return
+        }
+        lifecycle = .stopping
+
+        stateContinuation?.finish()
+        stateContinuation = nil
+        await stopSubscriptionIfNeeded()
+        await waitForActiveCopyIfNeeded()
+        await releaseAccessIfNeeded()
+
+        eventTask = nil
+        lifecycle = .stopped
+    }
+
+    private func waitForActiveCopyIfNeeded() async {
+        if let activeCopyTask {
+            _ = await activeCopyTask.value
+            self.activeCopyTask = nil
         }
     }
 
