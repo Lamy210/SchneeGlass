@@ -32,6 +32,7 @@ public actor GlassRuntimeSession {
     private var eventTask: Task<Void, Never>?
     private var activeCopyTask: Task<CopyBatchResult, Never>?
     private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
+    private var stopWaiters: [CheckedContinuation<Void, Never>] = []
     private var accessReleased = false
     private var subscriptionStopped = false
 
@@ -95,8 +96,6 @@ public actor GlassRuntimeSession {
             destinationAccess: access
         )
 
-        // The actor can re-enter while the async planner is suspended. A stopped session must not
-        // publish a stale positive hover result after its security-scoped access has been released.
         guard lifecycle == .running else {
             return .reject(.destinationUnavailable)
         }
@@ -113,9 +112,6 @@ public actor GlassRuntimeSession {
             destinationAccess: access
         )
 
-        // Authoritative planning may pin source descriptors. `stop()` can re-enter this actor while
-        // planning is suspended and release the destination security scope. If that happened, never
-        // return the stale authority to Presentation; release only the plan produced by this call.
         guard lifecycle == .running else {
             if case let .copy(copyPlan) = plan {
                 await dropPlanning.abandon(
@@ -150,10 +146,6 @@ public actor GlassRuntimeSession {
             throw GlassCopyExecutionError.destinationMismatch
         }
 
-        // A plan returned by `planDrop` remains this session's resource authority until execution is
-        // admitted. Remove only an exact tracked plan here: from this point the FileCopying pipeline
-        // owns cleanup. Direct/untracked plans retain the legacy execution contract used by tests and
-        // non-pinning planners.
         transferPendingPlanIfOwned(plan)
 
         let request = AuthorizedCopyBatchRequest(
@@ -173,15 +165,20 @@ public actor GlassRuntimeSession {
 
     public func stop() async {
         switch lifecycle {
-        case .stopped, .stopping:
+        case .stopped:
+            return
+        case .stopping:
+            // Every caller of this async API gets the same completion guarantee. A second stop must
+            // join the in-progress shutdown instead of returning while security-scoped access or
+            // copy/planning authority is still being released by the first caller.
+            await withCheckedContinuation { continuation in
+                stopWaiters.append(continuation)
+            }
             return
         case .idle, .running:
             lifecycle = .stopping
         }
 
-        // A filesystem refresh runs inside the event task. Cancellation is only a request: the
-        // concrete snapshot reader may still be unwinding filesystem work. Keep the security-scoped
-        // destination access alive until that task has actually returned.
         let task = eventTask
         task?.cancel()
         stateContinuation?.finish()
@@ -197,7 +194,7 @@ public actor GlassRuntimeSession {
         await abandonAllPendingPlans()
         await waitForActiveCopyIfNeeded()
         await releaseAccessIfNeeded()
-        lifecycle = .stopped
+        finishStop()
     }
 
     private func consumeEvents() async {
@@ -238,9 +235,6 @@ public actor GlassRuntimeSession {
         }
     }
 
-    /// Event-driven termination already runs inside `eventTask`, so it must not await that same task.
-    /// There is no snapshot suspension active when this method is entered: changed/rescan handling
-    /// returns from its snapshot await before the event loop can process another termination event.
     private func stopFromEventLoop() async {
         guard lifecycle == .running else {
             return
@@ -255,7 +249,16 @@ public actor GlassRuntimeSession {
         await releaseAccessIfNeeded()
 
         eventTask = nil
+        finishStop()
+    }
+
+    private func finishStop() {
         lifecycle = .stopped
+        let waiters = stopWaiters
+        stopWaiters.removeAll(keepingCapacity: false)
+        for waiter in waiters {
+            waiter.resume()
+        }
     }
 
     private func transferPendingPlanIfOwned(_ plan: CopyBatchPlan) {
