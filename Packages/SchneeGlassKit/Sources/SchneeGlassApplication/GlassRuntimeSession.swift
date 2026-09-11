@@ -31,6 +31,7 @@ public actor GlassRuntimeSession {
     private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
     private var eventTask: Task<Void, Never>?
     private var activeCopyTask: Task<CopyBatchResult, Never>?
+    private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
     private var accessReleased = false
     private var subscriptionStopped = false
 
@@ -126,21 +127,34 @@ public actor GlassRuntimeSession {
             }
             return .reject(.destinationUnavailable)
         }
+
+        if case let .copy(copyPlan) = plan {
+            pendingAuthoritativePlans[copyPlan.batchID] = copyPlan
+        }
         return plan
     }
 
     public func executeCopy(_ plan: CopyBatchPlan) async throws -> CopyBatchResult {
         guard lifecycle == .running else {
+            await abandonPendingPlanIfOwned(plan)
             throw GlassCopyExecutionError.sessionNotRunning
         }
         guard activeCopyTask == nil else {
+            await abandonPendingPlanIfOwned(plan)
             throw GlassCopyExecutionError.copyInProgress
         }
         guard plan.destination.glassID == access.glassID,
               plan.destination.url.standardizedFileURL == access.url.standardizedFileURL
         else {
+            await abandonPendingPlanIfOwned(plan)
             throw GlassCopyExecutionError.destinationMismatch
         }
+
+        // A plan returned by `planDrop` remains this session's resource authority until execution is
+        // admitted. Remove only an exact tracked plan here: from this point the FileCopying pipeline
+        // owns cleanup. Direct/untracked plans retain the legacy execution contract used by tests and
+        // non-pinning planners.
+        transferPendingPlanIfOwned(plan)
 
         let request = AuthorizedCopyBatchRequest(
             plan: plan,
@@ -180,6 +194,7 @@ public actor GlassRuntimeSession {
             eventTask = nil
         }
 
+        await abandonAllPendingPlans()
         await waitForActiveCopyIfNeeded()
         await releaseAccessIfNeeded()
         lifecycle = .stopped
@@ -235,11 +250,49 @@ public actor GlassRuntimeSession {
         stateContinuation?.finish()
         stateContinuation = nil
         await stopSubscriptionIfNeeded()
+        await abandonAllPendingPlans()
         await waitForActiveCopyIfNeeded()
         await releaseAccessIfNeeded()
 
         eventTask = nil
         lifecycle = .stopped
+    }
+
+    private func transferPendingPlanIfOwned(_ plan: CopyBatchPlan) {
+        guard pendingAuthoritativePlans[plan.batchID] == plan else {
+            return
+        }
+        pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
+    }
+
+    private func abandonPendingPlanIfOwned(_ plan: CopyBatchPlan) async {
+        guard pendingAuthoritativePlans[plan.batchID] == plan else {
+            return
+        }
+        pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
+        await dropPlanning.abandon(
+            AuthorizedCopyBatchRequest(
+                plan: plan,
+                destinationAccess: access
+            )
+        )
+    }
+
+    private func abandonAllPendingPlans() async {
+        guard !pendingAuthoritativePlans.isEmpty else {
+            return
+        }
+
+        let plans = Array(pendingAuthoritativePlans.values)
+        pendingAuthoritativePlans.removeAll(keepingCapacity: false)
+        for plan in plans {
+            await dropPlanning.abandon(
+                AuthorizedCopyBatchRequest(
+                    plan: plan,
+                    destinationAccess: access
+                )
+            )
+        }
     }
 
     private func waitForActiveCopyIfNeeded() async {
