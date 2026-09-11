@@ -251,7 +251,7 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         destinationAccess: FolderAccessHandle
     ) async -> DropPlan {
         guard sourceURLs.count <= Self.maximumSourceItemsPerPlan else {
-            return .reject(.tooManyItems)
+            return .reject(.tooManyItems(maximum: Self.maximumSourceItemsPerPlan))
         }
 
         return await makePlan(
@@ -267,7 +267,7 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         destinationAccess: FolderAccessHandle
     ) async -> DropPlan {
         guard sourceURLs.count <= Self.maximumSourceItemsPerPlan else {
-            return .reject(.tooManyItems)
+            return .reject(.tooManyItems(maximum: Self.maximumSourceItemsPerPlan))
         }
 
         return await makePlan(
