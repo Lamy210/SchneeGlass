@@ -38,6 +38,13 @@ public final class CreateGlassUseCase {
         let source: FolderSource
         do {
             source = try await sourceCreator.createSource(for: selectedURL)
+        } catch let error as FolderSourceCreationError {
+            switch error {
+            case .bookmarkCreationFailed:
+                throw CreateGlassError.sourceCreationFailed
+            case .resourceIdentityUnavailable:
+                throw CreateGlassError.sourceIdentityUnavailable
+            }
         } catch {
             throw CreateGlassError.sourceCreationFailed
         }
