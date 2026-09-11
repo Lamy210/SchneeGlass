@@ -8,7 +8,7 @@ import SchneeGlassApplication
 /// The preview result is advisory only: capacity can still change before authoritative planning,
 /// where `NativeDropPlanningAdapter.plan` remains the final admission point and performs the actual
 /// source pinning. This facade never acquires source descriptors during hover.
-public actor PinnedDropPlanningFacade: DropPlanning, AuthorizedCopyBatchAbandoning {
+public actor PinnedDropPlanningFacade: DropPlanning {
     private let delegate: any DropPlanning
     private let sourceLeases: SourceFileLeaseRegistry
     private let maximumActiveLeases: Int
