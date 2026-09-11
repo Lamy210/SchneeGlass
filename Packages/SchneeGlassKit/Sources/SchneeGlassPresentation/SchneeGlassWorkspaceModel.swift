@@ -633,6 +633,8 @@ public final class SchneeGlassWorkspaceModel {
         switch createError {
         case .sourceCreationFailed:
             return "SchneeGlass couldn't remember access to this folder."
+        case .sourceIdentityUnavailable:
+            return "SchneeGlass couldn't safely verify this folder's identity. Nothing was added."
         case .placementUnavailable:
             return "SchneeGlass couldn't find a usable screen position."
         case .invalidConfiguration:
