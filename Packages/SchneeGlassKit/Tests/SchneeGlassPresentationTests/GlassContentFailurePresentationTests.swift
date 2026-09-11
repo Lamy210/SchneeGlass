@@ -19,5 +19,6 @@ func unexpectedContentFailureDoesNotPromiseAutomaticRetry() {
     #expect(presentation.status == "Needs reconnect")
     #expect(presentation.title == "This Glass needs to reconnect")
     #expect(presentation.detail.contains("Restart SchneeGlass"))
+    #expect(presentation.detail.contains("Recovery"))
     #expect(!presentation.detail.contains("folder changes"))
 }
