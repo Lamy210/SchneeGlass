@@ -4,8 +4,9 @@ import Foundation
 import SchneeGlassDomain
 import Testing
 
-private actor ActivityGateCopyDelegate: FileCopying {
+private actor ActivityGateCopyDelegate: FileCopying, AuthorizedCopyBatchAbandoning {
     private var callCount = 0
+    private var abandonedOperationIDs: [[UUID]] = []
 
     func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
         callCount += 1
@@ -24,7 +25,12 @@ private actor ActivityGateCopyDelegate: FileCopying {
         )
     }
 
+    func abandon(_ request: AuthorizedCopyBatchRequest) async {
+        abandonedOperationIDs.append(request.plan.items.map(\.operationID))
+    }
+
     func calls() -> Int { callCount }
+    func abandoned() -> [[UUID]] { abandonedOperationIDs }
 }
 
 private func activityGateRequest() throws -> AuthorizedCopyBatchRequest {
@@ -66,16 +72,21 @@ func fileOperationGateRejectsRecoveryWhileCopyIsActive() async {
 }
 
 @Test
-func activityTrackedCopyIsRejectedBeforeDelegateDuringRecoveryMutation() async throws {
+func activityTrackedCopyReleasesAuthorityBeforeRejectingDuringRecoveryMutation() async throws {
     let gate = FileOperationActivityGate()
     let delegate = ActivityGateCopyDelegate()
-    let tracked = ActivityTrackedFileCopying(delegate: delegate, activityGate: gate)
+    let tracked = ActivityTrackedFileCopying(
+        delegate: delegate,
+        abandoner: delegate,
+        activityGate: gate
+    )
     let request = try activityGateRequest()
 
     #expect(await gate.beginRecoveryMutation() == .granted)
     let blocked = await tracked.copy(request)
 
     #expect(await delegate.calls() == 0)
+    #expect(await delegate.abandoned() == [request.plan.items.map(\.operationID)])
     #expect(blocked.succeeded.isEmpty)
     #expect(blocked.failed?.reason == .cancelled)
     #expect(blocked.failed?.operationID == request.plan.items[0].operationID)
@@ -84,6 +95,7 @@ func activityTrackedCopyIsRejectedBeforeDelegateDuringRecoveryMutation() async t
 
     let allowed = await tracked.copy(request)
     #expect(await delegate.calls() == 1)
+    #expect(await delegate.abandoned() == [request.plan.items.map(\.operationID)])
     #expect(allowed.failed == nil)
     #expect(allowed.succeeded.count == 1)
     #expect(!(await gate.hasActiveCopies()))

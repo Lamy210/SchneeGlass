@@ -186,6 +186,13 @@ public protocol FileCopying: Sendable {
     func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult
 }
 
+/// Releases any planning-time authority held for an authorized copy request that will not execute.
+/// Implementations must be idempotent because the same operation may already have been superseded or
+/// consumed by another safety path before abandonment is observed.
+public protocol AuthorizedCopyBatchAbandoning: Sendable {
+    func abandon(_ request: AuthorizedCopyBatchRequest) async
+}
+
 public protocol ConfigurationPersisting: Sendable {
     func load() async throws -> [GlassConfiguration]
     func save(_ configurations: [GlassConfiguration]) async throws

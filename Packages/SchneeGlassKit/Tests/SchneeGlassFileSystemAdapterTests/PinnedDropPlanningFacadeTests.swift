@@ -99,3 +99,59 @@ func pinnedDropPreviewReflectsSharedCapacityWithoutAcquiringAnotherLease() async
     #expect(recoveredResult == .copy(copyPlan))
     #expect(await leases.activeLeaseCount() == 0)
 }
+
+@Test
+func abandoningAuthorizedPinnedPlanReleasesBoundSourceImmediately() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-abandon-authority-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("payload.txt", isDirectory: false)
+    try Data("payload".utf8).write(to: source)
+
+    let destinationURL = root.appendingPathComponent("destination", isDirectory: true)
+    try FileManager.default.createDirectory(at: destinationURL, withIntermediateDirectories: true)
+
+    let leases = SourceFileLeaseRegistry()
+    let prepared = try await leases.prepareSource(at: source)
+    let operationID = UUID()
+    try await leases.bind(token: prepared.token, operationID: operationID)
+    #expect(await leases.activeLeaseCount() == 1)
+
+    let glassID = GlassID()
+    let destination = DestinationDescriptor(
+        glassID: glassID,
+        folderIdentity: FolderIdentity(resourceIdentifier: "destination", standardizedURL: destinationURL),
+        url: destinationURL,
+        capabilities: StorageCapabilities(
+            locationKind: .localFixed,
+            isWritable: true,
+            supportsCaseSensitiveNames: true,
+            supportsSafeDestinationCommit: true
+        )
+    )
+    let item = CopyItemPlan(
+        operationID: operationID,
+        sourceURL: source,
+        originalFilename: source.lastPathComponent,
+        destinationFilename: source.lastPathComponent,
+        expectedSize: prepared.size
+    )
+    let plan = try CopyBatchPlan(destination: destination, items: [item])
+    let facade = PinnedDropPlanningFacade(
+        delegate: FixedPreviewDropPlanning(result: .copy(plan)),
+        sourceLeases: leases
+    )
+    let request = AuthorizedCopyBatchRequest(
+        plan: plan,
+        destinationAccess: FolderAccessHandle(glassID: glassID, url: destinationURL)
+    )
+
+    await facade.abandon(request)
+    #expect(await leases.activeLeaseCount() == 0)
+
+    // Cleanup is idempotent if the authority was already released or superseded.
+    await facade.abandon(request)
+    #expect(await leases.activeLeaseCount() == 0)
+}
