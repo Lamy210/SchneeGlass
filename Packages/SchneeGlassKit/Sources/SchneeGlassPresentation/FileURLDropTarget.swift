@@ -47,7 +47,7 @@ public final class FileURLDropDestinationView: NSView {
 
     private var validationTask: Task<Void, Never>?
     private var validationToken = UUID()
-    private var currentSignature: String?
+    private var validationRefreshPolicy = DropValidationRefreshPolicy()
     private var currentOperation: NSDragOperation = []
     private var didDispatchPerform = false
 
@@ -81,7 +81,7 @@ public final class FileURLDropDestinationView: NSView {
     public override func wantsPeriodicDraggingUpdates() -> Bool {
         // Planning uses an async filesystem inspection. Periodic updates let
         // AppKit pick up a newly validated .copy operation even if the pointer
-        // remains stationary while that inspection completes.
+        // remains stationary while that inspection completes or external state changes.
         true
     }
 
@@ -117,7 +117,7 @@ public final class FileURLDropDestinationView: NSView {
         validationTask?.cancel()
         validationTask = nil
         currentOperation = []
-        currentSignature = nil
+        validationRefreshPolicy.reset()
         didDispatchPerform = true
 
         let perform = onPerform
@@ -157,12 +157,18 @@ public final class FileURLDropDestinationView: NSView {
         }
 
         let signature = dragSignature(for: urls)
-        guard signature != currentSignature else {
+        let decision = validationRefreshPolicy.decision(
+            for: signature,
+            now: ProcessInfo.processInfo.systemUptime,
+            validationInFlight: validationTask != nil
+        )
+        guard case let .start(isNewSignature) = decision else {
             return
         }
 
-        currentSignature = signature
-        currentOperation = []
+        if isNewSignature {
+            currentOperation = []
+        }
         validationTask?.cancel()
 
         let token = UUID()
@@ -171,11 +177,17 @@ public final class FileURLDropDestinationView: NSView {
 
         validationTask = Task { @MainActor [weak self] in
             let accepted = await plan(urls)
-            guard !Task.isCancelled,
-                  let self,
-                  self.validationToken == token,
-                  self.currentSignature == signature
-            else {
+            guard let self else {
+                return
+            }
+
+            let isCurrent = self.validationToken == token
+                && self.validationRefreshPolicy.currentSignature == signature
+            if isCurrent {
+                self.validationTask = nil
+            }
+
+            guard !Task.isCancelled, isCurrent else {
                 return
             }
             self.currentOperation = accepted ? .copy : []
@@ -186,7 +198,7 @@ public final class FileURLDropDestinationView: NSView {
         validationTask?.cancel()
         validationTask = nil
         validationToken = UUID()
-        currentSignature = nil
+        validationRefreshPolicy.reset()
         currentOperation = []
         if notifyExit {
             onExit()
