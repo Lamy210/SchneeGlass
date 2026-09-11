@@ -101,6 +101,14 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             actualFingerprint = nil
         }
 
+        if Self.identityVerificationIsUnavailable(
+            expected: source.fingerprint,
+            actual: actualFingerprint
+        ) {
+            await resourceAccessor.stopAccessing(resolved.url)
+            throw FolderAccessError.resourceIdentityUnavailable
+        }
+
         if Self.representsReplacement(expected: source.fingerprint, actual: actualFingerprint) {
             await resourceAccessor.stopAccessing(resolved.url)
             throw FolderAccessError.resourceReplacementDetected
@@ -151,6 +159,32 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         for access in active {
             await resourceAccessor.stopAccessing(access.url)
         }
+    }
+
+    private static func identityVerificationIsUnavailable(
+        expected: ResourceFingerprint?,
+        actual: ResourceFingerprint?
+    ) -> Bool {
+        guard let expected else {
+            return false
+        }
+
+        let expectsVolume = expected.volumeIdentifier != nil
+        let expectsResource = expected.resourceIdentifier != nil
+        guard expectsVolume || expectsResource else {
+            return false
+        }
+        guard let actual else {
+            return true
+        }
+
+        if expectsVolume, actual.volumeIdentifier == nil {
+            return true
+        }
+        if expectsResource, actual.resourceIdentifier == nil {
+            return true
+        }
+        return false
     }
 
     private static func representsReplacement(
