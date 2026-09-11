@@ -34,7 +34,6 @@ public struct FolderAccessAcquisition: Hashable, Sendable {
 public enum FolderAccessError: Error, Hashable, Sendable {
     case bookmarkResolutionFailed
     case accessDenied
-    case resourceIdentityUnavailable
     case resourceReplacementDetected
 }
 
@@ -132,7 +131,6 @@ public enum UnavailableReason: Hashable, Sendable {
     case sourceMissing
     case volumeUnavailable
     case bookmarkResolutionFailed
-    case identityUnavailable
     case replacementDetected
     case unsupportedLocation
 }
