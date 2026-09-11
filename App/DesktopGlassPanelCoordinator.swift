@@ -353,25 +353,14 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
                 return
             }
 
-            for attempt in 0..<6 {
-                guard !Task.isCancelled, !isStopped else {
-                    return
-                }
-
-                switch await model.persistPlacement(glassID: glassID, placement: placement) {
-                case .updated, .missing, .failed:
-                    return
-                case .busy:
-                    guard attempt < 5 else {
-                        return
-                    }
-                    do {
-                        try await Task.sleep(nanoseconds: 200_000_000)
-                    } catch {
-                        return
-                    }
-                }
+            guard !Task.isCancelled, !isStopped else {
+                return
             }
+
+            await model.persistPlacementWhenAvailable(
+                glassID: glassID,
+                placement: placement
+            )
         }
 
         panels[glassID]?.persistenceTask = task
@@ -390,7 +379,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             x: placement.x,
             y: placement.y,
             width: placement.width,
-            height: placement.height
+            height: placement.height,
+            displayHint: nil
         )
     }
 
