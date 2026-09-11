@@ -11,13 +11,17 @@ import SchneeGlassApplication
 public actor PinnedDropPlanningFacade: DropPlanning {
     private let delegate: any DropPlanning
     private let sourceLeases: SourceFileLeaseRegistry
+    private let maximumActiveLeases: Int
 
     init(
         delegate: any DropPlanning,
-        sourceLeases: SourceFileLeaseRegistry
+        sourceLeases: SourceFileLeaseRegistry,
+        maximumActiveLeases: Int = SourceFileLeaseRegistry.defaultMaximumActiveLeases
     ) {
+        precondition(maximumActiveLeases > 0, "Source lease capacity must be positive")
         self.delegate = delegate
         self.sourceLeases = sourceLeases
+        self.maximumActiveLeases = maximumActiveLeases
     }
 
     public func preview(
@@ -34,11 +38,10 @@ public actor PinnedDropPlanningFacade: DropPlanning {
         }
 
         let activeLeaseCount = await sourceLeases.activeLeaseCount()
-        let maximum = SourceFileLeaseRegistry.defaultMaximumActiveLeases
-        let available = max(0, maximum - activeLeaseCount)
+        let available = max(0, maximumActiveLeases - activeLeaseCount)
 
         guard plan.items.count <= available else {
-            return .reject(.sourceCapacityReached(maximum: maximum))
+            return .reject(.sourceCapacityReached(maximum: maximumActiveLeases))
         }
 
         return result
