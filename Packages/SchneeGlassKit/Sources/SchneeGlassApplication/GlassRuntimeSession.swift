@@ -183,6 +183,7 @@ public actor GlassRuntimeSession {
         }
 
         if !Task.isCancelled, lifecycle == .running {
+            stateContinuation?.yield(.failed(.unexpected))
             await stop()
         }
     }
