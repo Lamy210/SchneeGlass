@@ -4,7 +4,7 @@ import SchneeGlassApplication
 import SchneeGlassDomain
 import Testing
 
-private enum EventStreamTerminationTestError: Error {
+private enum EventStreamTerminationTestError: Error, Sendable {
     case unexpectedCall
 }
 
