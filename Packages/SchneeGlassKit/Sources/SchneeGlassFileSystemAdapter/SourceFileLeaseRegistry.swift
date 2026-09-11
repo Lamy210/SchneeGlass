@@ -11,6 +11,7 @@ enum SourceFileLeaseError: Error, Hashable, Sendable {
     case insufficientSpace
     case collision
     case stagingIdentityPreparationFailed
+    case capacityExceeded(maximum: Int)
     case copyFailed(Int32)
 }
 
@@ -55,9 +56,11 @@ public actor SourceFileLeaseRegistry {
         var executionActive: Bool
     }
 
+    static let defaultMaximumActiveLeases = 128
     private static let defaultExpirationNanoseconds: UInt64 = 120_000_000_000
 
     private let expirationNanoseconds: UInt64
+    private let maximumActiveLeases: Int
     private var leases: [UUID: Lease] = [:]
     private var tokenByOperationID: [UUID: UUID] = [:]
     private var operationIDBySourceURL: [URL: UUID] = [:]
@@ -65,13 +68,25 @@ public actor SourceFileLeaseRegistry {
 
     public init() {
         self.expirationNanoseconds = Self.defaultExpirationNanoseconds
+        self.maximumActiveLeases = Self.defaultMaximumActiveLeases
     }
 
     init(expirationNanoseconds: UInt64) {
         self.expirationNanoseconds = expirationNanoseconds
+        self.maximumActiveLeases = Self.defaultMaximumActiveLeases
+    }
+
+    init(maximumActiveLeases: Int) {
+        precondition(maximumActiveLeases > 0, "Source lease capacity must be positive")
+        self.expirationNanoseconds = Self.defaultExpirationNanoseconds
+        self.maximumActiveLeases = maximumActiveLeases
     }
 
     func prepareSource(at url: URL) throws -> PreparedSourceLease {
+        guard leases.count < maximumActiveLeases else {
+            throw SourceFileLeaseError.capacityExceeded(maximum: maximumActiveLeases)
+        }
+
         let source = url.standardizedFileURL
         let didStart = source.startAccessingSecurityScopedResource()
         defer {
@@ -92,6 +107,9 @@ public actor SourceFileLeaseRegistry {
             throw SourceFileLeaseError.sourceUnavailable
         }
         guard openResult.descriptor >= 0 else {
+            if openResult.error == EMFILE || openResult.error == ENFILE {
+                throw SourceFileLeaseError.capacityExceeded(maximum: maximumActiveLeases)
+            }
             throw Self.mapOpenError(openResult.error)
         }
 
@@ -480,6 +498,8 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
             return .collision
         case .stagingIdentityPreparationFailed:
             return .verificationFailed
+        case .capacityExceeded:
+            return .sourceUnavailable
         case .copyFailed:
             return .unexpected
         }
