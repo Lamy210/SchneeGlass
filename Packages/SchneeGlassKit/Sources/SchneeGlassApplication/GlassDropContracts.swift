@@ -1,7 +1,7 @@
 import FileDomain
 import Foundation
 
-public protocol DropPlanning: Sendable {
+public protocol DropPlanning: AuthorizedCopyBatchAbandoning, Sendable {
     /// Advisory planning for hover/validation UI. Implementations may override this to avoid
     /// acquiring mutation authority or other resources that should exist only for execution.
     func preview(
@@ -25,6 +25,12 @@ public extension DropPlanning {
             sourceURLs: sourceURLs,
             destinationAccess: destinationAccess
         )
+    }
+
+    /// Lease-free planners have nothing to release. Any implementation that acquires planning-time
+    /// authority must override this default so a superseded or stopped runtime can relinquish it.
+    func abandon(_ request: AuthorizedCopyBatchRequest) async {
+        _ = request
     }
 }
 
