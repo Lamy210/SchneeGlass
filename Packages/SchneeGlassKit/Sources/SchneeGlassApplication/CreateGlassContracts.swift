@@ -9,6 +9,7 @@ public protocol FolderSelecting: Sendable {
 
 public enum FolderSourceCreationError: Error, Hashable, Sendable {
     case bookmarkCreationFailed
+    case resourceIdentityUnavailable
 }
 
 public protocol FolderSourceCreating: Sendable {
