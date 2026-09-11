@@ -1,4 +1,3 @@
-import SchneeGlassApplication
 import Testing
 @testable import SchneeGlassPresentation
 
