@@ -77,15 +77,56 @@ func folderSourceFactoryCreatesBookmarkAndFingerprintFromStandardizedURL() async
 }
 
 @Test
-func folderSourceFactoryTreatsFingerprintFailureAsOptionalMetadata() async throws {
+func folderSourceFactoryFailsClosedWhenFingerprintReadFails() async {
     let accessor = FakeFolderSourceResourceAccessor(failFingerprint: true)
     let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
-    let selected = URL(fileURLWithPath: "/tmp/FingerprintOptional", isDirectory: true)
+    let selected = URL(fileURLWithPath: "/tmp/FingerprintFailure", isDirectory: true)
 
-    let source = try await factory.createSource(for: selected)
+    do {
+        _ = try await factory.createSource(for: selected)
+        Issue.record("Expected resource identity failure")
+    } catch let error as FolderSourceCreationError {
+        #expect(error == .resourceIdentityUnavailable)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
 
-    #expect(source.bookmarkData == Data([1, 2, 3]))
-    #expect(source.fingerprint == nil)
+@Test
+func folderSourceFactoryRejectsMissingDirectoryResourceIdentity() async {
+    let accessor = FakeFolderSourceResourceAccessor(
+        fingerprintValue: ResourceFingerprint(
+            volumeIdentifier: "volume-only",
+            resourceIdentifier: nil
+        )
+    )
+    let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
+    let selected = URL(fileURLWithPath: "/tmp/VolumeOnlyIdentity", isDirectory: true)
+
+    do {
+        _ = try await factory.createSource(for: selected)
+        Issue.record("Expected resource identity failure")
+    } catch let error as FolderSourceCreationError {
+        #expect(error == .resourceIdentityUnavailable)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+}
+
+@Test
+func folderSourceFactoryRejectsCompletelyUnavailableIdentity() async {
+    let accessor = FakeFolderSourceResourceAccessor(fingerprintValue: nil)
+    let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
+    let selected = URL(fileURLWithPath: "/tmp/MissingIdentity", isDirectory: true)
+
+    do {
+        _ = try await factory.createSource(for: selected)
+        Issue.record("Expected resource identity failure")
+    } catch let error as FolderSourceCreationError {
+        #expect(error == .resourceIdentityUnavailable)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
 }
 
 @Test
