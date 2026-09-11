@@ -57,6 +57,13 @@ public actor PendingCopyDestinationReconnectUseCase {
         let selectedSource: FolderSource
         do {
             selectedSource = try await sourceCreator.createSource(for: selectedURL)
+        } catch let error as FolderSourceCreationError {
+            switch error {
+            case .bookmarkCreationFailed:
+                throw PendingCopyDestinationReconnectError.sourceCreationFailed
+            case .resourceIdentityUnavailable:
+                throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
+            }
         } catch {
             throw PendingCopyDestinationReconnectError.sourceCreationFailed
         }
