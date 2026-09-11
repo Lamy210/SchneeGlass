@@ -9,7 +9,7 @@ public struct SchneeGlassWorkspaceView: View {
         self._model = Bindable(wrappedValue: model)
     }
 
-    public var body: some View {
+    public var body: some Scene {
         VStack(spacing: 0) {
             header
             Divider()
@@ -459,6 +459,8 @@ private struct GlassPreviewSurface: View {
             return "Network folders aren't supported for copy yet"
         case .sourceUnavailable:
             return "A source file is unavailable"
+        case .sourceCapacityReached:
+            return "Copy capacity is busy"
         case .cloudPlaceholderUnavailable:
             return "Download the cloud file first"
         }
@@ -468,6 +470,8 @@ private struct GlassPreviewSurface: View {
         switch reason {
         case let .tooManyItems(maximum):
             return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
+        case let .sourceCapacityReached(maximum):
+            return "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
         case .collision:
             return "Nothing will be overwritten."
         case .unsupportedFolder:
