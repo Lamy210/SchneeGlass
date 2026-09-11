@@ -160,9 +160,11 @@ public final class PendingCopyRecoveryCenterModel {
                 items = try await useCase.loadItems()
                 message = "Destination access was reconnected and saved. Pending Copy Recovery was refreshed. If the current Glass remains unavailable, restart SchneeGlass to start a new runtime session from the updated bookmark."
             } catch let error as PendingCopyRecoveryCenterError {
+                discardStaleItemsAfterPostActionReloadFailure()
                 message = Self.message(for: error)
             } catch {
-                message = "Destination access was saved, but SchneeGlass couldn't refresh the Recovery list."
+                discardStaleItemsAfterPostActionReloadFailure()
+                message = "Destination access was saved, but SchneeGlass couldn't refresh the Recovery list. Refresh Pending Copies before taking another Recovery action."
             }
             return true
         } catch let error as PendingCopyDestinationReconnectError {
@@ -183,10 +185,18 @@ public final class PendingCopyRecoveryCenterModel {
             items = try await useCase.loadItems()
             message = "Recovery action completed. Final user-visible files were not deleted or overwritten."
         } catch let error as PendingCopyRecoveryCenterError {
+            discardStaleItemsAfterPostActionReloadFailure()
             message = Self.message(for: error)
         } catch {
-            message = "The Recovery action completed, but SchneeGlass couldn't refresh the Recovery list."
+            discardStaleItemsAfterPostActionReloadFailure()
+            message = "The Recovery action completed, but SchneeGlass couldn't refresh the Recovery list. Refresh Pending Copies before taking another Recovery action."
         }
+    }
+
+    private func discardStaleItemsAfterPostActionReloadFailure() {
+        items = PendingCopyRecoveryPostActionReloadPolicy.itemsAfterFailedReload(
+            currentItems: items
+        )
     }
 
     private static func message(for error: PendingCopyRecoveryNavigationError) -> String {
