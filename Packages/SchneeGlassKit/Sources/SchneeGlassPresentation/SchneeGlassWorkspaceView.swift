@@ -344,10 +344,13 @@ private struct GlassPreviewSurface: View {
                 Label("Unavailable", systemImage: "exclamationmark.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            case .failed:
-                Label("Refresh failed", systemImage: "arrow.clockwise.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            case let .failed(error):
+                Label(
+                    GlassContentFailurePresentation.make(for: error).status,
+                    systemImage: "arrow.clockwise.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -397,14 +400,15 @@ private struct GlassPreviewSurface: View {
             }
             .frame(maxWidth: .infinity, minHeight: 100)
 
-        case .failed:
+        case let .failed(error):
+            let presentation = GlassContentFailurePresentation.make(for: error)
             VStack(spacing: 8) {
                 Image(systemName: "arrow.clockwise.circle")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text("Couldn't refresh this folder")
+                Text(presentation.title)
                     .font(.callout.weight(.medium))
-                Text("SchneeGlass will try again when the folder changes.")
+                Text(presentation.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
