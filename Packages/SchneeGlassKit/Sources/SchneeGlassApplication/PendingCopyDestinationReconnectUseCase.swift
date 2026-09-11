@@ -144,14 +144,29 @@ public actor PendingCopyDestinationReconnectUseCase {
         } catch {
             throw PendingCopyDestinationReconnectError.selectedDestinationAccessFailed
         }
+
+        let persistedSource = validationAccess.refreshedSource ?? selectedSource
+        let observedFingerprint = validationAccess.handle.fingerprint
         await accessController.release(handleID: validationAccess.handle.id)
+
+        // The folder selected before the Recovery lease was acquired must still resolve to the exact
+        // same directory when access is established. A volume identifier alone cannot distinguish
+        // two directories on one volume, so reconnect authority requires the directory resource ID.
+        try Self.validateSelectedIdentity(
+            expected: current.configuration.source.fingerprint,
+            selected: observedFingerprint
+        )
+        try Self.validateSelectedIdentity(
+            expected: current.configuration.source.fingerprint,
+            selected: persistedSource.fingerprint
+        )
 
         let updatedConfiguration: GlassConfiguration
         do {
             updatedConfiguration = try GlassConfiguration(
                 id: current.configuration.id,
                 title: current.configuration.title,
-                source: selectedSource,
+                source: persistedSource,
                 placement: current.configuration.placement,
                 showOnAllSpaces: current.configuration.showOnAllSpaces,
                 createdAt: current.configuration.createdAt
@@ -196,35 +211,22 @@ public actor PendingCopyDestinationReconnectUseCase {
         expected: ResourceFingerprint?,
         selected: ResourceFingerprint?
     ) throws {
-        guard let expected else {
-            return
-        }
-        guard let selected else {
+        guard let expectedResource = expected?.resourceIdentifier,
+              let selectedResource = selected?.resourceIdentifier
+        else {
             throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
         }
+        guard expectedResource == selectedResource else {
+            throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
+        }
 
-        var comparedIdentity = false
-
-        if let expectedVolume = expected.volumeIdentifier,
-           let selectedVolume = selected.volumeIdentifier
-        {
-            comparedIdentity = true
+        if let expectedVolume = expected?.volumeIdentifier {
+            guard let selectedVolume = selected?.volumeIdentifier else {
+                throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
+            }
             guard expectedVolume == selectedVolume else {
                 throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
             }
-        }
-
-        if let expectedResource = expected.resourceIdentifier,
-           let selectedResource = selected.resourceIdentifier
-        {
-            comparedIdentity = true
-            guard expectedResource == selectedResource else {
-                throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
-            }
-        }
-
-        guard comparedIdentity else {
-            throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
         }
     }
 }
