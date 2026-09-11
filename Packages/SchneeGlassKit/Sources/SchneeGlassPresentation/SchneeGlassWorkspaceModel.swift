@@ -75,6 +75,7 @@ public final class SchneeGlassWorkspaceModel {
     private let runtimeSessionFactory: GlassRuntimeSessionFactory
     private var sessions: [GlassID: GlassRuntimeSession] = [:]
     private var stateTasks: [GlassID: Task<Void, Never>] = [:]
+    private var sessionTaskTracker = WorkspaceSessionTaskTracker()
     private var dropExecutionGate = WorkspaceDropExecutionGate()
     private var dropPlanningTracker = WorkspaceDropPlanningTracker()
     private var didAttemptInitialRestore = false
@@ -208,6 +209,7 @@ public final class SchneeGlassWorkspaceModel {
                 return
             }
 
+            sessionTaskTracker.invalidate(id)
             stateTasks[id]?.cancel()
             stateTasks[id] = nil
 
@@ -465,6 +467,7 @@ public final class SchneeGlassWorkspaceModel {
 
     private func deactivateAllSessions() async {
         let activeSessions = Array(sessions.values)
+        sessionTaskTracker.invalidateAll()
         stateTasks.values.forEach { $0.cancel() }
         stateTasks.removeAll(keepingCapacity: false)
         sessions.removeAll(keepingCapacity: false)
@@ -493,15 +496,25 @@ public final class SchneeGlassWorkspaceModel {
             )
 
             stateTasks[glassID]?.cancel()
+            let stateTaskToken = sessionTaskTracker.begin(glassID)
             stateTasks[glassID] = Task { [weak self] in
                 for await state in states {
-                    guard !Task.isCancelled else {
+                    guard !Task.isCancelled,
+                          let self,
+                          self.sessionTaskTracker.isCurrent(stateTaskToken, for: glassID)
+                    else {
                         return
                     }
-                    self?.updateState(state, for: glassID)
+                    self.updateState(state, for: glassID)
                 }
-                self?.stateTasks[glassID] = nil
-                self?.sessions[glassID] = nil
+
+                guard let self,
+                      self.sessionTaskTracker.finish(stateTaskToken, for: glassID)
+                else {
+                    return
+                }
+                self.stateTasks[glassID] = nil
+                self.sessions[glassID] = nil
             }
         } catch {
             await session.stop()
