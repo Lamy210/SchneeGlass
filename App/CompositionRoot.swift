@@ -94,7 +94,6 @@ final class SchneeGlassCompositionRoot {
             snapshotReader: snapshotReader,
             accessController: accessController,
             dropPlanning: dropCopyPipeline.dropPlanning,
-            copyAbandoner: dropCopyPipeline.dropPlanning,
             fileCopying: fileCopying
         )
 
