@@ -96,9 +96,6 @@ func configurationRecoveryRejectsBeforeStateReadsWhileCopyIsActive() async {
     )
 
     #expect(await gate.beginCopy())
-    defer {
-        Task { await gate.endCopy() }
-    }
 
     do {
         _ = try await useCase.restoreBackup(id: "blocked-by-copy")
@@ -111,6 +108,7 @@ func configurationRecoveryRejectsBeforeStateReadsWhileCopyIsActive() async {
 
     #expect(await pending.reads() == 0)
     #expect(await store.restores() == 0)
+    await gate.endCopy()
 }
 
 @Test
@@ -125,9 +123,6 @@ func configurationRecoveryRejectsBeforeStateReadsWhileRecoveryMutationIsActive()
     )
 
     #expect(await gate.beginRecoveryMutation() == .granted)
-    defer {
-        Task { await gate.endRecoveryMutation() }
-    }
 
     do {
         _ = try await useCase.restoreBackup(id: "blocked-by-recovery")
@@ -140,6 +135,7 @@ func configurationRecoveryRejectsBeforeStateReadsWhileRecoveryMutationIsActive()
 
     #expect(await pending.reads() == 0)
     #expect(await store.restores() == 0)
+    await gate.endRecoveryMutation()
 }
 
 @Test
