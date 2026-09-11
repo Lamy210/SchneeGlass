@@ -6,15 +6,18 @@ struct DropSourceInspection: Sendable {
     let candidate: DropCandidate
     let availability: DropCandidateAvailability
     let sourceLeaseToken: UUID?
+    let planningRejection: DropRejection?
 
     init(
         candidate: DropCandidate,
         availability: DropCandidateAvailability,
-        sourceLeaseToken: UUID? = nil
+        sourceLeaseToken: UUID? = nil,
+        planningRejection: DropRejection? = nil
     ) {
         self.candidate = candidate
         self.availability = availability
         self.sourceLeaseToken = sourceLeaseToken
+        self.planningRejection = planningRejection
     }
 }
 
@@ -145,6 +148,23 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 availability: .available,
                 sourceLeaseToken: prepared.token
             )
+        } catch let error as SourceFileLeaseError {
+            if let preparedToken, let sourceLeases {
+                await sourceLeases.releasePrepared(tokens: [preparedToken])
+            }
+
+            if case let .capacityExceeded(maximum) = error {
+                return DropSourceInspection(
+                    candidate: DropCandidate(url: source, kind: .unsupported),
+                    availability: .sourceUnavailable,
+                    planningRejection: .sourceCapacityReached(maximum: maximum)
+                )
+            }
+
+            return DropSourceInspection(
+                candidate: DropCandidate(url: source, kind: .unsupported),
+                availability: .sourceUnavailable
+            )
         } catch {
             if let preparedToken, let sourceLeases {
                 await sourceLeases.releasePrepared(tokens: [preparedToken])
@@ -216,9 +236,9 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
 public actor NativeDropPlanningAdapter: DropPlanning {
     /// Each accepted source is kept open from authoritative planning through copy execution.
-    /// Bounding one plan prevents a single drag from exhausting the process file-descriptor table.
-    /// The limit is deliberately conservative for v0.1; larger transfers should be split by users.
-    static let maximumSourceItemsPerPlan = 128
+    /// One plan and the shared source registry use the same conservative ceiling so parallel Glasses
+    /// cannot multiply pinned source descriptors beyond the process-wide source budget.
+    static let maximumSourceItemsPerPlan = SourceFileLeaseRegistry.defaultMaximumActiveLeases
 
     private let inspector: any DropFileSystemInspecting
     private let previewInspector: any DropFileSystemInspecting
@@ -290,6 +310,8 @@ public actor NativeDropPlanningAdapter: DropPlanning {
 
         var inspections: [DropSourceInspection] = []
         inspections.reserveCapacity(sourceURLs.count)
+        var preparedTokens: [UUID] = []
+        preparedTokens.reserveCapacity(sourceURLs.count)
         var candidates: [DropCandidate] = []
         candidates.reserveCapacity(sourceURLs.count)
         var availability: [URL: DropCandidateAvailability] = [:]
@@ -299,6 +321,17 @@ public actor NativeDropPlanningAdapter: DropPlanning {
             let sourceURL = rawURL.standardizedFileURL
             let inspection = await inspector.inspectSource(at: sourceURL)
             inspections.append(inspection)
+            if let token = inspection.sourceLeaseToken {
+                preparedTokens.append(token)
+            }
+
+            if let rejection = inspection.planningRejection {
+                if let sourceLeases {
+                    await sourceLeases.releasePrepared(tokens: preparedTokens)
+                }
+                return .reject(rejection)
+            }
+
             candidates.append(inspection.candidate)
             availability[sourceURL] = inspection.availability
 
@@ -323,7 +356,6 @@ public actor NativeDropPlanningAdapter: DropPlanning {
             return result
         }
 
-        let preparedTokens = inspections.compactMap(\.sourceLeaseToken)
         guard case let .copy(plan) = result else {
             await sourceLeases.releasePrepared(tokens: preparedTokens)
             return result
