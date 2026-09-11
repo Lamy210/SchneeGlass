@@ -105,6 +105,10 @@ public final class PendingCopyRecoveryCenterModel {
             }
             return false
         }
+        guard !workspaceModel.isMutatingConfiguration else {
+            message = "SchneeGlass is updating its configuration. Try inspecting the recovery item after that operation finishes."
+            return false
+        }
         guard action == .revealStaging || action == .revealFinal else {
             message = "That Recovery action is not a read-only reveal action."
             return false
