@@ -80,7 +80,8 @@ final class SchneeGlassCompositionRoot {
 
         let configurationRecoveryUseCase = ConfigurationRecoveryUseCase(
             recoveryStore: configurationStore,
-            pendingCopyStore: pendingCopyStore
+            pendingCopyStore: pendingCopyStore,
+            activityGate: activityGate
         )
 
         let fileActionUseCase = WorkspaceFileActionUseCase(
