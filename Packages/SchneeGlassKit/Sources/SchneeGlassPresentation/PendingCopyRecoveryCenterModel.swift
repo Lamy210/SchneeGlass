@@ -28,7 +28,10 @@ public final class PendingCopyRecoveryCenterModel {
     }
 
     public func refresh() async {
-        guard !isLoading, activeOperationID == nil else {
+        guard PendingCopyRecoveryActivityPolicy.canStart(
+            isLoading: isLoading,
+            activeOperationID: activeOperationID
+        ) else {
             return
         }
         guard !workspaceModel.isMutatingConfiguration else {
@@ -55,7 +58,13 @@ public final class PendingCopyRecoveryCenterModel {
         action: PendingCopyRecoveryAction,
         operationID: UUID
     ) async -> Bool {
-        guard activeOperationID == nil else {
+        guard PendingCopyRecoveryActivityPolicy.canStart(
+            isLoading: isLoading,
+            activeOperationID: activeOperationID
+        ) else {
+            if isLoading {
+                message = "Wait for the current Pending Copy Recovery refresh to finish before changing recovery state."
+            }
             return false
         }
         guard !workspaceModel.isMutatingConfiguration else {
@@ -87,7 +96,13 @@ public final class PendingCopyRecoveryCenterModel {
         action: PendingCopyRecoveryAction,
         operationID: UUID
     ) async -> Bool {
-        guard activeOperationID == nil else {
+        guard PendingCopyRecoveryActivityPolicy.canStart(
+            isLoading: isLoading,
+            activeOperationID: activeOperationID
+        ) else {
+            if isLoading {
+                message = "Wait for the current Pending Copy Recovery refresh to finish before inspecting a recovery item."
+            }
             return false
         }
         guard action == .revealStaging || action == .revealFinal else {
@@ -114,7 +129,13 @@ public final class PendingCopyRecoveryCenterModel {
     }
 
     public func reconnectDestination(operationID: UUID) async -> Bool {
-        guard activeOperationID == nil else {
+        guard PendingCopyRecoveryActivityPolicy.canStart(
+            isLoading: isLoading,
+            activeOperationID: activeOperationID
+        ) else {
+            if isLoading {
+                message = "Wait for the current Pending Copy Recovery refresh to finish before reconnecting a destination."
+            }
             return false
         }
         guard !workspaceModel.isMutatingConfiguration else {
