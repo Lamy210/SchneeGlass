@@ -30,3 +30,54 @@ func completedDropDoesNotSendCancellationCleanup() {
 
     #expect(exitCount == 0)
 }
+
+@Test
+func dropValidationRefreshPolicyRechecksStableSignatureWithoutOverlappingWork() {
+    var policy = DropValidationRefreshPolicy(minimumInterval: 0.5)
+
+    #expect(
+        policy.decision(
+            for: "same-files",
+            now: 10,
+            validationInFlight: false
+        ) == .start(isNewSignature: true)
+    )
+    #expect(
+        policy.decision(
+            for: "same-files",
+            now: 10.2,
+            validationInFlight: false
+        ) == .skip
+    )
+    #expect(
+        policy.decision(
+            for: "same-files",
+            now: 10.6,
+            validationInFlight: true
+        ) == .skip
+    )
+    #expect(
+        policy.decision(
+            for: "same-files",
+            now: 10.6,
+            validationInFlight: false
+        ) == .start(isNewSignature: false)
+    )
+
+    #expect(
+        policy.decision(
+            for: "different-files",
+            now: 10.61,
+            validationInFlight: true
+        ) == .start(isNewSignature: true)
+    )
+
+    policy.reset()
+    #expect(
+        policy.decision(
+            for: "different-files",
+            now: 10.62,
+            validationInFlight: false
+        ) == .start(isNewSignature: true)
+    )
+}
