@@ -59,18 +59,26 @@ public actor FileOperationActivityGate {
 /// FileCopying decorator that makes Recovery/Copy exclusion enforceable below Presentation.
 public actor ActivityTrackedFileCopying: FileCopying {
     private let delegate: any FileCopying
+    private let abandoner: any AuthorizedCopyBatchAbandoning
     private let activityGate: FileOperationActivityGate
 
     public init(
         delegate: any FileCopying,
+        abandoner: any AuthorizedCopyBatchAbandoning,
         activityGate: FileOperationActivityGate
     ) {
         self.delegate = delegate
+        self.abandoner = abandoner
         self.activityGate = activityGate
     }
 
     public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
         guard await activityGate.beginCopy() else {
+            // Authoritative Drop planning may already hold source descriptor authority. If Recovery
+            // wins the race between planning and execution, release that authority immediately
+            // rather than waiting for the unconsumed-plan TTL fallback.
+            await abandoner.abandon(request)
+
             let first = request.plan.items[0]
             return CopyBatchResult(
                 batchID: request.plan.batchID,
