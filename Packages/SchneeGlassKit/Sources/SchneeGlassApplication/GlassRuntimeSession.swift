@@ -88,20 +88,45 @@ public actor GlassRuntimeSession {
         guard lifecycle == .running else {
             return .reject(.destinationUnavailable)
         }
-        return await dropPlanning.preview(
+
+        let plan = await dropPlanning.preview(
             sourceURLs: sourceURLs,
             destinationAccess: access
         )
+
+        // The actor can re-enter while the async planner is suspended. A stopped session must not
+        // publish a stale positive hover result after its security-scoped access has been released.
+        guard lifecycle == .running else {
+            return .reject(.destinationUnavailable)
+        }
+        return plan
     }
 
     public func planDrop(sourceURLs: [URL]) async -> DropPlan {
         guard lifecycle == .running else {
             return .reject(.destinationUnavailable)
         }
-        return await dropPlanning.plan(
+
+        let plan = await dropPlanning.plan(
             sourceURLs: sourceURLs,
             destinationAccess: access
         )
+
+        // Authoritative planning may pin source descriptors. `stop()` can re-enter this actor while
+        // planning is suspended and release the destination security scope. If that happened, never
+        // return the stale authority to Presentation; release only the plan produced by this call.
+        guard lifecycle == .running else {
+            if case let .copy(copyPlan) = plan {
+                await dropPlanning.abandon(
+                    AuthorizedCopyBatchRequest(
+                        plan: copyPlan,
+                        destinationAccess: access
+                    )
+                )
+            }
+            return .reject(.destinationUnavailable)
+        }
+        return plan
     }
 
     public func executeCopy(_ plan: CopyBatchPlan) async throws -> CopyBatchResult {

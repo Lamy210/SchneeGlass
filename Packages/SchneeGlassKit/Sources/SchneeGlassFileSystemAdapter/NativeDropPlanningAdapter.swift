@@ -298,6 +298,15 @@ public actor NativeDropPlanningAdapter: DropPlanning {
         )
     }
 
+    public func abandon(_ request: AuthorizedCopyBatchRequest) async {
+        guard let sourceLeases else {
+            return
+        }
+        await sourceLeases.releaseBound(
+            operationIDs: request.plan.items.map(\.operationID)
+        )
+    }
+
     private func makePlan(
         sourceURLs: [URL],
         destinationAccess: FolderAccessHandle,
