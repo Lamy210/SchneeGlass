@@ -34,17 +34,11 @@ func pinnedDropPreviewReflectsSharedCapacityWithoutAcquiringAnotherLease() async
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let maximum = SourceFileLeaseRegistry.defaultMaximumActiveLeases
-    let leases = SourceFileLeaseRegistry()
-    var preparedTokens: [UUID] = []
-    preparedTokens.reserveCapacity(maximum)
-
-    for index in 0..<(maximum - 1) {
-        let source = root.appendingPathComponent("held-\(index).txt", isDirectory: false)
-        try Data("held-\(index)".utf8).write(to: source)
-        let prepared = try await leases.prepareSource(at: source)
-        preparedTokens.append(prepared.token)
-    }
+    let maximum = 2
+    let leases = SourceFileLeaseRegistry(maximumActiveLeases: maximum)
+    let firstHeldSource = root.appendingPathComponent("held-first.txt", isDirectory: false)
+    try Data("held-first".utf8).write(to: firstHeldSource)
+    let firstPrepared = try await leases.prepareSource(at: firstHeldSource)
 
     let previewSource = root.appendingPathComponent("preview.txt", isDirectory: false)
     try Data("preview".utf8).write(to: previewSource)
@@ -71,7 +65,8 @@ func pinnedDropPreviewReflectsSharedCapacityWithoutAcquiringAnotherLease() async
     let copyPlan = try CopyBatchPlan(destination: destination, items: [item])
     let facade = PinnedDropPlanningFacade(
         delegate: FixedPreviewDropPlanning(result: .copy(copyPlan)),
-        sourceLeases: leases
+        sourceLeases: leases,
+        maximumActiveLeases: maximum
     )
     let access = FolderAccessHandle(glassID: glassID, url: destinationURL)
 
@@ -80,12 +75,11 @@ func pinnedDropPreviewReflectsSharedCapacityWithoutAcquiringAnotherLease() async
         destinationAccess: access
     )
     #expect(availableResult == .copy(copyPlan))
-    #expect(await leases.activeLeaseCount() == maximum - 1)
+    #expect(await leases.activeLeaseCount() == 1)
 
-    let lastHeldSource = root.appendingPathComponent("held-last.txt", isDirectory: false)
-    try Data("held-last".utf8).write(to: lastHeldSource)
-    let lastPrepared = try await leases.prepareSource(at: lastHeldSource)
-    preparedTokens.append(lastPrepared.token)
+    let secondHeldSource = root.appendingPathComponent("held-second.txt", isDirectory: false)
+    try Data("held-second".utf8).write(to: secondHeldSource)
+    let secondPrepared = try await leases.prepareSource(at: secondHeldSource)
     #expect(await leases.activeLeaseCount() == maximum)
 
     let saturatedResult = await facade.preview(
@@ -95,7 +89,7 @@ func pinnedDropPreviewReflectsSharedCapacityWithoutAcquiringAnotherLease() async
     #expect(saturatedResult == .reject(.sourceCapacityReached(maximum: maximum)))
     #expect(await leases.activeLeaseCount() == maximum)
 
-    await leases.releasePrepared(tokens: preparedTokens)
+    await leases.releasePrepared(tokens: [firstPrepared.token, secondPrepared.token])
     #expect(await leases.activeLeaseCount() == 0)
 
     let recoveredResult = await facade.preview(
