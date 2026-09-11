@@ -95,7 +95,11 @@ func oversizedAuthoritativePlanningRejectsBeforeAnyFilesystemInspection() async 
         destinationAccess: destination
     )
 
-    #expect(result == .reject(.sourceUnavailable))
+    #expect(
+        result == .reject(
+            .tooManyItems(maximum: NativeDropPlanningAdapter.maximumSourceItemsPerPlan)
+        )
+    )
     let counts = await inspector.counts()
     #expect(counts.destination == 0)
     #expect(counts.source == 0)
@@ -118,7 +122,11 @@ func oversizedPreviewAlsoRejectsBeforeAnyFilesystemInspection() async {
         destinationAccess: destination
     )
 
-    #expect(result == .reject(.sourceUnavailable))
+    #expect(
+        result == .reject(
+            .tooManyItems(maximum: NativeDropPlanningAdapter.maximumSourceItemsPerPlan)
+        )
+    )
     let counts = await inspector.counts()
     #expect(counts.destination == 0)
     #expect(counts.source == 0)
