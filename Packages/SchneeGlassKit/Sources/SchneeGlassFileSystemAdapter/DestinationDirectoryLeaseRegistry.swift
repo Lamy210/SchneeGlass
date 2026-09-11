@@ -32,8 +32,20 @@ actor DestinationDirectoryLeaseRegistry {
         let finalFilename: String
     }
 
+    static let defaultMaximumActiveLeases = 128
+
+    private let maximumActiveLeases: Int
     private var leasesByBatchID: [UUID: Lease] = [:]
     private var bindingByOperationID: [UUID: OperationBinding] = [:]
+
+    init() {
+        self.maximumActiveLeases = Self.defaultMaximumActiveLeases
+    }
+
+    init(maximumActiveLeases: Int) {
+        precondition(maximumActiveLeases > 0, "Destination lease capacity must be positive")
+        self.maximumActiveLeases = maximumActiveLeases
+    }
 
     func bind(_ request: AuthorizedCopyBatchRequest) throws {
         let plan = request.plan
@@ -47,6 +59,12 @@ actor DestinationDirectoryLeaseRegistry {
               leasesByBatchID[plan.batchID] == nil,
               !plan.items.isEmpty
         else {
+            throw DestinationDirectoryLeaseError.destinationUnavailable
+        }
+
+        // Keep descriptor usage bounded inside SchneeGlass instead of relying on the process-wide
+        // RLIMIT_NOFILE failure mode. One destination descriptor is held for each active copy batch.
+        guard leasesByBatchID.count < maximumActiveLeases else {
             throw DestinationDirectoryLeaseError.destinationUnavailable
         }
 
