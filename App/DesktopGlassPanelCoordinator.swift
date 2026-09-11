@@ -379,8 +379,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             x: placement.x,
             y: placement.y,
             width: placement.width,
-            height: placement.height,
-            displayHint: nil
+            height: placement.height
         )
     }
 
