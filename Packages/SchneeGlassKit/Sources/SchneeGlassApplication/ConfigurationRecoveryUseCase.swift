@@ -3,6 +3,8 @@ import SchneeGlassDomain
 public enum ConfigurationRecoveryUseCaseError: Error, Hashable, Sendable {
     case pendingCopyLoadFailed
     case pendingCopyRecoveryRequired
+    case copyInProgress
+    case recoveryInProgress
 }
 
 /// Provides the explicit configuration recovery operations used by Presentation.
@@ -16,13 +18,16 @@ public enum ConfigurationRecoveryUseCaseError: Error, Hashable, Sendable {
 public actor ConfigurationRecoveryUseCase {
     private let recoveryStore: any ConfigurationRecoveryProviding & ConfigurationPersisting
     private let pendingCopyStore: any PendingCopyRecording
+    private let activityGate: FileOperationActivityGate
 
     public init(
         recoveryStore: any ConfigurationRecoveryProviding & ConfigurationPersisting,
-        pendingCopyStore: any PendingCopyRecording
+        pendingCopyStore: any PendingCopyRecording,
+        activityGate: FileOperationActivityGate
     ) {
         self.recoveryStore = recoveryStore
         self.pendingCopyStore = pendingCopyStore
+        self.activityGate = activityGate
     }
 
     public func availableBackups() async throws -> [ConfigurationBackupDescriptor] {
@@ -31,6 +36,26 @@ public actor ConfigurationRecoveryUseCase {
 
     @discardableResult
     public func restoreBackup(id: String) async throws -> [GlassConfiguration] {
+        switch await activityGate.beginRecoveryMutation() {
+        case .granted:
+            break
+        case .copyInProgress:
+            throw ConfigurationRecoveryUseCaseError.copyInProgress
+        case .recoveryInProgress:
+            throw ConfigurationRecoveryUseCaseError.recoveryInProgress
+        }
+
+        do {
+            let result = try await restoreBackupWithLease(id: id)
+            await activityGate.endRecoveryMutation()
+            return result
+        } catch {
+            await activityGate.endRecoveryMutation()
+            throw error
+        }
+    }
+
+    private func restoreBackupWithLease(id: String) async throws -> [GlassConfiguration] {
         let pendingCopies: [PendingCopyRecord]
         do {
             pendingCopies = try await pendingCopyStore.records()
