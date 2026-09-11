@@ -45,6 +45,7 @@ final class SchneeGlassCompositionRoot {
 
         let fileCopying = ActivityTrackedFileCopying(
             delegate: dropCopyPipeline.fileCopying,
+            abandoner: dropCopyPipeline.dropPlanning,
             activityGate: activityGate
         )
 
