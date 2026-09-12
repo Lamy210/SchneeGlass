@@ -18,6 +18,7 @@ check_forbidden_imports() {
 
 check_forbidden_imports "$SRC/SchneeGlassDomain" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassPOSIXSupport'
 check_forbidden_imports "$SRC/FileDomain" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassPOSIXSupport'
+check_forbidden_imports "$SRC/SchneeGlassDesignSystem" 'AppKit|CoreServices|GRDB|SchneeGlassDomain|FileDomain|SchneeGlassApplication|SchneeGlassPresentation|SchneeGlassPOSIXSupport|SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassMacOSAdapter'
 check_forbidden_imports "$SRC/SchneeGlassPresentation" 'SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassPOSIXSupport'
 check_forbidden_imports "$SRC/SchneeGlassPOSIXSupport" 'SwiftUI|AppKit|CoreServices|GRDB|SchneeGlassDomain|FileDomain|SchneeGlassApplication|SchneeGlassPresentation|SchneeGlassFileSystemAdapter|SchneeGlassPersistenceAdapter|SchneeGlassMacOSAdapter'
 
