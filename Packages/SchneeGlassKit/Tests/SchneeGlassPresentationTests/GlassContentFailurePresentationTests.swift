@@ -13,12 +13,27 @@ func transientContentFailuresKeepAutomaticRetryGuidance() {
 }
 
 @Test
-func unexpectedContentFailureDoesNotPromiseAutomaticRetry() {
+func unexpectedContentFailureUsesImplementedRecoveryPath() {
     let presentation = GlassContentFailurePresentation.make(for: .unexpected)
 
-    #expect(presentation.status == "Needs reconnect")
-    #expect(presentation.title == "This Glass needs to reconnect")
+    #expect(presentation.status == "Needs attention")
+    #expect(presentation.title == "This Glass couldn't continue")
     #expect(presentation.detail.contains("Restart SchneeGlass"))
-    #expect(presentation.detail.contains("Recovery"))
+    #expect(presentation.detail.contains("remove this Glass"))
+    #expect(presentation.detail.contains("add the folder again"))
+    #expect(!presentation.detail.contains("Recovery"))
+    #expect(!presentation.detail.contains("reconnect"))
     #expect(!presentation.detail.contains("folder changes"))
+}
+
+@Test
+func unavailableFolderGuidanceDoesNotPresentPendingCopyRecoveryAsSourceReconnect() {
+    let presentation = GlassUnavailablePresentation.current
+
+    #expect(presentation.title == "Folder unavailable")
+    #expect(presentation.detail.contains("Restart SchneeGlass"))
+    #expect(presentation.detail.contains("remove this Glass"))
+    #expect(presentation.detail.contains("add the folder again"))
+    #expect(presentation.detail.contains("Pending Copy Recovery"))
+    #expect(!presentation.detail.contains("Reconnect support"))
 }
