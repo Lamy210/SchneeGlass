@@ -6,7 +6,6 @@ public enum NativeFolderSnapshotReaderError: Error, Hashable, Sendable {
     case enumerationUnavailable
     case enumerationFailed
     case folderMetadataUnavailable
-    case folderIdentityMismatch
     case itemMetadataUnavailable
 }
 
@@ -105,7 +104,7 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             expectedResourceIdentifier: access.fingerprint?.resourceIdentifier
         )
         guard finalFingerprint == initialFingerprint else {
-            throw NativeFolderSnapshotReaderError.folderIdentityMismatch
+            throw FolderSnapshotReadError.rootIdentityMismatch
         }
 
         items.sort(by: Self.itemSortOrder)
@@ -144,12 +143,12 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
         if let expectedVolumeIdentifier,
            observed.volumeIdentifier != expectedVolumeIdentifier
         {
-            throw NativeFolderSnapshotReaderError.folderIdentityMismatch
+            throw FolderSnapshotReadError.rootIdentityMismatch
         }
         if let expectedResourceIdentifier,
            observed.resourceIdentifier != expectedResourceIdentifier
         {
-            throw NativeFolderSnapshotReaderError.folderIdentityMismatch
+            throw FolderSnapshotReadError.rootIdentityMismatch
         }
     }
 
