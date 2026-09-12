@@ -192,6 +192,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 - [ ] macOS 15 baselineで起動・基本操作
 - [ ] 現行開発macOSで起動・基本操作
+- [ ] macOS 15 baselineでDock / Finder / Applicationsのapp iconがSchneeGlass artworkとして表示され、generic fallback iconにならない
+- [ ] 現行開発macOSでapp iconに二重角丸、意図しない透明縁、欠けがない
 - [ ] Intelを正式サポートする場合はIntel実機または明示した相当検証を追加する
 
 ## 14. Signed production candidate — Developer ID path
