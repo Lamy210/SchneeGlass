@@ -95,7 +95,9 @@ let package = Package(
             name: "SchneeGlassPresentationTests",
             dependencies: [
                 "SchneeGlassPresentation",
-                "SchneeGlassDomain"
+                "SchneeGlassApplication",
+                "SchneeGlassDomain",
+                "FileDomain"
             ]
         ),
         .testTarget(
