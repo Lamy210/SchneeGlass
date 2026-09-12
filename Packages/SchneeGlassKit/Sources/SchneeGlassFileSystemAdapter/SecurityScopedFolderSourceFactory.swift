@@ -4,18 +4,30 @@ import SchneeGlassDomain
 
 public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
     private let resourceAccessor: any SecurityScopedResourceAccessing
+    private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
 
     public init() {
         self.resourceAccessor = FoundationSecurityScopedResourceAccessor()
+        self.runtimeIdentityReader = POSIXRuntimeDirectoryIdentityReader()
     }
 
-    init(resourceAccessor: any SecurityScopedResourceAccessing) {
+    init(
+        resourceAccessor: any SecurityScopedResourceAccessing,
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
+    ) {
         self.resourceAccessor = resourceAccessor
+        self.runtimeIdentityReader = runtimeIdentityReader
     }
 
     public func createSource(for selectedURL: URL) async throws -> FolderSource {
         let url = selectedURL.standardizedFileURL
-        let initialFingerprint = try await requiredFingerprint(for: url)
+        let initialRuntimeIdentity = await runtimeIdentityReader.identity(for: url)
+        let initialFallbackFingerprint: ResourceFingerprint?
+        if initialRuntimeIdentity == nil {
+            initialFallbackFingerprint = try await requiredFingerprint(for: url)
+        } else {
+            initialFallbackFingerprint = nil
+        }
         let initialPersistentIdentity = await optionalPersistentIdentity(for: url)
 
         let bookmarkData: Data
@@ -25,16 +37,23 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
             throw FolderSourceCreationError.bookmarkCreationFailed
         }
 
-        // Bookmark creation is an async boundary. The selected pathname can be replaced while this
-        // actor is suspended, so bind the bookmark only to a resource whose current-boot identity
-        // stayed stable across the operation. Persistent metadata is supplemental and is captured
-        // only from that same stable resource.
-        let finalFingerprint = try await requiredFingerprint(for: url)
-        let finalPersistentIdentity = await optionalPersistentIdentity(for: url)
-        guard finalFingerprint == initialFingerprint else {
-            throw FolderSourceCreationError.resourceIdentityUnavailable
+        // Bookmark creation is an async boundary. Prefer descriptor-derived POSIX identity so a
+        // pathname replacement cannot bind the new bookmark to a different physical directory. If
+        // descriptor identity is unavailable, retain the existing Foundation resource-ID fallback.
+        if let initialRuntimeIdentity {
+            guard let finalRuntimeIdentity = await runtimeIdentityReader.identity(for: url),
+                  finalRuntimeIdentity == initialRuntimeIdentity
+            else {
+                throw FolderSourceCreationError.resourceIdentityUnavailable
+            }
+        } else {
+            let finalFingerprint = try await requiredFingerprint(for: url)
+            guard finalFingerprint == initialFallbackFingerprint else {
+                throw FolderSourceCreationError.resourceIdentityUnavailable
+            }
         }
 
+        let finalPersistentIdentity = await optionalPersistentIdentity(for: url)
         if let initialPersistentIdentity,
            let finalPersistentIdentity,
            initialPersistentIdentity != finalPersistentIdentity
