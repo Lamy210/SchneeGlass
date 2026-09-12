@@ -57,7 +57,7 @@ public enum ConfigurationBackupRestoreResult: Hashable, Sendable {
 }
 
 enum WorkspaceConfigurationMutationPolicy {
-    static func canAddGlass(
+    static func allowsMutation(
         isMutatingConfiguration: Bool,
         requiresConfigurationRecovery: Bool
     ) -> Bool {
@@ -75,11 +75,15 @@ public final class SchneeGlassWorkspaceModel {
     public private(set) var requiresConfigurationRecovery = false
     public private(set) var userMessage: String?
 
-    public var canAddGlass: Bool {
-        WorkspaceConfigurationMutationPolicy.canAddGlass(
+    public var canMutateConfiguration: Bool {
+        WorkspaceConfigurationMutationPolicy.allowsMutation(
             isMutatingConfiguration: isMutatingConfiguration,
             requiresConfigurationRecovery: requiresConfigurationRecovery
         )
+    }
+
+    public var canAddGlass: Bool {
+        canMutateConfiguration
     }
 
     private let createGlassUseCase: CreateGlassUseCase
@@ -137,7 +141,7 @@ public final class SchneeGlassWorkspaceModel {
             await applyRestoreResult(result)
         } catch {
             requiresConfigurationRecovery = true
-            userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
+            userMessage = Self.configurationRecoveryRequiredMessage
         }
     }
 
@@ -193,9 +197,7 @@ public final class SchneeGlassWorkspaceModel {
 
     public func addGlass() async {
         guard canAddGlass else {
-            if requiresConfigurationRecovery {
-                userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before adding a Glass."
-            }
+            presentConfigurationRecoveryRequirementIfNeeded()
             return
         }
 
@@ -223,9 +225,10 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func removeGlass(id: GlassID) async {
-        guard !isMutatingConfiguration,
+        guard canMutateConfiguration,
               !isDropBusy(glassID: id)
         else {
+            presentConfigurationRecoveryRequirementIfNeeded()
             return
         }
 
@@ -257,6 +260,10 @@ public final class SchneeGlassWorkspaceModel {
         glassID: GlassID,
         placement: GlassPlacement
     ) async -> GlassPlacementPersistenceResult {
+        if requiresConfigurationRecovery {
+            presentConfigurationRecoveryRequirementIfNeeded()
+            return .failed
+        }
         guard !isMutatingConfiguration else {
             return .busy
         }
@@ -289,6 +296,10 @@ public final class SchneeGlassWorkspaceModel {
         guard !glasses.isEmpty else {
             return .noGlasses
         }
+        if requiresConfigurationRecovery {
+            presentConfigurationRecoveryRequirementIfNeeded()
+            return .failed
+        }
         guard !isMutatingConfiguration else {
             return .busy
         }
@@ -319,7 +330,7 @@ public final class SchneeGlassWorkspaceModel {
         glassID: GlassID,
         sourceURLs: [URL]
     ) async -> DropPlan {
-        guard !isMutatingConfiguration,
+        guard canMutateConfiguration,
               let session = sessions[glassID],
               !isDropBusy(glassID: glassID)
         else {
@@ -335,7 +346,7 @@ public final class SchneeGlassWorkspaceModel {
         let plan = await session.previewDrop(sourceURLs: sourceURLs)
 
         guard dropPlanningTracker.isCurrent(planningToken, for: glassID),
-              !isMutatingConfiguration,
+              canMutateConfiguration,
               !isDropBusy(glassID: glassID),
               sessions[glassID] === session
         else {
@@ -358,12 +369,13 @@ public final class SchneeGlassWorkspaceModel {
         glassID: GlassID,
         sourceURLs: [URL]
     ) async -> Bool {
-        guard !isMutatingConfiguration,
+        guard canMutateConfiguration,
               let session = sessions[glassID],
               !isDropBusy(glassID: glassID),
               dropExecutionGate.begin(glassID)
         else {
             updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+            presentConfigurationRecoveryRequirementIfNeeded()
             return false
         }
         dropPlanningTracker.invalidate(glassID)
@@ -565,6 +577,13 @@ public final class SchneeGlassWorkspaceModel {
         glasses[index].interactionState = state
     }
 
+    private func presentConfigurationRecoveryRequirementIfNeeded() {
+        guard requiresConfigurationRecovery else {
+            return
+        }
+        userMessage = Self.configurationRecoveryRequiredMessage
+    }
+
     private var hasActiveCopy: Bool {
         if dropExecutionGate.hasActiveExecution {
             return true
@@ -624,6 +643,9 @@ public final class SchneeGlassWorkspaceModel {
         }
     }
 
+    private static let configurationRecoveryRequiredMessage =
+        "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
+
     private static func copyFailureMessage(
         _ failure: CopyItemFailure,
         succeededCount: Int
@@ -669,7 +691,7 @@ public final class SchneeGlassWorkspaceModel {
         case .invalidConfiguration:
             return "SchneeGlass couldn't create a valid Glass for this folder."
         case .configurationLoadFailed:
-            return "SchneeGlass couldn't read its configuration. Open Recovery before trying again."
+            return configurationRecoveryRequiredMessage
         case .folderAccess:
             return "SchneeGlass couldn't access this folder. Choose it again to reconnect."
         case .eventStreamFailed:
