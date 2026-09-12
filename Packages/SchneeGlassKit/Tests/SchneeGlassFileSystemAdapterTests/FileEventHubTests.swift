@@ -37,8 +37,14 @@ func fileEventCallbackContextOwnershipIsBalanced() {
     let pair = AsyncStream<FileEvent>.makeStream()
     var box: FSEventCallbackBox? = FSEventCallbackBox(continuation: pair.continuation)
     weak var weakBox: FSEventCallbackBox? = box
-    let info = Unmanaged.passUnretained(box!).toOpaque()
-    let rawInfo = UnsafeRawPointer(info)
+
+    let rawInfo: UnsafeRawPointer
+    if let box {
+        rawInfo = UnsafeRawPointer(Unmanaged.passUnretained(box).toOpaque())
+    } else {
+        Issue.record("Expected callback box")
+        return
+    }
 
     let retainedInfo = FSEventCallbackContextOwnership.retain(rawInfo)
     #expect(retainedInfo == rawInfo)
