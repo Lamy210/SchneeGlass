@@ -1,6 +1,7 @@
 import FileDomain
 import Foundation
 import SchneeGlassApplication
+import SchneeGlassPOSIXSupport
 
 struct DropSourceInspection: Sendable {
     let candidate: DropCandidate
@@ -30,13 +31,16 @@ protocol DropFileSystemInspecting: Sendable {
 actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
     private let fileManager: FileManager
     private let sourceLeases: SourceFileLeaseRegistry?
+    private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
 
     init(
         fileManager: FileManager = .default,
-        sourceLeases: SourceFileLeaseRegistry? = nil
+        sourceLeases: SourceFileLeaseRegistry? = nil,
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
     ) {
         self.fileManager = fileManager
         self.sourceLeases = sourceLeases
+        self.runtimeIdentityReader = runtimeIdentityReader
     }
 
     func inspectSource(at url: URL) async -> DropSourceInspection {
@@ -176,7 +180,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
         }
     }
 
-    func destinationDescriptor(for access: FolderAccessHandle) -> DestinationDescriptor? {
+    func destinationDescriptor(for access: FolderAccessHandle) async -> DestinationDescriptor? {
         let destination = access.url.standardizedFileURL
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory),
@@ -185,15 +189,43 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
             return nil
         }
 
+        let expectedRuntimeIdentity = access.runtimeDirectoryIdentity
+        if let expectedRuntimeIdentity {
+            guard await runtimeIdentityMatches(
+                expected: expectedRuntimeIdentity,
+                url: destination
+            ) else {
+                return nil
+            }
+        }
+
         do {
-            let values = try destination.resourceValues(forKeys: [
-                .fileResourceIdentifierKey,
+            var resourceKeys: Set<URLResourceKey> = [
                 .volumeIsLocalKey,
                 .volumeIsRemovableKey,
                 .volumeIsReadOnlyKey,
                 .volumeSupportsCaseSensitiveNamesKey,
                 .volumeSupportsExclusiveRenamingKey,
-            ])
+            ]
+            if expectedRuntimeIdentity == nil,
+               access.fingerprint?.resourceIdentifier != nil
+            {
+                resourceKeys.insert(.fileResourceIdentifierKey)
+            }
+
+            let values = try destination.resourceValues(forKeys: resourceKeys)
+
+            if let expectedRuntimeIdentity {
+                // Bracket path-based capability reads with the identity captured when the
+                // security-scoped access was acquired. Preview/planning may fail conservatively,
+                // while the execution lease remains the final mutation authority.
+                guard await runtimeIdentityMatches(
+                    expected: expectedRuntimeIdentity,
+                    url: destination
+                ) else {
+                    return nil
+                }
+            }
 
             let locationKind: StorageLocationKind
             if values.volumeIsLocal == false {
@@ -206,14 +238,32 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
             let isWritable = values.volumeIsReadOnly != true
                 && fileManager.isWritableFile(atPath: destination.path)
-            let hasDirectoryIdentity = values.fileResourceIdentifier != nil
+
+            let fallbackResourceIdentifier: String?
+            if expectedRuntimeIdentity == nil,
+               let expectedResourceIdentifier = access.fingerprint?.resourceIdentifier
+            {
+                guard let observedResourceIdentifier = values.fileResourceIdentifier.map({
+                    String(describing: $0)
+                }),
+                observedResourceIdentifier == expectedResourceIdentifier
+                else {
+                    return nil
+                }
+                fallbackResourceIdentifier = observedResourceIdentifier
+            } else {
+                fallbackResourceIdentifier = nil
+            }
+
+            let hasDirectoryIdentity = expectedRuntimeIdentity != nil
+                || fallbackResourceIdentifier != nil
             let supportsSafeDestinationCommit = hasDirectoryIdentity
                 && values.volumeSupportsExclusiveRenaming == true
 
             return DestinationDescriptor(
                 glassID: access.glassID,
                 folderIdentity: FolderIdentity(
-                    resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) },
+                    resourceIdentifier: fallbackResourceIdentifier,
                     standardizedURL: destination
                 ),
                 url: destination,
@@ -231,6 +281,17 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
     func itemExists(at url: URL) -> Bool {
         fileManager.fileExists(atPath: url.standardizedFileURL.path)
+    }
+
+    private func runtimeIdentityMatches(
+        expected: RuntimeDirectoryIdentity,
+        url: URL
+    ) async -> Bool {
+        guard let observed = await runtimeIdentityReader.identity(for: url) else {
+            return false
+        }
+        return observed.device == expected.deviceIdentifier
+            && observed.inode == expected.objectIdentifier
     }
 }
 
