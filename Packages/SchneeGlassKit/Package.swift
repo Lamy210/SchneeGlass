@@ -112,7 +112,8 @@ let package = Package(
                     name: "SnapshotTesting",
                     package: "swift-snapshot-testing"
                 )
-            ]
+            ],
+            exclude: ["__Snapshots__"]
         ),
         .testTarget(
             name: "SchneeGlassPOSIXSupportTests",
