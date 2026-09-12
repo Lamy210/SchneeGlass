@@ -20,7 +20,11 @@ func nativeDropPreviewDoesNotAcquireSourceLeaseAuthority() async throws {
 
     let leases = SourceFileLeaseRegistry()
     let planner = NativeDropPlanningAdapter(sourceLeases: leases)
-    let access = FolderAccessHandle(glassID: GlassID(), url: destinationDirectory)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destinationDirectory,
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destinationDirectory)
+    )
 
     let preview = await planner.preview(
         sourceURLs: [source],
