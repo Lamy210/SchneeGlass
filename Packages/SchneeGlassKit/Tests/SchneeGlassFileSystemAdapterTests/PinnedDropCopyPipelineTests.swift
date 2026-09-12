@@ -26,7 +26,8 @@ func pinnedDropCopyPipelineSharesPlanningAndExecutionLeaseAuthority() async thro
     let glassID = GlassID()
     let destinationAccess = FolderAccessHandle(
         glassID: glassID,
-        url: destinationDirectory
+        url: destinationDirectory,
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destinationDirectory)
     )
 
     let drop = await pipeline.dropPlanning.plan(
