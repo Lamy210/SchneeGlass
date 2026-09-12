@@ -207,6 +207,7 @@ jobs:
           rm -rf "$FIXTURE"
           mkdir -p "$FIXTURE"
 
+          GITHUB_ACTIONS_APP_ID='15368'
           CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
           COMPATIBILITY='Compatibility / macOS 15 / App Build'
 
@@ -216,7 +217,9 @@ jobs:
             "protection": {
               "required_status_checks": {
                 "contexts": ["$CANONICAL"],
-                "checks": []
+                "checks": [
+                  {"context": "$CANONICAL", "app_id": $GITHUB_ACTIONS_APP_ID}
+                ]
               }
             }
           }
@@ -229,7 +232,7 @@ jobs:
                 "type": "required_status_checks",
                 "parameters": {
                   "required_status_checks": [
-                    {"context": "$COMPATIBILITY", "integration_id": 15368}
+                    {"context": "$COMPATIBILITY", "integration_id": $GITHUB_ACTIONS_APP_ID}
                   ],
                   "strict_required_status_checks_policy": true
                 }
@@ -241,6 +244,7 @@ jobs:
           bash Scripts/verify-release-required-checks.sh \
             "$FIXTURE/branch.json" \
             "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"
 
@@ -250,6 +254,7 @@ jobs:
           if bash Scripts/verify-release-required-checks.sh \
             "$FIXTURE/branch.json" \
             "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"; then
             echo 'Required-check validator unexpectedly accepted a missing compatibility check.' >&2
@@ -261,10 +266,55 @@ jobs:
             "protected": true,
             "protection": {
               "required_status_checks": {
+                "contexts": ["$CANONICAL", "$COMPATIBILITY"],
+                "checks": []
+              }
+            }
+          }
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted source-unbound classic contexts.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
                 "contexts": [],
                 "checks": [
-                  {"context": "$CANONICAL"},
-                  {"context": "$COMPATIBILITY"}
+                  {"context": "$CANONICAL", "app_id": 99999},
+                  {"context": "$COMPATIBILITY", "app_id": $GITHUB_ACTIONS_APP_ID}
+                ]
+              }
+            }
+          }
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted the canonical check from another app.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
+                "contexts": [],
+                "checks": [
+                  {"context": "$CANONICAL", "app_id": $GITHUB_ACTIONS_APP_ID},
+                  {"context": "$COMPATIBILITY", "app_id": $GITHUB_ACTIONS_APP_ID}
                 ]
               }
             }
@@ -273,6 +323,7 @@ jobs:
           bash Scripts/verify-release-required-checks.sh \
             "$FIXTURE/branch.json" \
             "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"
 
@@ -328,6 +379,7 @@ jobs:
         run: |
           BRANCH_JSON="$RUNNER_TEMP/main-branch.json"
           RULES_PAGES_JSON="$RUNNER_TEMP/main-rules-pages.json"
+          GITHUB_ACTIONS_APP_ID='15368'
           CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
           COMPATIBILITY='Compatibility / macOS 15 / App Build'
 
@@ -341,6 +393,7 @@ jobs:
           bash Scripts/verify-release-required-checks.sh \
             "$BRANCH_JSON" \
             "$RULES_PAGES_JSON" \
+            "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"
 
