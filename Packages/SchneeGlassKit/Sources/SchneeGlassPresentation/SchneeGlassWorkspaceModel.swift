@@ -140,8 +140,7 @@ public final class SchneeGlassWorkspaceModel {
             requiresConfigurationRecovery = false
             await applyRestoreResult(result)
         } catch {
-            requiresConfigurationRecovery = true
-            userMessage = Self.configurationRecoveryRequiredMessage
+            enterConfigurationRecoveryRequiredState()
         }
     }
 
@@ -218,9 +217,10 @@ public final class SchneeGlassWorkspaceModel {
             if let createError = error as? CreateGlassError,
                case .configurationLoadFailed = createError
             {
-                requiresConfigurationRecovery = true
+                enterConfigurationRecoveryRequiredState()
+            } else {
+                userMessage = Self.userFacingMessage(for: error)
             }
-            userMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -251,6 +251,12 @@ public final class SchneeGlassWorkspaceModel {
 
             glasses.removeAll { $0.id == id }
             userMessage = nil
+        } catch let error as RemoveGlassError {
+            if case .configurationLoadFailed = error {
+                enterConfigurationRecoveryRequiredState()
+            } else {
+                userMessage = "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+            }
         } catch {
             userMessage = "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
         }
@@ -284,6 +290,13 @@ public final class SchneeGlassWorkspaceModel {
                 glasses[index].placement = placement
             }
             return .updated
+        } catch let error as UpdateGlassPlacementError {
+            if case .configurationLoadFailed = error {
+                enterConfigurationRecoveryRequiredState()
+            } else {
+                userMessage = "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+            }
+            return .failed
         } catch {
             userMessage = "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
             return .failed
@@ -320,6 +333,13 @@ public final class SchneeGlassWorkspaceModel {
             }
             userMessage = nil
             return .updated
+        } catch let error as ResetGlassPositionsError {
+            if case .configurationLoadFailed = error {
+                enterConfigurationRecoveryRequiredState()
+            } else {
+                userMessage = "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
+            }
+            return .failed
         } catch {
             userMessage = "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
             return .failed
@@ -575,6 +595,11 @@ public final class SchneeGlassWorkspaceModel {
             return
         }
         glasses[index].interactionState = state
+    }
+
+    private func enterConfigurationRecoveryRequiredState() {
+        requiresConfigurationRecovery = true
+        userMessage = Self.configurationRecoveryRequiredMessage
     }
 
     private func presentConfigurationRecoveryRequirementIfNeeded() {
