@@ -195,6 +195,23 @@ actor DestinationDirectoryLeaseRegistry {
         return UUID(uuidString: String(filename[start..<end]))
     }
 
+    static func requiredResourceValueKeys(
+        expectedAccessFingerprint: ResourceFingerprint?,
+        expectedPlanResourceIdentifier: String?
+    ) -> Set<URLResourceKey> {
+        var keys: Set<URLResourceKey> = [.volumeSupportsExclusiveRenamingKey]
+
+        if expectedAccessFingerprint?.volumeIdentifier != nil {
+            keys.insert(.volumeIdentifierKey)
+        }
+        if expectedAccessFingerprint?.resourceIdentifier != nil
+            || expectedPlanResourceIdentifier != nil
+        {
+            keys.insert(.fileResourceIdentifierKey)
+        }
+        return keys
+    }
+
     private static func openDirectoryNoFollow(_ url: URL) throws -> Int32 {
         let result = url.standardizedFileURL.withUnsafeFileSystemRepresentation {
             path -> (descriptor: Int32, error: Int32)? in
@@ -256,38 +273,39 @@ actor DestinationDirectoryLeaseRegistry {
 
         let values: URLResourceValues
         do {
-            values = try url.resourceValues(forKeys: [
-                .volumeIdentifierKey,
-                .fileResourceIdentifierKey,
-                .volumeSupportsExclusiveRenamingKey,
-            ])
+            values = try url.resourceValues(forKeys: requiredResourceValueKeys(
+                expectedAccessFingerprint: expectedAccessFingerprint,
+                expectedPlanResourceIdentifier: expectedPlanResourceIdentifier
+            ))
         } catch {
             throw DestinationDirectoryLeaseError.destinationUnavailable
         }
 
-        // Bracket path-based resource-value lookup with descriptor/path checks. A replacement during
-        // lookup cannot become the pinned mutation authority without failing one of these checks.
+        // Bracket path-based capability/fallback lookup with descriptor/path checks. A replacement
+        // during lookup cannot become pinned mutation authority without failing one of these checks.
         guard descriptorMatchesPath(descriptor, url: url) else {
             throw DestinationDirectoryLeaseError.identityMismatch
         }
 
-        let observedVolumeIdentifier = values.volumeIdentifier.map { String(describing: $0) }
-        let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+        if let expectedVolumeIdentifier = expectedAccessFingerprint?.volumeIdentifier {
+            let observedVolumeIdentifier = values.volumeIdentifier.map { String(describing: $0) }
+            guard observedVolumeIdentifier == expectedVolumeIdentifier else {
+                throw DestinationDirectoryLeaseError.identityMismatch
+            }
+        }
 
-        if let expectedVolumeIdentifier = expectedAccessFingerprint?.volumeIdentifier,
-           observedVolumeIdentifier != expectedVolumeIdentifier
-        {
-            throw DestinationDirectoryLeaseError.identityMismatch
+        if let expectedResourceIdentifier = expectedAccessFingerprint?.resourceIdentifier {
+            let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+            guard observedResourceIdentifier == expectedResourceIdentifier else {
+                throw DestinationDirectoryLeaseError.identityMismatch
+            }
         }
-        if let expectedResourceIdentifier = expectedAccessFingerprint?.resourceIdentifier,
-           observedResourceIdentifier != expectedResourceIdentifier
-        {
-            throw DestinationDirectoryLeaseError.identityMismatch
-        }
-        if let expectedPlanResourceIdentifier,
-           observedResourceIdentifier != expectedPlanResourceIdentifier
-        {
-            throw DestinationDirectoryLeaseError.identityMismatch
+
+        if let expectedPlanResourceIdentifier {
+            let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+            guard observedResourceIdentifier == expectedPlanResourceIdentifier else {
+                throw DestinationDirectoryLeaseError.identityMismatch
+            }
         }
 
         guard values.volumeSupportsExclusiveRenaming == true else {

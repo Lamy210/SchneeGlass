@@ -36,7 +36,9 @@ Binding performs all of the following before mutation begins:
 - compare that runtime identity directly with the destination descriptor's `st_dev` / `st_ino`,
 - retain the acquired Foundation directory resource identifier and authoritative
   `DestinationDescriptor` resource identifier only as compatibility/fallback proof,
-- require the volume to advertise exclusive rename support.
+- request Foundation volume/directory identifier resource keys only when such fallback proof is
+  actually present,
+- always require the volume to advertise exclusive rename support.
 
 A volume identifier alone is not sufficient because it cannot distinguish two directories on the
 same filesystem. Production mutation requires at least one directory-specific proof: the acquired
@@ -63,6 +65,19 @@ single-component staging/final filenames.
 
 The planning check is conservative rather than mutation authority. The execution lease repeats the
 physical descriptor validation immediately before any destination mutation.
+
+### Execution resource-value policy
+
+The execution lease obtains `volumeSupportsExclusiveRenaming` on every supported local copy because
+atomic no-overwrite commit depends on that capability.
+
+On the normal runtime-identity path, that capability is the only Foundation root resource value the
+lease requests. `volumeIdentifier` is requested only when an acquired fallback volume identifier is
+actually supplied. `fileResourceIdentifier` is requested only when either the acquired access or the
+authoritative plan supplies a fallback directory identifier that must be compared.
+
+This keeps Foundation opaque identifiers out of the normal descriptor-authorized mutation path while
+preserving the strict fallback comparisons required for older/specialized access handles.
 
 ### Staging creation
 
@@ -140,6 +155,8 @@ Regression tests must cover:
 - destination rename/recreate between authoritative planning and execution,
 - acquired runtime identity match, mismatch, and disappearance during Drop inspection,
 - Foundation directory-resource fallback when acquired POSIX identity is unavailable,
+- runtime-identity execution requesting only exclusive-rename capability metadata,
+- fallback execution requesting only the Foundation identity dimensions that are actually expected,
 - missing directory-specific identity rejection before mutation,
 - existing final entry preservation,
 - descriptor-relative commit after destination pathname replacement,
@@ -154,6 +171,8 @@ Advantages:
 - destination mutation authority is physical rather than pathname-based,
 - normal local-filesystem planning and execution no longer depend on opaque Foundation resource-ID
   stringification when acquired POSIX runtime identity is available,
+- normal descriptor-authorized execution no longer even requests Foundation volume/directory ID keys
+  unless fallback proof requires them,
 - destination replacement cannot redirect a copy,
 - no-overwrite commit is atomic at the filesystem boundary,
 - source, destination, staging, and recovery identity now all have explicit descriptor-backed
