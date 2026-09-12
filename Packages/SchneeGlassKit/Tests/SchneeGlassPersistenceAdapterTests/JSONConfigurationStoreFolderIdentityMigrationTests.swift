@@ -45,11 +45,12 @@ func legacyBootLocalFingerprintLoadsAndIsRemovedFromNextCurrentSave() async thro
         volumeIdentifier: "boot-1-volume",
         resourceIdentifier: "boot-1-folder"
     )
+    let legacyUUID = try #require(UUID(uuidString: "73D9E73A-4833-48CB-A97B-C9B44E87A7B9"))
     let legacy = LegacyIdentityEnvelope(
         schemaVersion: JSONConfigurationStore.schemaVersion,
         glasses: [
             LegacyIdentityConfiguration(
-                id: GlassID(rawValue: UUID(uuidString: "73D9E73A-4833-48CB-A97B-C9B44E87A7B9")!),
+                id: GlassID(rawValue: legacyUUID),
                 title: "Documents",
                 source: LegacyIdentityFolderSource(
                     bookmarkData: Data("legacy-bookmark".utf8),
