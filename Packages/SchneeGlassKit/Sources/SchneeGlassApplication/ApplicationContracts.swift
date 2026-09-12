@@ -7,17 +7,20 @@ public struct FolderAccessHandle: Hashable, Sendable {
     public let glassID: GlassID
     public let url: URL
     public let fingerprint: ResourceFingerprint?
+    public let runtimeDirectoryIdentity: RuntimeDirectoryIdentity?
 
     public init(
         id: UUID = UUID(),
         glassID: GlassID,
         url: URL,
-        fingerprint: ResourceFingerprint? = nil
+        fingerprint: ResourceFingerprint? = nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity? = nil
     ) {
         self.id = id
         self.glassID = glassID
         self.url = url
         self.fingerprint = fingerprint
+        self.runtimeDirectoryIdentity = runtimeDirectoryIdentity
     }
 }
 
