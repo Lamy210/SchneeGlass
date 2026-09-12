@@ -125,10 +125,15 @@ Glass自身に閉じたValue Objectを配置します。
 配置:
 
 - `GlassID`
-- `ResourceFingerprint`
+- `ResourceFingerprint`（boot/session-local compatibility fallback）
+- `PersistentFolderIdentity`（restart-safe supplemental identity）
 - `FolderSource`
 - `GlassPlacement`
 - `GlassConfiguration`
+
+`PersistentFolderIdentity` は `volumeUUIDString` と `documentIdentifier` を保持します。Security-scoped bookmarkがprimary persistent resource referenceであり、persistent identityはreconnect / restart-safe comparisonの補助証明です。
+
+`ResourceFingerprint` はlegacy schema decodeとPOSIX runtime identityを取得できない環境のcompatibility fallbackとして残します。新規configurationへboot-local fingerprintを永続化してはいけません。
 
 禁止:
 
@@ -177,6 +182,7 @@ Domain同士を組み合わせるApplication ContractとUse Caseを配置しま�
 - Ports
 - Runtime session orchestration
 - Recovery orchestration
+- `RuntimeDirectoryIdentity`
 - `FolderAccessHandle`
 - `FolderAccessAcquisition`
 - `AuthorizedCopyBatchRequest`
@@ -185,6 +191,8 @@ Domain同士を組み合わせるApplication ContractとUse Caseを配置しま�
 - `GlassContentState`
 - `InteractionState`
 - `FileEvent`
+
+`RuntimeDirectoryIdentity` はlive authorized accessでのみ有効なprocess/session-local contractです。descriptor由来の `st_dev` / `st_ino` をApplicationへ運びますが、Codableにはせず永続化しません。
 
 `GlassContentState` / `InteractionState` は `FileDomain` の型をassociated valueとして保持するため、循環依存を避ける目的で `SchneeGlassDomain` ではなくApplication Layerへ配置します。
 
@@ -228,10 +236,14 @@ Darwin / Foundationだけに依存するshared infrastructure primitiveです。
 配置:
 
 - `PhysicalStateStore`
+- `POSIXDirectoryIdentity`
+- `POSIXDirectoryIdentityReader`
 - app-owned physical directory traversal
 - `O_NOFOLLOW` regular-file read
 - same-directory atomic state write
 - physical regular-file listing / removal
+
+`POSIXDirectoryIdentity` は `st_dev` + `st_ino` によるprocess-local physical directory identityです。persistent identityとして保存してはいけません。
 
 禁止:
 
@@ -264,7 +276,9 @@ Safe Copyで実装済み:
 
 Runtimeでdestination filesystemに対するuser-visible copy mutationを実行できる唯一のConcrete Adapterです。
 
-Production Safe Copyはsource inodeとdestination directoryをdescriptorでpinし、staging作成を`openat(... O_EXCL | O_NOFOLLOW)`、final commitを同一directory descriptor上の`renameatx_np(... RENAME_EXCL)`で実行します。Pathnameは表示・計画上の情報であり、mutation authorityそのものとして扱いません。詳細はADR 0008を参照します。
+Folder access / snapshot root / Drop planning / destination executionのlive identityはdescriptor-derived POSIX identityをprimaryとし、Foundationのopaque resource identifiersはPOSIX runtime identity取得不可時のcompatibility fallbackだけに使用します。
+
+Production Safe Copyはsource inodeとdestination directoryをdescriptorでpinし、staging作成を`openat(... O_EXCL | O_NOFOLLOW)`、final commitを同一directory descriptor上の`renameatx_np(... RENAME_EXCL)`で実行します。Pathnameは表示・計画上の情報であり、mutation authorityそのものとして扱いません。Drop preview/planningもsymbolic-link destinationをphysical directoryとしてadvertiseしません。詳細はADR 0008を参照します。
 
 Pending-copy metadataのapp-owned state mutationは`SchneeGlassPOSIXSupport`へ委譲します。
 
@@ -332,6 +346,8 @@ FolderAccessControlling.acquire
    ↓
 FolderAccessAcquisition
    ├ FolderAccessHandle
+   │   ├ runtimeDirectoryIdentity?   // primary live proof
+   │   └ fingerprint?                // POSIX-unavailable fallback only
    └ refreshedSource?
    ↓
 Authorized operation
@@ -345,9 +361,31 @@ Acquire / Releaseは必ずbalanceさせます。
 
 Duplicate releaseはidempotentとし、二重 `stopAccessing...` は行いません。
 
-stale bookmarkをresolveした場合は`refreshedSource`を返し、Application/Persistence側で新しいBookmarkを永続化できるようにします。
+stale bookmarkをresolveした場合は`refreshedSource`を返し、Application/Persistence側で新しいBookmarkとrestart-safe persistent metadataを永続化できるようにします。
 
-Fingerprintが利用可能で、保存済みFingerprintと現在のResourceが明確に異なる場合は、同じPathを別Resourceとして暗黙採用せず`resourceReplacementDetected`として扱います。
+Identity authorityは用途ごとに分離します。
+
+```text
+Persistent resource reference
+  → security-scoped bookmark
+
+Restart-safe supplemental identity / reconnect
+  → PersistentFolderIdentity(volumeUUIDString + documentIdentifier)
+
+Live process/session continuity
+  → RuntimeDirectoryIdentity(st_dev + st_ino)
+
+POSIX runtime identity unavailable時のlive compatibility fallback
+  → ResourceFingerprint(Foundation opaque identifiers)
+```
+
+`RuntimeDirectoryIdentity` はCodableにせずconfigurationへ保存しません。`ResourceFingerprint`もboot/session-localであり、新規configurationのrestart-safe authorityには使用しません。
+
+stale bookmark refreshなどlive operationの非同期境界では、取得済みPOSIX runtime identityが変化すれば`resourceReplacementDetected`、取得済みidentityが再検証時に消失すればfail-closedします。POSIX runtime identityを取得できなかったaccessだけFoundation fingerprint comparisonへfallbackします。
+
+Pending Copy destination reconnectはpathnameやboot-local fingerprintではなく、saved / selected双方の`PersistentFolderIdentity.volumeUUIDString`と`documentIdentifier`のexact matchを要求します。記録済みpersistent dimensionを再取得できない場合もfail-closedします。
+
+詳細はADR 0010を参照します。
 
 ---
 
@@ -363,6 +401,8 @@ maximum displayed items  → 500
 ```
 
 501件目を観測した時点で列挙を打ち切り、`isTruncated = true`を返します。
+
+Snapshot root continuityは、acquired `RuntimeDirectoryIdentity` がある場合はそのPOSIX identityを列挙前後で検証します。POSIX identityが取得できないlegacy/fallback accessだけFoundation root fingerprintをbefore/after comparisonへ使用します。Direct-child `FileIdentity.resourceIdentifier` は表示/list identityであり、folder access authorityやcopy mutation authorityではありません。
 
 File classificationはmacOS上の実挙動を考慮し、次の順序とします。
 
@@ -429,6 +469,8 @@ AuthorizedCopyBatchRequest
 ├ plan: CopyBatchPlan
 └ destinationAccess: FolderAccessHandle
 ```
+
+`DestinationDescriptor.folderIdentity.resourceIdentifier` はFoundation fallback proofが必要な場合だけ保持します。通常のPOSIX-backed planではnilであり、execution authorityは`FolderAccessHandle.runtimeDirectoryIdentity`とpinned destination descriptorです。
 
 これにより `FileDomain` は `SchneeGlassApplication` へ逆依存しません。
 
@@ -527,8 +569,11 @@ Application Support/<bundle-id>/
 - app-owned root / descendant directoryはphysical directoryのみ
 - state leafは`O_NOFOLLOW`でopenしたphysical regular fileのみ
 - unsafe owned-state topologyはfail-closed
+- `RuntimeDirectoryIdentity`は永続化しない
+- legacy `source.fingerprint`はdecode compatibilityのみ維持し、新規saveでは永続化しない
+- reconnect用restart-safe supplemental identityは`PersistentFolderIdentity`として保存する
 
-詳細はADR 0007を参照します。
+詳細はADR 0007とADR 0010を参照します。
 
 ---
 
