@@ -67,9 +67,9 @@ jobs:
               --package-path Packages/SchneeGlassKit \
               --filter WorkspaceVisualSnapshotTests
           } 2>&1 | tee "$log"
-          grep -F 'SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT' "$log"
-          grep -F 'SCHNEEGLASS_DESIGN_SYSTEM_SNAPSHOT_RESULT' "$log"
-          grep -F 'SCHNEEGLASS_WORKSPACE_SNAPSHOT_RESULT' "$log"
+          bash Scripts/verify-visual-snapshots.sh DesktopGlassVisualSnapshotTests "$log"
+          bash Scripts/verify-visual-snapshots.sh DesignSystemComponentVisualSnapshotTests "$log"
+          bash Scripts/verify-visual-snapshots.sh WorkspaceVisualSnapshotTests "$log"
 
       - name: AddressSanitizer package tests
         if: github.event_name == 'pull_request'
