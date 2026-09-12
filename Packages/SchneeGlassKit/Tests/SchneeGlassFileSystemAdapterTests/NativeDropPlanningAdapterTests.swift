@@ -2,6 +2,7 @@ import FileDomain
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 import Testing
 @testable import SchneeGlassFileSystemAdapter
 
@@ -31,11 +32,36 @@ private actor FakeDropInspector: DropFileSystemInspecting {
     }
 
     func destinationDescriptor(for access: FolderAccessHandle) async -> DestinationDescriptor? {
-        destination
+        _ = access
+        return destination
     }
 
     func itemExists(at url: URL) async -> Bool {
         existingItems.contains(url.standardizedFileURL)
+    }
+}
+
+private actor DropRuntimeIdentityReader: RuntimeDirectoryIdentityReading {
+    private let values: [POSIXDirectoryIdentity?]
+    private var index = 0
+    private(set) var observedURLs: [URL] = []
+
+    init(_ values: [POSIXDirectoryIdentity?]) {
+        self.values = values
+    }
+
+    func identity(for url: URL) async -> POSIXDirectoryIdentity? {
+        observedURLs.append(url.standardizedFileURL)
+        guard !values.isEmpty else {
+            return nil
+        }
+        let current = min(index, values.count - 1)
+        index += 1
+        return values[current]
+    }
+
+    func urls() -> [URL] {
+        observedURLs
     }
 }
 
@@ -60,6 +86,24 @@ private func dropDestination(
         )
     )
     return (access, descriptor)
+}
+
+private func makeDropDestinationRoot(_ name: String) throws -> URL {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent(
+            "schneeglass-drop-destination-\(name)-\(UUID().uuidString)",
+            isDirectory: true
+        )
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
+private func acquiredRuntimeIdentity(for url: URL) throws -> RuntimeDirectoryIdentity {
+    let identity = try #require(POSIXDirectoryIdentityReader.identity(at: url))
+    return RuntimeDirectoryIdentity(
+        deviceIdentifier: identity.device,
+        objectIdentifier: identity.inode
+    )
 }
 
 @Test
@@ -185,6 +229,132 @@ func nativeDropPlanningRejectsUnavailableDestination() async {
 }
 
 @Test
+func dropInspectorAcceptsDestinationMatchingAcquiredRuntimeIdentity() async throws {
+    let destination = try makeDropDestinationRoot("runtime-match")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let observed = POSIXDirectoryIdentity(device: 7, inode: 41)
+    let identityReader = DropRuntimeIdentityReader([observed, observed])
+    let inspector = FoundationDropFileSystemInspector(runtimeIdentityReader: identityReader)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destination,
+        fingerprint: nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: observed.device,
+            objectIdentifier: observed.inode
+        )
+    )
+
+    let descriptor = try #require(await inspector.destinationDescriptor(for: access))
+
+    #expect(descriptor.folderIdentity.resourceIdentifier == nil)
+    #expect(descriptor.capabilities.supportsSafeDestinationCommit == true)
+    #expect(await identityReader.urls() == [destination.standardizedFileURL, destination.standardizedFileURL])
+}
+
+@Test
+func dropInspectorRejectsDestinationThatDoesNotMatchAcquiredRuntimeIdentity() async throws {
+    let destination = try makeDropDestinationRoot("runtime-mismatch")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let identityReader = DropRuntimeIdentityReader([
+        POSIXDirectoryIdentity(device: 7, inode: 99),
+    ])
+    let inspector = FoundationDropFileSystemInspector(runtimeIdentityReader: identityReader)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destination,
+        fingerprint: nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: 7,
+            objectIdentifier: 41
+        )
+    )
+
+    #expect(await inspector.destinationDescriptor(for: access) == nil)
+    #expect(await identityReader.urls() == [destination.standardizedFileURL])
+}
+
+@Test
+func dropInspectorFailsClosedWhenAcquiredRuntimeIdentityDisappearsDuringInspection() async throws {
+    let destination = try makeDropDestinationRoot("runtime-disappears")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let observed = POSIXDirectoryIdentity(device: 7, inode: 41)
+    let identityReader = DropRuntimeIdentityReader([observed, nil])
+    let inspector = FoundationDropFileSystemInspector(runtimeIdentityReader: identityReader)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destination,
+        fingerprint: nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: observed.device,
+            objectIdentifier: observed.inode
+        )
+    )
+
+    #expect(await inspector.destinationDescriptor(for: access) == nil)
+    #expect(await identityReader.urls() == [destination.standardizedFileURL, destination.standardizedFileURL])
+}
+
+@Test
+func dropInspectorKeepsExistingDestinationVisibleWithoutAcquiredDirectoryProof() async throws {
+    let destination = try makeDropDestinationRoot("missing-proof")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let inspector = FoundationDropFileSystemInspector()
+    let access = FolderAccessHandle(glassID: GlassID(), url: destination)
+    let descriptor = try #require(await inspector.destinationDescriptor(for: access))
+
+    #expect(descriptor.folderIdentity.resourceIdentifier == nil)
+    #expect(descriptor.capabilities.supportsSafeDestinationCommit == false)
+}
+
+@Test
+func dropInspectorUsesFoundationDirectoryIdentifierOnlyAsFallback() async throws {
+    let destination = try makeDropDestinationRoot("foundation-fallback")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let values = try destination.resourceValues(forKeys: [.fileResourceIdentifierKey])
+    let resourceIdentifier = try #require(
+        values.fileResourceIdentifier.map { String(describing: $0) }
+    )
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destination,
+        fingerprint: ResourceFingerprint(
+            volumeIdentifier: nil,
+            resourceIdentifier: resourceIdentifier
+        )
+    )
+    let inspector = FoundationDropFileSystemInspector()
+
+    let descriptor = try #require(await inspector.destinationDescriptor(for: access))
+
+    #expect(descriptor.folderIdentity.resourceIdentifier == resourceIdentifier)
+    #expect(descriptor.capabilities.supportsSafeDestinationCommit == true)
+}
+
+@Test
+func dropInspectorRejectsMismatchedFoundationFallbackIdentity() async throws {
+    let destination = try makeDropDestinationRoot("foundation-mismatch")
+    defer { try? FileManager.default.removeItem(at: destination) }
+
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destination,
+        fingerprint: ResourceFingerprint(
+            volumeIdentifier: nil,
+            resourceIdentifier: "not-the-selected-directory"
+        )
+    )
+    let inspector = FoundationDropFileSystemInspector()
+
+    #expect(await inspector.destinationDescriptor(for: access) == nil)
+}
+
+@Test
 func realDropInspectorPlansLocalRegularFileWithoutMutation() async throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("schneeglass-drop-plan-\(UUID().uuidString)", isDirectory: true)
@@ -196,7 +366,11 @@ func realDropInspectorPlansLocalRegularFileWithoutMutation() async throws {
 
     let source = sourceDirectory.appendingPathComponent("payload.txt")
     try Data("payload".utf8).write(to: source)
-    let access = FolderAccessHandle(glassID: GlassID(), url: destinationDirectory)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: destinationDirectory,
+        runtimeDirectoryIdentity: try acquiredRuntimeIdentity(for: destinationDirectory)
+    )
     let planner = NativeDropPlanningAdapter()
 
     let result = await planner.plan(sourceURLs: [source], destinationAccess: access)
@@ -206,6 +380,7 @@ func realDropInspectorPlansLocalRegularFileWithoutMutation() async throws {
         return
     }
     #expect(plan.destination.capabilities.supportsSafeDestinationCommit == true)
+    #expect(plan.destination.folderIdentity.resourceIdentifier == nil)
     #expect(plan.items.count == 1)
     #expect(plan.items[0].destinationFilename == "payload.txt")
     #expect(!FileManager.default.fileExists(
