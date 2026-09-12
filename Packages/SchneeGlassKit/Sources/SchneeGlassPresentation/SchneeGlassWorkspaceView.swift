@@ -474,7 +474,7 @@ private struct FilePreviewGrid: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SchneeGlassSpacing.messageContent) {
+        VStack(alignment: .leading, spacing: SchneeGlassSpacing.fileGridSection) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: SchneeGlassSpacing.fileGrid) {
                 ForEach(snapshot.items) { item in
                     VStack(spacing: SchneeGlassSpacing.compactContent) {
