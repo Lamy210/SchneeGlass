@@ -14,7 +14,7 @@ private func makePinnedCopyRoot() throws -> URL {
 
 private func makePinnedCopySystem(
     root: URL
-) -> (
+) throws -> (
     sourceDirectory: URL,
     destinationDirectory: URL,
     operationsDirectory: URL,
@@ -26,8 +26,21 @@ private func makePinnedCopySystem(
     let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
     let destinationDirectory = root.appendingPathComponent("destination", isDirectory: true)
     let operationsDirectory = root.appendingPathComponent("operations", isDirectory: true)
+    try FileManager.default.createDirectory(
+        at: sourceDirectory,
+        withIntermediateDirectories: true
+    )
+    try FileManager.default.createDirectory(
+        at: destinationDirectory,
+        withIntermediateDirectories: true
+    )
+
     let glassID = GlassID()
-    let access = FolderAccessHandle(glassID: glassID, url: destinationDirectory)
+    let access = FolderAccessHandle(
+        glassID: glassID,
+        url: destinationDirectory,
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destinationDirectory)
+    )
     let leases = SourceFileLeaseRegistry()
     let planner = NativeDropPlanningAdapter(sourceLeases: leases)
     let recoveryStore = JSONPendingCopyStore(baseDirectory: operationsDirectory)
@@ -46,30 +59,12 @@ private func makePinnedCopySystem(
     )
 }
 
-private func preparePinnedCopyDirectories(
-    sourceDirectory: URL,
-    destinationDirectory: URL
-) throws {
-    try FileManager.default.createDirectory(
-        at: sourceDirectory,
-        withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-        at: destinationDirectory,
-        withIntermediateDirectories: true
-    )
-}
-
 @Test
 func pinnedSourceCopyCopiesUnchangedSourceAndReleasesLease() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let system = makePinnedCopySystem(root: root)
-    try preparePinnedCopyDirectories(
-        sourceDirectory: system.sourceDirectory,
-        destinationDirectory: system.destinationDirectory
-    )
+    let system = try makePinnedCopySystem(root: root)
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
     let payload = Data("unchanged-payload".utf8)
@@ -102,11 +97,7 @@ func pinnedSourceCopyRejectsSamePathSameSizeReplacement() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let system = makePinnedCopySystem(root: root)
-    try preparePinnedCopyDirectories(
-        sourceDirectory: system.sourceDirectory,
-        destinationDirectory: system.destinationDirectory
-    )
+    let system = try makePinnedCopySystem(root: root)
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
     let original = Data("ORIGINAL".utf8)
@@ -144,11 +135,7 @@ func pinnedSourceCopyRejectsInPlaceEditAfterPlanning() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let system = makePinnedCopySystem(root: root)
-    try preparePinnedCopyDirectories(
-        sourceDirectory: system.sourceDirectory,
-        destinationDirectory: system.destinationDirectory
-    )
+    let system = try makePinnedCopySystem(root: root)
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
     let original = Data("ORIGINAL".utf8)
@@ -183,11 +170,7 @@ func rejectedDropPlanReleasesPreparedSourceLease() async throws {
     let root = try makePinnedCopyRoot()
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let system = makePinnedCopySystem(root: root)
-    try preparePinnedCopyDirectories(
-        sourceDirectory: system.sourceDirectory,
-        destinationDirectory: system.destinationDirectory
-    )
+    let system = try makePinnedCopySystem(root: root)
 
     let source = system.sourceDirectory.appendingPathComponent("payload.txt", isDirectory: false)
     try Data("payload".utf8).write(to: source)

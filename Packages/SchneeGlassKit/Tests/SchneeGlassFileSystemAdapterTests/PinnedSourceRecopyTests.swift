@@ -32,7 +32,11 @@ func pinnedSourceCopyCanCopyPreviouslyCommittedOutputAgain() async throws {
     let payload = Data("copy-me-twice".utf8)
     try payload.write(to: source)
 
-    let firstAccess = FolderAccessHandle(glassID: GlassID(), url: firstDestination)
+    let firstAccess = FolderAccessHandle(
+        glassID: GlassID(),
+        url: firstDestination,
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: firstDestination)
+    )
     let firstDrop = await planner.plan(
         sourceURLs: [source],
         destinationAccess: firstAccess
@@ -51,7 +55,11 @@ func pinnedSourceCopyCanCopyPreviouslyCommittedOutputAgain() async throws {
     let firstOutput = firstDestination.appendingPathComponent("payload.txt", isDirectory: false)
     #expect(try Data(contentsOf: firstOutput) == payload)
 
-    let secondAccess = FolderAccessHandle(glassID: GlassID(), url: secondDestination)
+    let secondAccess = FolderAccessHandle(
+        glassID: GlassID(),
+        url: secondDestination,
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: secondDestination)
+    )
     let secondDrop = await planner.plan(
         sourceURLs: [firstOutput],
         destinationAccess: secondAccess
