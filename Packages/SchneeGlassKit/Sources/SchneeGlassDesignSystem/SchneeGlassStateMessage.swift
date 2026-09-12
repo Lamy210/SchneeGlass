@@ -24,7 +24,6 @@ public struct SchneeGlassStateMessage: View {
             Image(systemName: systemImage)
                 .font(SchneeGlassTypography.largeSymbol)
                 .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
 
             Text(title)
                 .font(SchneeGlassTypography.emphasizedBody)
