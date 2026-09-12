@@ -179,12 +179,13 @@ struct DesktopGlassSurface: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .unavailable:
+            let presentation = GlassUnavailablePresentation.current
             VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Spacer()
                 SchneeGlassStateMessage(
                     systemImage: "externaldrive.badge.exclamationmark",
-                    title: "Folder unavailable",
-                    detail: "The Glass stays here so it can be reconnected without losing its layout.",
+                    title: presentation.title,
+                    detail: presentation.detail,
                     detailAlignment: .center
                 )
                 Spacer()
