@@ -54,6 +54,52 @@ private func destinationPlan(
 }
 
 @Test
+func destinationLeaseRuntimeIdentityRequiresOnlyExclusiveRenameCapability() {
+    let keys = DestinationDirectoryLeaseRegistry.requiredResourceValueKeys(
+        expectedAccessFingerprint: nil,
+        expectedPlanResourceIdentifier: nil
+    )
+
+    #expect(keys == Set([.volumeSupportsExclusiveRenamingKey]))
+}
+
+@Test
+func destinationLeaseFoundationFallbackRequestsOnlyExpectedIdentityDimensions() {
+    let volumeOnly = DestinationDirectoryLeaseRegistry.requiredResourceValueKeys(
+        expectedAccessFingerprint: ResourceFingerprint(
+            volumeIdentifier: "volume-a",
+            resourceIdentifier: nil
+        ),
+        expectedPlanResourceIdentifier: nil
+    )
+    #expect(volumeOnly == Set([
+        .volumeSupportsExclusiveRenamingKey,
+        .volumeIdentifierKey,
+    ]))
+
+    let resourceOnly = DestinationDirectoryLeaseRegistry.requiredResourceValueKeys(
+        expectedAccessFingerprint: ResourceFingerprint(
+            volumeIdentifier: nil,
+            resourceIdentifier: "folder-a"
+        ),
+        expectedPlanResourceIdentifier: nil
+    )
+    #expect(resourceOnly == Set([
+        .volumeSupportsExclusiveRenamingKey,
+        .fileResourceIdentifierKey,
+    ]))
+
+    let planFallback = DestinationDirectoryLeaseRegistry.requiredResourceValueKeys(
+        expectedAccessFingerprint: nil,
+        expectedPlanResourceIdentifier: "folder-a"
+    )
+    #expect(planFallback == Set([
+        .volumeSupportsExclusiveRenamingKey,
+        .fileResourceIdentifierKey,
+    ]))
+}
+
+@Test
 func destinationLeaseRejectsVolumeOnlyIdentityBeforeMutation() async throws {
     let root = try destinationIdentityRoot("volume-only")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -108,14 +154,10 @@ func destinationLeaseAcceptsMatchingAcquiredRuntimeIdentityWithoutFoundationDire
 }
 
 @Test
-func destinationLeaseRejectsRuntimeIdentityThatNoLongerMatchesDestination() async throws {
+func destinationLeaseRejectsRuntimeIdentityThatNoLongerMatchesDestinationWithoutFoundationDirectoryID() async throws {
     let root = try destinationIdentityRoot("runtime-mismatch")
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let values = try root.resourceValues(forKeys: [.fileResourceIdentifierKey])
-    let resourceIdentifier = try #require(
-        values.fileResourceIdentifier.map { String(describing: $0) }
-    )
     let currentIdentity = try runtimeIdentity(for: root)
     let glassID = GlassID()
     let access = FolderAccessHandle(
@@ -127,11 +169,7 @@ func destinationLeaseRejectsRuntimeIdentityThatNoLongerMatchesDestination() asyn
             objectIdentifier: currentIdentity.objectIdentifier &+ 1
         )
     )
-    let plan = try destinationPlan(
-        root: root,
-        glassID: glassID,
-        resourceIdentifier: resourceIdentifier
-    )
+    let plan = try destinationPlan(root: root, glassID: glassID)
     let request = AuthorizedCopyBatchRequest(plan: plan, destinationAccess: access)
     let leases = DestinationDirectoryLeaseRegistry()
 
