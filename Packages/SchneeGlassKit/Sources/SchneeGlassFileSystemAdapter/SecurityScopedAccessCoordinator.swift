@@ -130,10 +130,16 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
 
         let actualRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(for: resolved.url)
 
+        // Descriptor-derived POSIX identity is the primary live-operation proof. Foundation's
+        // opaque identifiers are observed only when that stronger runtime identity is unavailable.
         let actualFingerprint: ResourceFingerprint?
-        do {
-            actualFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
-        } catch {
+        if actualRuntimeDirectoryIdentity == nil {
+            do {
+                actualFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+            } catch {
+                actualFingerprint = nil
+            }
+        } else {
             actualFingerprint = nil
         }
 
