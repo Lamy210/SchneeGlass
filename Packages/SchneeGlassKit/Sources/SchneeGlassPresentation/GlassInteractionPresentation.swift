@@ -160,7 +160,7 @@ struct GlassInteractionPresentation: Equatable {
             return surface == .workspace ? "No copy is needed." : nil
         case .destinationUnavailable:
             return surface == .workspace
-                ? "Reconnect the Glass before copying files."
+                ? "Restart SchneeGlass to retry. If the folder stays unavailable, remove this Glass and add the folder again."
                 : nil
         case .destinationReadOnly:
             return surface == .workspace
