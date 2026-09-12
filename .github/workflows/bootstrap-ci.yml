@@ -50,6 +50,18 @@ jobs:
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
+      - name: Visual snapshot regression
+        env:
+          SCHNEEGLASS_VISUAL_SNAPSHOTS: '1'
+          SNAPSHOT_TESTING_RECORD: never
+        run: |
+          log="$RUNNER_TEMP/visual-snapshots.log"
+          swift test \
+            --package-path Packages/SchneeGlassKit \
+            --filter DesktopGlassVisualSnapshotTests \
+            2>&1 | tee "$log"
+          grep -F 'SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT' "$log"
+
       - name: AddressSanitizer package tests
         if: github.event_name == 'pull_request'
         run: |

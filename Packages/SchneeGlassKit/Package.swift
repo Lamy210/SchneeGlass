@@ -25,6 +25,10 @@ let package = Package(
         .package(
             url: "https://github.com/sindresorhus/KeyboardShortcuts",
             exact: "2.4.0"
+        ),
+        .package(
+            url: "https://github.com/pointfreeco/swift-snapshot-testing",
+            exact: "1.19.4"
         )
     ],
     targets: [
@@ -92,6 +96,19 @@ let package = Package(
             dependencies: [
                 "SchneeGlassPresentation",
                 "SchneeGlassDomain"
+            ]
+        ),
+        .testTarget(
+            name: "SchneeGlassVisualSnapshotTests",
+            dependencies: [
+                "SchneeGlassPresentation",
+                "SchneeGlassApplication",
+                "SchneeGlassDomain",
+                "FileDomain",
+                .product(
+                    name: "SnapshotTesting",
+                    package: "swift-snapshot-testing"
+                )
             ]
         ),
         .testTarget(

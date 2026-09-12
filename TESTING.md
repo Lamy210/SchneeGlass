@@ -278,15 +278,100 @@ limit   = 0.500000s
 
 ---
 
-## 9. Test-only Dependencies
+## 9. Visual Snapshot Regression
+
+`SchneeGlassVisualSnapshotTests`は、SwiftUIの代表的なvisual stateをPNG referenceとして固定し、PRで意図しないUI regressionを検出します。
+
+Reference image:
+
+```text
+Packages/SchneeGlassKit/Tests/
+└ SchneeGlassVisualSnapshotTests/
+  ├ DesktopGlassVisualSnapshotTests.swift
+  └ __Snapshots__/
+```
+
+Initial contract:
+
+```text
+Desktop Glass
+├ empty / light
+├ ready / light
+├ unavailable / light
+├ failed / light
+├ drop valid / light
+├ drop invalid / light
+├ empty / dark
+└ ready / dark
+```
+
+Indeterminate `ProgressView`を含むloading/copying状態は、animation phaseによる非決定的pixel差をreferenceへ持ち込まないため初期baselineから除外します。
+
+### Canonical Renderer
+
+Visual snapshot comparisonは次の環境だけをcanonicalとします。
+
+```text
+GitHub-hosted macOS 26
+Xcode 26.6
+fixed 440 x 320 hosting size
+fixed light / dark NSAppearance
+fixed en_US_POSIX locale
+disabled SwiftUI animations
+synthetic fixture data only
+```
+
+SwiftUI / AppKit / SF Symbols / font rasterizationはOSごとの差があるため、macOS 15 compatibility jobではPNG比較を行いません。通常package test / ASanでは`SCHNEEGLASS_VISUAL_SNAPSHOTS`未設定のためvisual renderingをskipしますが、test target自体はcompileされます。
+
+### Verification
+
+Canonical CIではrecord modeを禁止します。
+
+```bash
+SCHNEEGLASS_VISUAL_SNAPSHOTS=1 \
+SNAPSHOT_TESTING_RECORD=never \
+swift test \
+  --package-path Packages/SchneeGlassKit \
+  --filter DesktopGlassVisualSnapshotTests
+```
+
+Referenceが存在しない場合もpixel diffがある場合もfailします。CIが差分を新しい正解として自動承認してはいけません。
+
+Filter mismatch等で0 testのままgreenになることを防ぐため、visual testは次のmarkerをCI logへ出力します。
+
+```text
+SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT ...
+```
+
+CIはmarkerの存在も確認します。
+
+### Updating References
+
+Reference更新はUI変更を行った開発者が明示的に実行します。
+
+```bash
+bash Scripts/update-visual-snapshots.sh
+```
+
+ScriptはXcode 26.6以外ではrecordを拒否し、record後に`SNAPSHOT_TESTING_RECORD=never`で再検証します。
+
+更新後は必ずGit diff上のPNGを人間が確認してからcommitします。通常PR CIからreference imageをpushする運用は禁止します。
+
+Fixtureへ実ユーザーPath、Bookmark Data、Credential、顧客情報を含めません。
+
+---
+
+## 10. Test-only Dependencies
 
 Runtime BinaryへTest dependencyを持ち込みません。
 
 新規test dependencyは、標準library / Foundationだけでは表現しにくいtest capabilityに限定し、追加理由とtransitive dependencyを同一PRで確認します。
 
+Visual snapshotでは`SnapshotTesting`を`SchneeGlassVisualSnapshotTests`だけから参照し、Production targetへ第三者test型を漏らしません。
+
 ---
 
-## 10. Current CI Matrix
+## 11. Current CI Matrix
 
 ### Pull Request — Bootstrap CI
 
@@ -298,6 +383,7 @@ File Safety Guard
 Release Metadata Guard
 Production release credential-free preflight
 Swift Package Tests
+Canonical Visual Snapshot Regression
 AddressSanitizer Package Tests
 Xcode project validation
 Debug app build
@@ -305,6 +391,8 @@ Release app build
 Sandbox / bundle baseline
 Unsigned CI artifact
 ```
+
+Visual snapshotはcanonical macOS 26 / Xcode 26.6 jobのみで検証し、referenceはread-onlyです。
 
 別jobでmacOS 15 compatibility package tests / app buildも実行します。
 
@@ -475,7 +563,7 @@ Integration / UI automation
 
 ---
 
-## 11. Manual QA
+## 12. Manual QA
 
 CIでは完全に代替できない実ユーザー操作とartifact確認は [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) をRelease gateとして使用します。
 
@@ -500,7 +588,7 @@ Manual QAが自動Safety testの代替になることも、自動testがManual Q
 
 ---
 
-## 12. Release原則
+## 13. Release原則
 
 Safety TestをskipしてGreenにすることは禁止します。
 

@@ -89,15 +89,73 @@ Removal Strategy:
 
 Apple/Swift標準APIだけで同等の簡潔性・検証容易性が得られる場合は導入しない。
 
-## 3. Test-only Candidates
+## 3. Test-only Dependencies
 
-### SnapshotTesting
+### SnapshotTesting 1.19.4
 
 用途:
 
-- SwiftUI visual regression
+- macOS SwiftUI visual regression
+- Pull Request上でDesktop Glassのvisual state差分をPNGとして確認する
 
-Runtime Binaryへ持ち込まない。
+導入対象:
+
+```text
+SchneeGlassVisualSnapshotTests only
+```
+
+Runtime Binaryへ持ち込まず、Production targetから`SnapshotTesting`型を参照しません。
+
+Pin:
+
+```text
+exact 1.19.4
+revision 59a99c458de4d2dee580529b61b4f78dca7b7fa6
+```
+
+採用理由:
+
+- SwiftUI/AppKitのpixel snapshotとdiffを自前実装する価値が低い
+- macOS `NSView` image snapshotを標準strategyとして提供する
+- Swift Testing integrationを持つ
+- SPM対応
+- MIT License
+- 1.19.4は2026-07-28時点のlatest stable release
+
+CI Policy:
+
+- Visual snapshot verificationはcanonical macOS 26 / Xcode 26.6のみで実行する
+- macOS 15 compatibility jobでは画像比較しない
+- CIは`SNAPSHOT_TESTING_RECORD=never`でreference imageを更新しない
+- reference image更新は`Scripts/update-visual-snapshots.sh`から明示的に実行する
+- OS / SwiftUI / AppKit / SF Symbols差を製品UI regressionと誤認しないため、referenceはcanonical toolchain単位で管理する
+
+Resolved Package Graph:
+
+`SnapshotTesting` product自体は追加package productをlinkしませんが、upstream package manifestがoptional sibling products用dependencyを宣言するため、SwiftPM resolverは次もlockします。
+
+```text
+swift-custom-dump 1.3.3
+swift-syntax 603.0.0
+xctest-dynamic-overlay 1.6.1
+```
+
+`swift-custom-dump`は互換runnerで解決可能な1.3.3をlockします。新しいreleaseへ無条件更新するとSwift tools baselineが上がり、macOS 15 / Xcode 16.4 compatibility resolutionを壊す可能性があるため、SnapshotTesting更新時にgraph全体を再検証します。
+
+Security / Privacy:
+
+- Network entitlementを追加しない
+- App Sandbox entitlementを変更しない
+- snapshot fixtureへ実ユーザーPath / customer data / bookmark dataを含めない
+- image referenceにはdeterministicな架空fixtureだけを描画する
+
+Removal Strategy:
+
+- `SchneeGlassVisualSnapshotTests`とreference PNGを削除
+- `Scripts/update-visual-snapshots.sh`を削除
+- canonical CIのvisual snapshot stepを削除
+- `Package.swift`のSnapshotTesting dependency/product参照を削除
+- `Package.resolved`のSnapshotTesting関連pinを削除
 
 ### swift-clocks
 
