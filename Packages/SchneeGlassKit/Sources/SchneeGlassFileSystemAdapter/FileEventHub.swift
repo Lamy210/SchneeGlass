@@ -102,6 +102,13 @@ public actor FileEventHub: FileEventStreaming {
         let callbackBox = FSEventCallbackBox(continuation: pair.continuation)
         let callbackInfo = Unmanaged.passUnretained(callbackBox).toOpaque()
 
+        // `info` is initially unretained. Keep this local owner alive for the whole setup method;
+        // FSEventStreamCreate synchronously invokes the context retain callback when it accepts the
+        // context, after which CoreServices owns the callback box until the stream is released.
+        defer {
+            withExtendedLifetime(callbackBox) {}
+        }
+
         var context = FSEventStreamContext(
             version: 0,
             info: callbackInfo,
@@ -119,18 +126,15 @@ public actor FileEventHub: FileEventStreaming {
             | FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents)
             | FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes)
 
-        let createdStream = withExtendedLifetime(callbackBox) {
-            FSEventStreamCreate(
-                kCFAllocatorDefault,
-                schneeGlassFSEventCallback,
-                &context,
-                [access.url.path] as CFArray,
-                FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-                latency,
-                creationFlags
-            )
-        }
-        guard let stream = createdStream else {
+        guard let stream = FSEventStreamCreate(
+            kCFAllocatorDefault,
+            schneeGlassFSEventCallback,
+            &context,
+            [access.url.path] as CFArray,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            latency,
+            creationFlags
+        ) else {
             throw FileEventHubError.streamCreationFailed
         }
 
