@@ -1,9 +1,7 @@
-import AppKit
 import FileDomain
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
-import SnapshotTesting
 import SwiftUI
 import Testing
 @testable import SchneeGlassPresentation
@@ -15,7 +13,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func emptyLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -27,7 +25,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func readyLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -39,7 +37,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func unavailableLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -51,7 +49,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func failedLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -63,7 +61,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func dropValidLight() throws {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -91,7 +89,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func dropInvalidLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -106,7 +104,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func emptyDark() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -118,7 +116,7 @@ struct DesktopGlassVisualSnapshotTests {
 
     @Test
     func readyDark() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -126,10 +124,6 @@ struct DesktopGlassVisualSnapshotTests {
             entry: makeEntry(contentState: .ready(makeSnapshot(items: makeItems()))),
             colorScheme: .dark
         )
-    }
-
-    private var visualSnapshotsAreEnabled: Bool {
-        ProcessInfo.processInfo.environment["SCHNEEGLASS_VISUAL_SNAPSHOTS"] == "1"
     }
 
     private var fixtureURL: URL {
@@ -146,9 +140,17 @@ struct DesktopGlassVisualSnapshotTests {
         line: UInt = #line,
         column: UInt = #column
     ) {
-        let rootView = ZStack {
-            Color(nsColor: .windowBackgroundColor)
-
+        VisualSnapshotHarness.assertView(
+            size: snapshotSize,
+            colorScheme: colorScheme,
+            padding: 24,
+            marker: "SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT",
+            fileID: fileID,
+            filePath: filePath,
+            testName: testName,
+            line: line,
+            column: column
+        ) {
             DesktopGlassSurface(
                 entry: entry,
                 canRemove: true,
@@ -159,37 +161,7 @@ struct DesktopGlassVisualSnapshotTests {
                 onCancelDrop: {},
                 onPerformDrop: { _ in }
             )
-            .padding(24)
         }
-        .frame(width: snapshotSize.width, height: snapshotSize.height)
-        .environment(\.colorScheme, colorScheme)
-        .environment(\.locale, Locale(identifier: "en_US_POSIX"))
-        .transaction { transaction in
-            transaction.disablesAnimations = true
-        }
-
-        let hostingView = NSHostingView(rootView: rootView)
-        hostingView.frame = NSRect(origin: .zero, size: snapshotSize)
-        hostingView.appearance = NSAppearance(
-            named: colorScheme == .dark ? .darkAqua : .aqua
-        )
-        hostingView.layoutSubtreeIfNeeded()
-
-        print("SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT \(testName)")
-        assertSnapshot(
-            of: hostingView,
-            as: .image(
-                precision: 0.995,
-                perceptualPrecision: 0.99,
-                size: snapshotSize
-            ),
-            named: "macos-26-xcode-26.6",
-            fileID: fileID,
-            file: filePath,
-            testName: testName,
-            line: line,
-            column: column
-        )
     }
 
     private func makeEntry(
