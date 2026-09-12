@@ -1,6 +1,7 @@
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 import Testing
 @testable import SchneeGlassFileSystemAdapter
 
@@ -55,6 +56,22 @@ private actor RefreshIdentityResourceAccessor: SecurityScopedResourceAccessing {
     }
 }
 
+private struct UnavailableRuntimeDirectoryIdentityReader: RuntimeDirectoryIdentityReading {
+    func identity(for url: URL) async -> POSIXDirectoryIdentity? {
+        _ = url
+        return nil
+    }
+}
+
+private func foundationFallbackCoordinator(
+    accessor: RefreshIdentityResourceAccessor
+) -> SecurityScopedAccessCoordinator {
+    SecurityScopedAccessCoordinator(
+        resourceAccessor: accessor,
+        runtimeIdentityReader: UnavailableRuntimeDirectoryIdentityReader()
+    )
+}
+
 private func refreshIdentitySource(
     at url: URL,
     fingerprint: ResourceFingerprint?
@@ -81,7 +98,7 @@ func staleBookmarkRefreshRejectsResourceReplacementAndStopsScope() async {
         resolvedURL: url,
         fingerprints: [before, after]
     )
-    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+    let coordinator = foundationFallbackCoordinator(accessor: accessor)
 
     do {
         _ = try await coordinator.acquire(
@@ -112,7 +129,7 @@ func staleBookmarkRefreshFailsWhenObservedIdentityDisappears() async {
         resolvedURL: url,
         fingerprints: [fingerprint, nil]
     )
-    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+    let coordinator = foundationFallbackCoordinator(accessor: accessor)
 
     do {
         _ = try await coordinator.acquire(
@@ -139,7 +156,7 @@ func staleLegacyBookmarkWithoutObservedIdentityKeepsCompatibility() async throws
         resolvedURL: url,
         fingerprints: [nil]
     )
-    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+    let coordinator = foundationFallbackCoordinator(accessor: accessor)
 
     let acquisition = try await coordinator.acquire(
         source: refreshIdentitySource(at: url, fingerprint: nil),
@@ -170,7 +187,7 @@ func staleLegacyVolumeOnlyBookmarkKeepsCompatibilityWithoutPersistingRuntimeIden
         resolvedURL: url,
         fingerprints: [volumeOnly]
     )
-    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+    let coordinator = foundationFallbackCoordinator(accessor: accessor)
 
     let acquisition = try await coordinator.acquire(
         source: refreshIdentitySource(at: url, fingerprint: volumeOnly),
