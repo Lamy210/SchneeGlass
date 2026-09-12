@@ -51,9 +51,11 @@ jobs:
         run: swift test --package-path Packages/SchneeGlassKit
 
       - name: Visual snapshot regression
+        id: visual_snapshots
         env:
           SCHNEEGLASS_VISUAL_SNAPSHOTS: '1'
           SNAPSHOT_TESTING_RECORD: never
+          SNAPSHOT_ARTIFACTS: ${{ runner.temp }}/visual-snapshot-artifacts
         run: |
           log="$RUNNER_TEMP/visual-snapshots.log"
           {
@@ -70,6 +72,18 @@ jobs:
           bash Scripts/verify-visual-snapshots.sh DesktopGlassVisualSnapshotTests "$log"
           bash Scripts/verify-visual-snapshots.sh DesignSystemComponentVisualSnapshotTests "$log"
           bash Scripts/verify-visual-snapshots.sh WorkspaceVisualSnapshotTests "$log"
+
+      - name: Upload visual snapshot failure diagnostics
+        if: ${{ failure() && steps.visual_snapshots.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchneeGlass-visual-snapshot-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/visual-snapshot-artifacts
+            ${{ runner.temp }}/visual-snapshots.log
+            Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__
+          if-no-files-found: error
+          retention-days: 3
 
       - name: AddressSanitizer package tests
         if: github.event_name == 'pull_request'
