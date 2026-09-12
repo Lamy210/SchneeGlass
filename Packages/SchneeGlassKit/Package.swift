@@ -104,6 +104,7 @@ let package = Package(
             name: "SchneeGlassVisualSnapshotTests",
             dependencies: [
                 "SchneeGlassPresentation",
+                "SchneeGlassDesignSystem",
                 "SchneeGlassApplication",
                 "SchneeGlassDomain",
                 "FileDomain",

@@ -19,24 +19,35 @@ fi
 export SCHNEEGLASS_VISUAL_SNAPSHOTS=1
 export SNAPSHOT_TESTING_RECORD=all
 
-printf 'Recording SchneeGlass visual snapshots with %s...\n' "$actual_xcode"
-set +e
-swift test \
-  --package-path "$package_path" \
-  --filter DesktopGlassVisualSnapshotTests
-record_status=$?
-set -e
+snapshot_suites=(
+  DesktopGlassVisualSnapshotTests
+  DesignSystemComponentVisualSnapshotTests
+)
 
-# SnapshotTesting intentionally reports failures while record mode is enabled.
-if [[ ! -d "$snapshot_path" ]]; then
-  printf 'Snapshot recording did not create %s (swift test exit %d).\n' "$snapshot_path" "$record_status" >&2
-  exit 1
-fi
+printf 'Recording SchneeGlass visual snapshots with %s...\n' "$actual_xcode"
+for suite in "${snapshot_suites[@]}"; do
+  printf 'Recording %s...\n' "$suite"
+  set +e
+  swift test \
+    --package-path "$package_path" \
+    --filter "$suite"
+  record_status=$?
+  set -e
+
+  # SnapshotTesting intentionally reports failures while record mode is enabled.
+  if [[ ! -d "$snapshot_path" ]]; then
+    printf 'Snapshot recording did not create %s for %s (swift test exit %d).\n' \
+      "$snapshot_path" "$suite" "$record_status" >&2
+    exit 1
+  fi
+done
 
 printf 'Verifying freshly recorded snapshots...\n'
 export SNAPSHOT_TESTING_RECORD=never
-swift test \
-  --package-path "$package_path" \
-  --filter DesktopGlassVisualSnapshotTests
+for suite in "${snapshot_suites[@]}"; do
+  swift test \
+    --package-path "$package_path" \
+    --filter "$suite"
+done
 
 printf 'Visual snapshots updated successfully. Review the PNG diff before committing.\n'
