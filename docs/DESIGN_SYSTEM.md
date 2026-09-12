@@ -16,7 +16,7 @@ Reusable visual components / styles
 Presentation screens
 ```
 
-This document defines the contract for the first layer. Shared components are introduced separately so token migration does not also change view structure.
+Each layer is introduced independently so token migration, component extraction, and intentional visual redesign remain separately reviewable changes.
 
 ## Design principles
 
@@ -116,6 +116,47 @@ Stable component geometry such as menu hit frames, file icon geometry, and adapt
 
 Semantic system typography roles. These use SwiftUI system fonts rather than fixed custom point sizes where possible.
 
+## Component rules
+
+A Design System component owns reusable **visual structure** only. It must not switch on Domain/Application state or decide user-facing business meaning.
+
+Prefer a shared component when:
+
+- the internal visual structure is genuinely the same on multiple surfaces
+- differences can be expressed through neutral visual inputs
+- extracting it reduces duplicated visual policy without introducing mode flags
+
+Do not create a shared component merely because two views currently have similar code. Workspace/Desktop layout composition remains separate when their structure or interaction hierarchy differs.
+
+Avoid components with branching such as:
+
+```swift
+if isDesktop { ... }
+if isWorkspace { ... }
+```
+
+Prefer Presentation to supply neutral inputs:
+
+```text
+FileKind
+  ↓ GlassItemPresentation
+systemImage + accessibilityLabel
+  ↓
+SchneeGlassFileTile(systemImage:title:)
+```
+
+Interaction callbacks, context menus, Domain IDs, and application state remain owned by Presentation unless the interaction itself is a stable reusable UI primitive.
+
+### `SchneeGlassStateMessage`
+
+Reusable symbol/title/detail stack for Empty, Unavailable, and Failure content. The caller owns the actual copy, state mapping, surrounding layout, and text alignment policy.
+
+### `SchneeGlassFileTile`
+
+Reusable file-tile visuals. The caller owns FileDomain mapping, gestures, context menus, and accessibility action semantics.
+
+`GlassItemPresentation` in `SchneeGlassPresentation` is the adapter that maps `FileKind` into the neutral symbol/accessibility inputs used around this component. This keeps `FileDomain` out of the Design System target.
+
 ## Compatibility facade
 
 `SchneeGlassDesignTokens` is retained temporarily as a deprecated compatibility facade for the original public constants.
@@ -140,7 +181,7 @@ This separation prevents reusable visual components from acquiring Domain/Applic
 
 ## Visual regression policy
 
-Token adoption must preserve existing rendering unless a PR explicitly declares a design change.
+Design System refactors must preserve existing rendering unless a PR explicitly declares a design change.
 
 For refactor-only Design System PRs:
 
@@ -148,4 +189,4 @@ For refactor-only Design System PRs:
 - canonical visual snapshot CI must pass in record-never mode
 - visual changes require a separate, reviewable design PR
 
-Future Design System component snapshots should test component variants exhaustively, while screen-level snapshots should cover representative compositions rather than every cross-product of states.
+Design System component snapshots should test component variants exhaustively, while screen-level snapshots should cover representative compositions rather than every cross-product of states.
