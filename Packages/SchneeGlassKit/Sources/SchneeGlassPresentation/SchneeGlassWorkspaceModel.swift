@@ -56,6 +56,15 @@ public enum ConfigurationBackupRestoreResult: Hashable, Sendable {
     case failed
 }
 
+enum WorkspaceConfigurationMutationPolicy {
+    static func canAddGlass(
+        isMutatingConfiguration: Bool,
+        requiresConfigurationRecovery: Bool
+    ) -> Bool {
+        !isMutatingConfiguration && !requiresConfigurationRecovery
+    }
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -63,7 +72,15 @@ public final class SchneeGlassWorkspaceModel {
     public private(set) var isCreatingGlass = false
     public private(set) var isRestoring = false
     public private(set) var isMutatingConfiguration = false
+    public private(set) var requiresConfigurationRecovery = false
     public private(set) var userMessage: String?
+
+    public var canAddGlass: Bool {
+        WorkspaceConfigurationMutationPolicy.canAddGlass(
+            isMutatingConfiguration: isMutatingConfiguration,
+            requiresConfigurationRecovery: requiresConfigurationRecovery
+        )
+    }
 
     private let createGlassUseCase: CreateGlassUseCase
     private let restoreApplicationUseCase: RestoreApplicationUseCase
@@ -116,8 +133,10 @@ public final class SchneeGlassWorkspaceModel {
 
         do {
             let result = try await restoreApplicationUseCase.execute()
+            requiresConfigurationRecovery = false
             await applyRestoreResult(result)
         } catch {
+            requiresConfigurationRecovery = true
             userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
         }
     }
@@ -157,10 +176,12 @@ public final class SchneeGlassWorkspaceModel {
             glasses.removeAll(keepingCapacity: false)
 
             let result = try await restoreApplicationUseCase.execute()
+            requiresConfigurationRecovery = false
             await applyRestoreResult(result)
             return .restored
         } catch {
             if backupWasRestored {
+                requiresConfigurationRecovery = true
                 userMessage = "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
                 return .restoredNeedsRestart
             }
@@ -171,7 +192,10 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     public func addGlass() async {
-        guard !isMutatingConfiguration else {
+        guard canAddGlass else {
+            if requiresConfigurationRecovery {
+                userMessage = "SchneeGlass couldn't read its saved configuration. Use Recovery before adding a Glass."
+            }
             return
         }
 
@@ -189,6 +213,11 @@ public final class SchneeGlassWorkspaceModel {
             }
             try await activate(seed)
         } catch {
+            if let createError = error as? CreateGlassError,
+               case .configurationLoadFailed = createError
+            {
+                requiresConfigurationRecovery = true
+            }
             userMessage = Self.userFacingMessage(for: error)
         }
     }
