@@ -278,45 +278,72 @@ private struct GlassPreviewSurface: View {
             EmptyView()
 
         case .hovered:
+            let presentation = GlassInteractionPresentation.hovered(surface: .workspace)
             DropOverlaySurface {
                 ProgressView()
                     .controlSize(.small)
-                Text("Checking files…")
+                Text(presentation.title)
                     .font(.callout.weight(.medium))
             }
 
         case let .dropValid(plan):
-            DropOverlaySurface {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                Text(copyLabel(for: plan))
-                    .font(.callout.weight(.semibold))
-                Text("Original files stay where they are.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let presentation = GlassInteractionPresentation.dropValid(
+                plan: plan,
+                glassTitle: entry.title,
+                surface: .workspace
+            ) {
+                DropOverlaySurface {
+                    if case let .symbol(systemImage) = presentation.indicator {
+                        Image(systemName: systemImage)
+                            .font(.title2)
+                    }
+                    Text(presentation.title)
+                        .font(.callout.weight(.semibold))
+                    if let detail = presentation.detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
         case let .dropInvalid(reason):
+            let presentation = GlassInteractionPresentation.dropInvalid(
+                reason: reason,
+                glassTitle: entry.title,
+                surface: .workspace
+            )
             DropOverlaySurface {
-                Image(systemName: "nosign")
-                    .font(.title2)
-                Text(rejectionTitle(for: reason))
+                if case let .symbol(systemImage) = presentation.indicator {
+                    Image(systemName: systemImage)
+                        .font(.title2)
+                }
+                Text(presentation.title)
                     .font(.callout.weight(.semibold))
-                Text(rejectionDetail(for: reason))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                if let detail = presentation.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
             }
 
         case let .copying(progress):
+            let presentation = GlassInteractionPresentation.copying(
+                progress: progress,
+                glassTitle: entry.title,
+                surface: .workspace
+            )
             DropOverlaySurface {
                 ProgressView()
                     .controlSize(.regular)
-                Text("Copying to \(entry.title)…")
+                Text(presentation.title)
                     .font(.callout.weight(.semibold))
-                Text(copyProgressLabel(progress))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let detail = presentation.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -327,31 +354,13 @@ private struct GlassPreviewSurface: View {
             Label("Copying", systemImage: "doc.on.doc")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        } else {
-            switch entry.contentState {
-            case .loading:
-                ProgressView()
-                    .controlSize(.small)
-            case .ready:
-                Label("Connected", systemImage: "checkmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .empty:
-                Label("Empty", systemImage: "tray")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .unavailable:
-                Label("Unavailable", systemImage: "exclamationmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case let .failed(error):
-                Label(
-                    GlassContentFailurePresentation.make(for: error).status,
-                    systemImage: "arrow.clockwise.circle"
-                )
+        } else if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
+            Label(presentation.label, systemImage: presentation.systemImage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            }
+        } else {
+            ProgressView()
+                .controlSize(.small)
         }
     }
 
@@ -413,85 +422,6 @@ private struct GlassPreviewSurface: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 100)
-        }
-    }
-
-    private func copyLabel(for plan: DropPlan) -> String {
-        guard case let .copy(batch) = plan else {
-            return "Copy to \(entry.title)"
-        }
-        if batch.items.count == 1 {
-            return "Copy \(batch.items[0].destinationFilename) to \(entry.title)"
-        }
-        return "Copy \(batch.items.count) files to \(entry.title)"
-    }
-
-    private func copyProgressLabel(_ progress: CopyProgress) -> String {
-        if progress.totalCount <= 1 {
-            return progress.currentFilename
-        }
-        return "\(progress.currentIndex) of \(progress.totalCount) · \(progress.currentFilename)"
-    }
-
-    private func rejectionTitle(for reason: DropRejection) -> String {
-        switch reason {
-        case .unsupportedFolder:
-            return "Folders aren't supported yet"
-        case .unsupportedPackage:
-            return "Packages aren't supported yet"
-        case .unsupportedSymbolicLink:
-            return "Symbolic links aren't supported"
-        case .unsupportedItem:
-            return "This item can't be copied"
-        case .tooManyItems:
-            return "Too many files to copy at once"
-        case .collision:
-            return "A file with this name already exists"
-        case .containsSameDirectoryItem:
-            return "Already in \(entry.title)"
-        case .destinationUnavailable:
-            return "Folder unavailable"
-        case .destinationReadOnly:
-            return "Folder is read-only"
-        case .destinationCopySafetyUnsupported:
-            return "Copy isn't supported for this folder"
-        case .networkDestinationUnsupported:
-            return "Network folders aren't supported for copy yet"
-        case .sourceUnavailable:
-            return "A source file is unavailable"
-        case .sourceCapacityReached:
-            return "Copy capacity is busy"
-        case .cloudPlaceholderUnavailable:
-            return "Download the cloud file first"
-        }
-    }
-
-    private func rejectionDetail(for reason: DropRejection) -> String {
-        switch reason {
-        case let .tooManyItems(maximum):
-            return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
-        case let .sourceCapacityReached(maximum):
-            return "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
-        case .collision:
-            return "Nothing will be overwritten."
-        case .unsupportedFolder:
-            return "v0.1 accepts regular files only."
-        case .unsupportedPackage, .unsupportedSymbolicLink, .unsupportedItem:
-            return "The dropped item was not changed."
-        case .containsSameDirectoryItem:
-            return "No copy is needed."
-        case .destinationUnavailable:
-            return "Reconnect the Glass before copying files."
-        case .destinationReadOnly:
-            return "SchneeGlass can't write to this folder."
-        case .destinationCopySafetyUnsupported:
-            return "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
-        case .networkDestinationUnsupported:
-            return "Open the folder in Finder instead."
-        case .sourceUnavailable:
-            return "The source may have moved or become inaccessible."
-        case .cloudPlaceholderUnavailable:
-            return "SchneeGlass won't start an unexpected cloud download."
         }
     }
 }
