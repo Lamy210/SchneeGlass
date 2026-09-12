@@ -153,6 +153,7 @@ GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibili
 
 - [Architecture](ARCHITECTURE.md)
 - [Testing](TESTING.md)
+- [UI Gallery](docs/UI_GALLERY.md)
 - [Security](SECURITY.md)
 - [Dependencies](DEPENDENCIES.md)
 - [Release Policy](RELEASE.md)
