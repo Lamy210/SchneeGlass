@@ -434,7 +434,9 @@ public final class SchneeGlassWorkspaceModel {
         )
 
         do {
-            let result = try await session.executeCopy(copyPlan)
+            let result = try await session.executeCopy(copyPlan) { [weak self] progress in
+                await self?.updateInteraction(.copying(progress), for: glassID)
+            }
             updateInteraction(.idle, for: glassID)
 
             if let failure = result.failed {

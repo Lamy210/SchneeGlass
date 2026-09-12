@@ -137,6 +137,13 @@ public actor GlassRuntimeSession {
     }
 
     public func executeCopy(_ plan: CopyBatchPlan) async throws -> CopyBatchResult {
+        try await executeCopy(plan, onProgress: { _ in })
+    }
+
+    public func executeCopy(
+        _ plan: CopyBatchPlan,
+        onProgress: @escaping CopyProgressHandler
+    ) async throws -> CopyBatchResult {
         guard lifecycle == .running else {
             await abandonPendingPlanIfOwned(plan)
             throw GlassCopyExecutionError.sessionNotRunning
@@ -160,7 +167,7 @@ public actor GlassRuntimeSession {
         )
         let fileCopying = self.fileCopying
         let task = Task {
-            await fileCopying.copy(request)
+            await fileCopying.copy(request, onProgress: onProgress)
         }
         activeCopyTask = task
 

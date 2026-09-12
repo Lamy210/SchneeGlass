@@ -236,6 +236,13 @@ actor SafeFileCopyEngine: FileCopying {
     }
 
     func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+        await copy(request, onProgress: { _ in })
+    }
+
+    func copy(
+        _ request: AuthorizedCopyBatchRequest,
+        onProgress: @escaping CopyProgressHandler
+    ) async -> CopyBatchResult {
         switch await preflight(request) {
         case let .failed(index, failure):
             return CopyBatchResult(
@@ -252,6 +259,13 @@ actor SafeFileCopyEngine: FileCopying {
             succeeded.reserveCapacity(preparedItems.count)
 
             for (index, item) in preparedItems.enumerated() {
+                await onProgress(
+                    CopyProgress(
+                        currentIndex: index + 1,
+                        totalCount: preparedItems.count,
+                        currentFilename: item.plan.destinationFilename
+                    )
+                )
                 let result = await execute(item, request: request)
                 switch result {
                 case let .success(success):

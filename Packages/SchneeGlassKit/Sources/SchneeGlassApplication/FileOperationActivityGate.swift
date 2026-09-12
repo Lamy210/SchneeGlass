@@ -73,6 +73,13 @@ public actor ActivityTrackedFileCopying: FileCopying {
     }
 
     public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+        await copy(request, onProgress: { _ in })
+    }
+
+    public func copy(
+        _ request: AuthorizedCopyBatchRequest,
+        onProgress: @escaping CopyProgressHandler
+    ) async -> CopyBatchResult {
         guard await activityGate.beginCopy() else {
             // Authoritative Drop planning may already hold source descriptor authority. If Recovery
             // wins the race between planning and execution, release that authority immediately
@@ -91,7 +98,7 @@ public actor ActivityTrackedFileCopying: FileCopying {
             )
         }
 
-        let result = await delegate.copy(request)
+        let result = await delegate.copy(request, onProgress: onProgress)
         await activityGate.endCopy()
         return result
     }
