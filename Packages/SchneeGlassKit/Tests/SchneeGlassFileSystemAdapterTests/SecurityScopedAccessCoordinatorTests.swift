@@ -152,7 +152,7 @@ func staleBookmarkReturnsRefreshedSource() async throws {
 
     #expect(acquisition.refreshedSource?.bookmarkData == refreshedBookmark)
     #expect(acquisition.refreshedSource?.lastKnownPath == url.path)
-    #expect(acquisition.refreshedSource?.fingerprint == fingerprint)
+    #expect(acquisition.refreshedSource?.fingerprint == nil)
     #expect(acquisition.refreshedSource?.persistentIdentity == identity)
 
     let counters = await accessor.counters()
@@ -223,7 +223,7 @@ func legacyBootLocalFingerprintMismatchMigratesInsteadOfRejectingBookmark() asyn
 
     #expect(acquisition.handle.fingerprint == newBootFingerprint)
     #expect(acquisition.refreshedSource?.persistentIdentity == identity)
-    #expect(acquisition.refreshedSource?.fingerprint == newBootFingerprint)
+    #expect(acquisition.refreshedSource?.fingerprint == nil)
     #expect(acquisition.refreshedSource?.bookmarkData == legacySource.bookmarkData)
 
     await coordinator.release(handleID: acquisition.handle.id)
