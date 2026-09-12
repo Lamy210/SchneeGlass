@@ -39,6 +39,7 @@ on:
       - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-release-branch-protection.sh'
+      - 'Scripts/verify-release-required-checks.sh'
 
 permissions:
   contents: read
@@ -62,6 +63,7 @@ jobs:
           command -v bash
           command -v git
           command -v gh
+          command -v jq
           command -v shasum
 
       - name: Shell syntax
@@ -71,6 +73,7 @@ jobs:
           bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/verify-release-evidence.sh
           bash -n Scripts/verify-release-branch-protection.sh
+          bash -n Scripts/verify-release-required-checks.sh
 
       - name: Production candidate run policy fixture
         run: |
@@ -198,6 +201,149 @@ jobs:
             exit 1
           fi
 
+      - name: Required Bootstrap CI policy fixture
+        run: |
+          FIXTURE="$RUNNER_TEMP/release-required-checks-fixture"
+          rm -rf "$FIXTURE"
+          mkdir -p "$FIXTURE"
+
+          GITHUB_ACTIONS_APP_ID='15368'
+          CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
+          COMPATIBILITY='Compatibility / macOS 15 / App Build'
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
+                "contexts": ["$CANONICAL"],
+                "checks": [
+                  {"context": "$CANONICAL", "app_id": $GITHUB_ACTIONS_APP_ID}
+                ]
+              }
+            }
+          }
+          EOF
+
+          cat > "$FIXTURE/rules-pages.json" <<EOF
+          [
+            [
+              {
+                "type": "required_status_checks",
+                "parameters": {
+                  "required_status_checks": [
+                    {"context": "$COMPATIBILITY", "integration_id": $GITHUB_ACTIONS_APP_ID}
+                  ],
+                  "strict_required_status_checks_policy": true
+                }
+              }
+            ]
+          ]
+          EOF
+
+          bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"
+
+          cat > "$FIXTURE/rules-pages.json" <<'EOF'
+          [[]]
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted a missing compatibility check.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
+                "contexts": ["$CANONICAL", "$COMPATIBILITY"],
+                "checks": []
+              }
+            }
+          }
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted source-unbound classic contexts.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
+                "contexts": [],
+                "checks": [
+                  {"context": "$CANONICAL", "app_id": 99999},
+                  {"context": "$COMPATIBILITY", "app_id": $GITHUB_ACTIONS_APP_ID}
+                ]
+              }
+            }
+          }
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted the canonical check from another app.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/branch.json" <<EOF
+          {
+            "protected": true,
+            "protection": {
+              "required_status_checks": {
+                "contexts": [],
+                "checks": [
+                  {"context": "$CANONICAL", "app_id": $GITHUB_ACTIONS_APP_ID},
+                  {"context": "$COMPATIBILITY", "app_id": $GITHUB_ACTIONS_APP_ID}
+                ]
+              }
+            }
+          }
+          EOF
+          bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"
+
+          rm -rf "$FIXTURE"
+
+      - name: Governance metadata API availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH_JSON="$RUNNER_TEMP/governance-api-main-branch.json"
+          RULES_PAGES_JSON="$RUNNER_TEMP/governance-api-main-rules-pages.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$BRANCH_JSON"
+          jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null
+
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/rules/branches/main?per_page=100" \
+            > "$RULES_PAGES_JSON"
+          jq -e 'type == "array" and all(.[]; type == "array")' "$RULES_PAGES_JSON" >/dev/null
+
   publish:
     name: Promote Signed Candidate to Immutable GitHub Release
     if: >-
@@ -229,10 +375,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify current main branch protection
+      - name: Verify current main release governance
         run: |
-          MAIN_PROTECTED="$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.protected')"
+          BRANCH_JSON="$RUNNER_TEMP/main-branch.json"
+          RULES_PAGES_JSON="$RUNNER_TEMP/main-rules-pages.json"
+          GITHUB_ACTIONS_APP_ID='15368'
+          CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
+          COMPATIBILITY='Compatibility / macOS 15 / App Build'
+
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$BRANCH_JSON"
+          MAIN_PROTECTED="$(jq -r '.protected' "$BRANCH_JSON")"
           bash Scripts/verify-release-branch-protection.sh main "$MAIN_PROTECTED"
+
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/rules/branches/main?per_page=100" \
+            > "$RULES_PAGES_JSON"
+          bash Scripts/verify-release-required-checks.sh \
+            "$BRANCH_JSON" \
+            "$RULES_PAGES_JSON" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"
 
       - name: Publish validated notarized candidate
         run: bash Scripts/publish-notarized-release.sh
