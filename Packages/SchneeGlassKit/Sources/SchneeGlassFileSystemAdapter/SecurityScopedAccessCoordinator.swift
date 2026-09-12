@@ -170,14 +170,35 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
-            // Bookmark refresh is an async boundary. Runtime identity is valid for this active boot
-            // and protects that boundary; restart-safe identity protects persisted state.
+            // A directory runtime identifier protects the bookmark-refresh async boundary during
+            // this boot. Legacy sources that expose no directory identifier keep their historical
+            // bookmark-only compatibility rather than inventing stronger proof from volume identity.
             let refreshedFingerprint: ResourceFingerprint?
-            do {
-                refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
-            } catch {
-                await resourceAccessor.stopAccessing(resolved.url)
-                throw FolderAccessError.bookmarkResolutionFailed
+            if actualFingerprint?.resourceIdentifier != nil {
+                do {
+                    refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+                } catch {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.runtimeIdentityVerificationIsUnavailable(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.representsRuntimeReplacement(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.resourceReplacementDetected
+                }
+            } else {
+                refreshedFingerprint = actualFingerprint
             }
 
             let refreshedPersistentIdentity: PersistentFolderIdentity?
@@ -189,22 +210,6 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                     throw FolderAccessError.bookmarkResolutionFailed
                 }
                 refreshedPersistentIdentity = nil
-            }
-
-            if Self.runtimeIdentityVerificationIsUnavailable(
-                expected: actualFingerprint,
-                actual: refreshedFingerprint
-            ) {
-                await resourceAccessor.stopAccessing(resolved.url)
-                throw FolderAccessError.bookmarkResolutionFailed
-            }
-
-            if Self.representsRuntimeReplacement(
-                expected: actualFingerprint,
-                actual: refreshedFingerprint
-            ) {
-                await resourceAccessor.stopAccessing(resolved.url)
-                throw FolderAccessError.resourceReplacementDetected
             }
 
             if Self.persistentIdentityVerificationIsUnavailable(
