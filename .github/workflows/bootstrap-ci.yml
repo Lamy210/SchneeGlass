@@ -8,7 +8,7 @@ on:
       - 'bootstrap/**'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: bootstrap-ci-${{ github.workflow }}-${{ github.ref }}
@@ -25,8 +25,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Toolchain
         run: |
@@ -51,36 +49,6 @@ jobs:
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
-
-      - name: Bootstrap workspace snapshot references
-        if: github.event_name == 'pull_request' && github.head_ref == 'test/workspace-visual-snapshots'
-        env:
-          SCHNEEGLASS_VISUAL_SNAPSHOTS: '1'
-          SNAPSHOT_TESTING_RECORD: all
-        run: |
-          set +e
-          swift test \
-            --package-path Packages/SchneeGlassKit \
-            --filter WorkspaceVisualSnapshotTests
-          record_status=$?
-          set -e
-
-          snapshot_dir='Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__/WorkspaceVisualSnapshotTests'
-          test -d "$snapshot_dir" || {
-            echo "Snapshot bootstrap did not create $snapshot_dir (swift test exit $record_status)." >&2
-            exit 1
-          }
-
-          git add "$snapshot_dir"
-          if git diff --cached --quiet; then
-            echo 'Workspace snapshot references are already present.'
-            exit 0
-          fi
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test: record workspace visual snapshots'
-          git push origin "HEAD:${GITHUB_HEAD_REF}"
 
       - name: Visual snapshot regression
         env:
