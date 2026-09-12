@@ -107,6 +107,8 @@ struct WorkspaceVisualSnapshotTests {
                 isCreatingGlass: false,
                 isRestoring: false,
                 isMutatingConfiguration: false,
+                canAddGlass: true,
+                requiresConfigurationRecovery: false,
                 userMessage: userMessage,
                 onAddGlass: {},
                 onDismissMessage: {},
