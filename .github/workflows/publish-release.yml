@@ -278,6 +278,21 @@ jobs:
 
           rm -rf "$FIXTURE"
 
+      - name: Governance metadata API availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH_JSON="$RUNNER_TEMP/governance-api-main-branch.json"
+          RULES_PAGES_JSON="$RUNNER_TEMP/governance-api-main-rules-pages.json"
+
+          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$BRANCH_JSON"
+          jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null
+
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/rules/branches/main?per_page=100" \
+            > "$RULES_PAGES_JSON"
+          jq -e 'type == "array" and all(.[]; type == "array")' "$RULES_PAGES_JSON" >/dev/null
+
   publish:
     name: Promote Signed Candidate to Immutable GitHub Release
     if: >-
