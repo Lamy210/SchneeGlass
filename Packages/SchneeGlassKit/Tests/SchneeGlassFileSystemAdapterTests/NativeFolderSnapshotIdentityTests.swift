@@ -2,6 +2,7 @@ import FileDomain
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 import Testing
 @testable import SchneeGlassFileSystemAdapter
 
@@ -27,6 +28,25 @@ private func snapshotIdentityFingerprint(for url: URL) throws -> ResourceFingerp
         volumeIdentifier: values.volumeIdentifier.map { String(describing: $0) },
         resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
     )
+}
+
+private actor SnapshotRuntimeIdentityReader: RuntimeDirectoryIdentityReading {
+    private let values: [POSIXDirectoryIdentity?]
+    private var index = 0
+
+    init(_ values: [POSIXDirectoryIdentity?]) {
+        self.values = values
+    }
+
+    func identity(for url: URL) async -> POSIXDirectoryIdentity? {
+        _ = url
+        guard !values.isEmpty else {
+            return nil
+        }
+        let current = min(index, values.count - 1)
+        index += 1
+        return values[current]
+    }
 }
 
 @Test
@@ -109,4 +129,63 @@ func snapshotKeepsLegacyFingerprintlessAccessCompatible() async throws {
 
     #expect(snapshot.items.map(\.displayName) == ["legacy.txt"])
     #expect(snapshot.generation == 2)
+}
+
+@Test
+func snapshotRejectsPOSIXRootReplacementAcrossEnumeration() async throws {
+    let root = try makeSnapshotIdentityRoot("posix-replacement")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let child = root.appendingPathComponent("visible.txt", isDirectory: false)
+    try Data("visible".utf8).write(to: child)
+
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: root,
+        fingerprint: nil
+    )
+    let reader = SnapshotRuntimeIdentityReader([
+        POSIXDirectoryIdentity(device: 7, inode: 41),
+        POSIXDirectoryIdentity(device: 7, inode: 99),
+    ])
+
+    do {
+        _ = try await NativeFolderSnapshotReader(
+            fileManager: .default,
+            runtimeIdentityReader: reader
+        ).snapshot(for: access, generation: 3)
+        Issue.record("Expected POSIX root identity mismatch")
+    } catch let error as FolderSnapshotReadError {
+        #expect(error == .rootIdentityMismatch)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+}
+
+@Test
+func snapshotFailsClosedWhenObservedPOSIXIdentityDisappears() async throws {
+    let root = try makeSnapshotIdentityRoot("posix-missing")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: root,
+        fingerprint: nil
+    )
+    let reader = SnapshotRuntimeIdentityReader([
+        POSIXDirectoryIdentity(device: 7, inode: 41),
+        nil,
+    ])
+
+    do {
+        _ = try await NativeFolderSnapshotReader(
+            fileManager: .default,
+            runtimeIdentityReader: reader
+        ).snapshot(for: access, generation: 4)
+        Issue.record("Expected missing POSIX root identity to fail closed")
+    } catch let error as FolderSnapshotReadError {
+        #expect(error == .rootIdentityMismatch)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
 }

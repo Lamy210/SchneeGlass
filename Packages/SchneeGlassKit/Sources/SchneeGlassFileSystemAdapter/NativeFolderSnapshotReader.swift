@@ -1,6 +1,7 @@
 import FileDomain
 import Foundation
 import SchneeGlassApplication
+import SchneeGlassPOSIXSupport
 
 public enum NativeFolderSnapshotReaderError: Error, Hashable, Sendable {
     case enumerationUnavailable
@@ -18,19 +19,26 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     }
 
     private let fileManager: FileManager
+    private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
 
     public init() {
         self.fileManager = .default
+        self.runtimeIdentityReader = POSIXRuntimeDirectoryIdentityReader()
     }
 
-    init(fileManager: FileManager) {
+    init(
+        fileManager: FileManager,
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
+    ) {
         self.fileManager = fileManager
+        self.runtimeIdentityReader = runtimeIdentityReader
     }
 
     public func snapshot(
         for access: FolderAccessHandle,
         generation: UInt64
     ) async throws -> FolderSnapshot {
+        let initialRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
         let initialFingerprint = try folderFingerprint(for: access.url)
         try Self.validate(
             observed: initialFingerprint,
@@ -94,9 +102,18 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             throw NativeFolderSnapshotReaderError.enumerationFailed
         }
 
-        // The root pathname can be replaced while enumeration is suspended in Foundation. Never
-        // publish items collected across a different directory identity than the security-scoped
-        // access that authorized this snapshot.
+        // The root pathname can be replaced while enumeration is suspended in Foundation. Prefer
+        // descriptor-derived device/inode identity for the before/after boundary and retain the
+        // Foundation fingerprint checks as compatibility/authorization defense in depth.
+        let finalRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
+        if let initialRuntimeIdentity {
+            guard let finalRuntimeIdentity,
+                  finalRuntimeIdentity == initialRuntimeIdentity
+            else {
+                throw FolderSnapshotReadError.rootIdentityMismatch
+            }
+        }
+
         let finalFingerprint = try folderFingerprint(for: access.url)
         try Self.validate(
             observed: finalFingerprint,
