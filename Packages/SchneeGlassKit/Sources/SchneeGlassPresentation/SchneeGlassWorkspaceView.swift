@@ -459,10 +459,11 @@ private struct GlassPreviewSurface: View {
             .frame(maxWidth: .infinity, minHeight: 100)
 
         case .unavailable:
+            let presentation = GlassUnavailablePresentation.current
             SchneeGlassStateMessage(
                 systemImage: "externaldrive.badge.exclamationmark",
-                title: "Folder unavailable",
-                detail: "Reconnect support will be exposed through Recovery."
+                title: presentation.title,
+                detail: presentation.detail
             )
             .frame(maxWidth: .infinity, minHeight: 100)
 
