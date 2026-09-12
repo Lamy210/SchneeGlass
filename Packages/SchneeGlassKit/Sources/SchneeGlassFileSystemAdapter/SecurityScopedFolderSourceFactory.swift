@@ -42,10 +42,12 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
             throw FolderSourceCreationError.resourceIdentityUnavailable
         }
 
+        // Runtime identity belongs to FolderAccessHandle, not persisted FolderSource. Keeping this
+        // value nil also ensures the in-memory configuration is equal to what its Codable form
+        // actually stores, which is required by optimistic configuration concurrency.
         return FolderSource(
             bookmarkData: bookmarkData,
             lastKnownPath: url.path,
-            fingerprint: finalFingerprint,
             persistentIdentity: finalPersistentIdentity
         )
     }
