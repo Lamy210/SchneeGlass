@@ -18,7 +18,7 @@ public struct SchneeGlassDesktopGlassView: View {
             if let entry = model.glasses.first(where: { $0.id == glassID }) {
                 DesktopGlassSurface(
                     entry: entry,
-                    canRemove: !model.isMutatingConfiguration
+                    canRemove: model.canMutateConfiguration
                         && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
                     onOpen: model.open,
                     onReveal: model.revealInFinder,

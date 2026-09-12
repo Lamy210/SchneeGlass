@@ -127,8 +127,13 @@ private func waitForAccessRelease(_ accessController: PlanningLifecycleAccessCon
     return false
 }
 
-@Test
-func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() async throws {
+private func makePlanningLifecycleFixture() throws -> (
+    configuration: GlassConfiguration,
+    access: FolderAccessHandle,
+    snapshot: FolderSnapshot,
+    source: URL,
+    copyPlan: CopyBatchPlan
+) {
     let root = URL(fileURLWithPath: "/tmp/SchneeGlassPlanningLifecycle", isDirectory: true)
     let configuration = try GlassConfiguration(
         title: "Planning Lifecycle",
@@ -167,11 +172,16 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
             )
         ]
     )
+    return (configuration, access, snapshot, source, copyPlan)
+}
 
+@Test
+func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() async throws {
+    let fixture = try makePlanningLifecycleFixture()
     let eventPair = AsyncStream<FileEvent>.makeStream()
     let planGatePair = AsyncStream<Void>.makeStream()
     let planner = BlockingLifecycleDropPlanner(
-        result: .copy(copyPlan),
+        result: .copy(fixture.copyPlan),
         planGate: planGatePair.stream
     )
     let accessController = PlanningLifecycleAccessController()
@@ -179,9 +189,9 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
     let subscriptionID = UUID()
     let session = GlassRuntimeSession(
         seed: CreatedGlassRuntimeSeed(
-            configuration: configuration,
-            access: access,
-            snapshot: snapshot,
+            configuration: fixture.configuration,
+            access: fixture.access,
+            snapshot: fixture.snapshot,
             eventSubscription: FileEventSubscription(
                 id: subscriptionID,
                 events: eventPair.stream
@@ -198,7 +208,7 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
     _ = states
 
     let planningTask = Task {
-        await session.planDrop(sourceURLs: [source])
+        await session.planDrop(sourceURLs: [fixture.source])
     }
     #expect(await waitForPlanningStart(planner))
 
@@ -214,12 +224,69 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
     let result = await planningTask.value
     #expect(result == .reject(.destinationUnavailable))
     #expect(await fileCopying.callCount() == 0)
-    #expect(await accessController.releases() == [access.id])
+    #expect(await accessController.releases() == [fixture.access.id])
 
     let abandoned = await planner.abandoned()
     #expect(abandoned.count == 1)
-    #expect(abandoned.first?.plan == copyPlan)
-    #expect(abandoned.first?.destinationAccess == access)
+    #expect(abandoned.first?.plan == fixture.copyPlan)
+    #expect(abandoned.first?.destinationAccess == fixture.access)
 
+    eventPair.continuation.finish()
+}
+
+@Test
+func authoritativePlanCanBeExplicitlyAbandonedExactlyOnce() async throws {
+    let fixture = try makePlanningLifecycleFixture()
+    let eventPair = AsyncStream<FileEvent>.makeStream()
+    let planGatePair = AsyncStream<Void>.makeStream()
+    let planner = BlockingLifecycleDropPlanner(
+        result: .copy(fixture.copyPlan),
+        planGate: planGatePair.stream
+    )
+    let accessController = PlanningLifecycleAccessController()
+    let fileCopying = PlanningLifecycleFileCopying()
+    let session = GlassRuntimeSession(
+        seed: CreatedGlassRuntimeSeed(
+            configuration: fixture.configuration,
+            access: fixture.access,
+            snapshot: fixture.snapshot,
+            eventSubscription: FileEventSubscription(events: eventPair.stream)
+        ),
+        eventStreaming: PlanningLifecycleEventStreaming(),
+        snapshotReader: PlanningLifecycleSnapshotReader(),
+        accessController: accessController,
+        dropPlanning: planner,
+        fileCopying: fileCopying
+    )
+
+    let states = try await session.start()
+    _ = states
+
+    let planningTask = Task {
+        await session.planDrop(sourceURLs: [fixture.source])
+    }
+    #expect(await waitForPlanningStart(planner))
+    planGatePair.continuation.yield(())
+    planGatePair.continuation.finish()
+
+    let planned = await planningTask.value
+    guard case let .copy(copyPlan) = planned else {
+        Issue.record("Expected authoritative copy plan")
+        await session.stop()
+        eventPair.continuation.finish()
+        return
+    }
+
+    await session.abandonCopyPlan(copyPlan)
+    await session.abandonCopyPlan(copyPlan)
+
+    let abandoned = await planner.abandoned()
+    #expect(abandoned.count == 1)
+    #expect(abandoned.first?.plan == fixture.copyPlan)
+    #expect(abandoned.first?.destinationAccess == fixture.access)
+    #expect(await fileCopying.callCount() == 0)
+
+    await session.stop()
+    #expect(await accessController.releases() == [fixture.access.id])
     eventPair.continuation.finish()
 }

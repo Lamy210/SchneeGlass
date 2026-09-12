@@ -149,6 +149,12 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] valid configuration backupをSettingsから復元できる
 - [ ] restore中にpanel stateの古いdebounceが復元configを再上書きしない
 - [ ] corrupt current configのRecoveryでユーザー選択なしに破壊的rollbackしない
+- [ ] current configを読めない起動では`Configuration recovery required`を表示し、Workspace / Menu Bar / `⌘N`から新しいGlassを追加できない
+- [ ] configuration recovery required中もSettingsのConfiguration Backup一覧・restore操作は利用できる
+- [ ] configuration recovery required中はGlass削除・placement保存・Reset Glass Positions・新しいDrop Copyへ進まない
+- [ ] configuration recovery required中も既存fileのOpen / Revealのread-only操作は利用できる
+- [ ] valid backupのrestoreと再loadが成功するとrecovery-required lockが解除され、通常のconfiguration mutationを再開できる
+- [ ] backup自体はcommitされたが再loadに失敗した場合、再起動または次のRecovery成功までmutationを再開しない
 - [ ] restore失敗時に「失敗」と表示しながら実際には別状態へcommit済み、という不整合がない
 
 ## 10. Windowing / multi-display

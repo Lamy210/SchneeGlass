@@ -57,7 +57,7 @@ struct SchneeGlassApp: App {
                         }
                     }
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(model.isMutatingConfiguration)
+                    .disabled(!model.canAddGlass)
                 }
 
                 CommandMenu("Glasses") {
@@ -78,7 +78,7 @@ struct SchneeGlassApp: App {
                             requestGlassPositionReset(coordinator: panelCoordinator)
                         }
                     }
-                    .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
+                    .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
                 }
             }
         }
@@ -140,7 +140,7 @@ private struct SchneeGlassMenuBarContent: View {
                 await model.addGlass()
             }
         }
-        .disabled(model.isMutatingConfiguration)
+        .disabled(!model.canAddGlass)
 
         Divider()
 
@@ -159,7 +159,7 @@ private struct SchneeGlassMenuBarContent: View {
         Button("Reset Glass Positions…") {
             requestGlassPositionReset(coordinator: panelCoordinator)
         }
-        .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
+        .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
 
         Divider()
 
