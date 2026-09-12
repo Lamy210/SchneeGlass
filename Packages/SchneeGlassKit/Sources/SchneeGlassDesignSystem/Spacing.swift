@@ -13,7 +13,9 @@ public enum SchneeGlassSpacing {
 }
 
 public enum SchneeGlassPadding {
-    public static let workspace: CGFloat = 16
+    public static let workspaceContent: CGFloat = 16
+    public static let glassPreview: CGFloat = 16
+    public static let emptyWorkspace: CGFloat = 24
     public static let desktopGlass: CGFloat = 14
     public static let messageBanner: CGFloat = 12
     public static let desktopOverlayContent: CGFloat = 16
