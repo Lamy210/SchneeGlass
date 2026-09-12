@@ -53,16 +53,22 @@ single-component staging/final filenames.
 
 ### Drop preview and authoritative planning
 
-`FoundationDropFileSystemInspector` uses the same identity hierarchy before advertising a safe copy:
+`FoundationDropFileSystemInspector` uses the same physical-directory and identity hierarchy before
+advertising a safe copy:
 
-1. when `FolderAccessHandle.runtimeDirectoryIdentity` exists, it re-observes descriptor-derived POSIX
+1. the destination pathname must currently name a physical directory, not a symbolic link or other
+   filesystem object;
+2. when `FolderAccessHandle.runtimeDirectoryIdentity` exists, it re-observes descriptor-derived POSIX
    identity before and after path-based filesystem capability reads and requires an exact match;
-2. the normal POSIX-backed path does not require or stringify Foundation `fileResourceIdentifier`;
-3. when no acquired runtime identity exists, an acquired Foundation directory resource identifier may
+3. after capability reads, the pathname must still name a physical directory before a plan is exposed;
+4. the normal POSIX-backed path does not require or stringify Foundation `fileResourceIdentifier`;
+5. when no acquired runtime identity exists, an acquired Foundation directory resource identifier may
    be used as a strict compatibility fallback and must match the currently observed identifier;
-4. if no directory-specific proof is available, the folder remains observable but
+6. if no directory-specific proof is available, the folder remains observable but
    `supportsSafeDestinationCommit` is `false`.
 
+The physical-directory check intentionally matches the execution lease's `O_NOFOLLOW` policy so
+preview/planning does not advertise a symbolic-link destination that production execution must reject.
 The planning check is conservative rather than mutation authority. The execution lease repeats the
 physical descriptor validation immediately before any destination mutation.
 
@@ -116,8 +122,10 @@ production `PinnedSourceFileCopying` uses only the descriptor-relative committer
 
 If Foundation does not report `volumeSupportsExclusiveRenaming == true`, production Drop execution
 fails closed. Likewise, if no directory-specific runtime or fallback identity is available to compare
-planning and execution, production Drop execution fails closed. v0.1 does not silently fall back to a
-weaker pathname-only or volume-only identity implementation.
+planning and execution, production Drop execution fails closed. A symbolic-link destination pathname
+is not an executable copy destination because execution requires opening the selected destination
+itself as a physical directory with `O_NOFOLLOW`. v0.1 does not silently fall back to a weaker
+pathname-only, symlink-following, or volume-only identity implementation.
 
 `FoundationDropFileSystemInspector` exposes the same prerequisite as
 `StorageCapabilities.supportsSafeDestinationCommit`. Native Drop preview and authoritative planning
@@ -125,7 +133,8 @@ both require that capability to be explicitly `true`; `false` and unknown (`nil`
 showing an executable copy plan. The planner reports this specifically as
 `DropRejection.destinationCopySafetyUnsupported`, rather than conflating it with a disconnected or
 missing destination. Presentation can therefore explain the filesystem limitation without suggesting
-that reconnecting the same folder will fix it. The descriptor-bound execution checks remain
+that reconnecting the same folder will fix it. A destination pathname that is no longer a physical
+directory is instead unavailable for planning. The descriptor-bound execution checks remain
 authoritative and are repeated at mutation time rather than trusting preview state.
 
 Network destinations remain unsupported independently of this decision.
@@ -154,6 +163,8 @@ Regression tests must cover:
 
 - destination rename/recreate between authoritative planning and execution,
 - acquired runtime identity match, mismatch, and disappearance during Drop inspection,
+- symbolic-link destination rejection before runtime or Foundation fallback proof is promoted into a
+  copy plan,
 - Foundation directory-resource fallback when acquired POSIX identity is unavailable,
 - runtime-identity execution requesting only exclusive-rename capability metadata,
 - fallback execution requesting only the Foundation identity dimensions that are actually expected,
@@ -173,6 +184,8 @@ Advantages:
   stringification when acquired POSIX runtime identity is available,
 - normal descriptor-authorized execution no longer even requests Foundation volume/directory ID keys
   unless fallback proof requires them,
+- symbolic-link destination paths are rejected during planning instead of being advertised as copyable
+  and then failing at execution,
 - destination replacement cannot redirect a copy,
 - no-overwrite commit is atomic at the filesystem boundary,
 - source, destination, staging, and recovery identity now all have explicit descriptor-backed
@@ -186,6 +199,8 @@ Costs:
 - production Drop execution is unavailable on volumes without exclusive rename support,
 - production Drop execution is unavailable when a directory-specific runtime or fallback identity
   cannot be established,
+- symbolic-link destination paths are not accepted for copy execution even if they resolve to a
+  writable directory; the physical selected directory must be reconnected/selected directly,
 - Foundation resource identifiers remain as a compatibility fallback for access handles that do not
   carry runtime descriptor identity,
 - POSIX-specific implementation and tests increase,
