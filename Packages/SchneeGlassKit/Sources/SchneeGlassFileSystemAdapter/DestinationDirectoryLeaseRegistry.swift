@@ -81,6 +81,7 @@ actor DestinationDirectoryLeaseRegistry {
             try Self.verifyInitialIdentity(
                 descriptor: descriptor,
                 url: destination,
+                expectedAccessRuntimeIdentity: access.runtimeDirectoryIdentity,
                 expectedAccessFingerprint: access.fingerprint,
                 expectedPlanResourceIdentifier: plan.destination.folderIdentity.resourceIdentifier
             )
@@ -221,6 +222,7 @@ actor DestinationDirectoryLeaseRegistry {
     private static func verifyInitialIdentity(
         descriptor: Int32,
         url: URL,
+        expectedAccessRuntimeIdentity: RuntimeDirectoryIdentity?,
         expectedAccessFingerprint: ResourceFingerprint?,
         expectedPlanResourceIdentifier: String?
     ) throws {
@@ -232,10 +234,21 @@ actor DestinationDirectoryLeaseRegistry {
             throw DestinationDirectoryLeaseError.identityMismatch
         }
 
-        // A volume identifier alone cannot distinguish two directories on the same volume. If
-        // neither the acquired access nor the authoritative plan carries a directory resource ID,
-        // planning-to-execution replacement cannot be proven safe, so production mutation stops.
-        guard expectedAccessFingerprint?.resourceIdentifier != nil
+        if let expectedAccessRuntimeIdentity {
+            let observedDeviceIdentifier = UInt64(truncatingIfNeeded: descriptorMetadata.st_dev)
+            let observedObjectIdentifier = UInt64(truncatingIfNeeded: descriptorMetadata.st_ino)
+            guard observedDeviceIdentifier == expectedAccessRuntimeIdentity.deviceIdentifier,
+                  observedObjectIdentifier == expectedAccessRuntimeIdentity.objectIdentifier
+            else {
+                throw DestinationDirectoryLeaseError.identityMismatch
+            }
+        }
+
+        // A volume identifier alone cannot distinguish two directories on the same volume. Runtime
+        // descriptor identity, an acquired directory resource ID, or the authoritative plan's
+        // directory resource ID must prove which directory is intended before mutation can begin.
+        guard expectedAccessRuntimeIdentity != nil
+                || expectedAccessFingerprint?.resourceIdentifier != nil
                 || expectedPlanResourceIdentifier != nil
         else {
             throw DestinationDirectoryLeaseError.identityMismatch

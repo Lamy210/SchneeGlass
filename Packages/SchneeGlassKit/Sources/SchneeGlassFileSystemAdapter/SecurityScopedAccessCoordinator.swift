@@ -269,7 +269,13 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         let handle = FolderAccessHandle(
             glassID: glassID,
             url: resolved.url,
-            fingerprint: actualFingerprint
+            fingerprint: actualFingerprint,
+            runtimeDirectoryIdentity: actualRuntimeDirectoryIdentity.map {
+                RuntimeDirectoryIdentity(
+                    deviceIdentifier: $0.device,
+                    objectIdentifier: $0.inode
+                )
+            }
         )
         activeAccesses[handle.id] = ActiveAccess(url: resolved.url)
 

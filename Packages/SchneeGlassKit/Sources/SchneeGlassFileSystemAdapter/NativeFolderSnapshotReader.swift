@@ -39,6 +39,11 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
         generation: UInt64
     ) async throws -> FolderSnapshot {
         let initialRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
+        try Self.validate(
+            observed: initialRuntimeIdentity,
+            expected: access.runtimeDirectoryIdentity
+        )
+
         let initialFingerprint = try folderFingerprint(for: access.url)
         try Self.validate(
             observed: initialFingerprint,
@@ -113,6 +118,10 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
                 throw FolderSnapshotReadError.rootIdentityMismatch
             }
         }
+        try Self.validate(
+            observed: finalRuntimeIdentity,
+            expected: access.runtimeDirectoryIdentity
+        )
 
         let finalFingerprint = try folderFingerprint(for: access.url)
         try Self.validate(
@@ -150,6 +159,21 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             volumeIdentifier: values.volumeIdentifier.map { String(describing: $0) },
             resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
         )
+    }
+
+    private static func validate(
+        observed: POSIXDirectoryIdentity?,
+        expected: RuntimeDirectoryIdentity?
+    ) throws {
+        guard let expected else {
+            return
+        }
+        guard let observed,
+              observed.device == expected.deviceIdentifier,
+              observed.inode == expected.objectIdentifier
+        else {
+            throw FolderSnapshotReadError.rootIdentityMismatch
+        }
     }
 
     private static func validate(
