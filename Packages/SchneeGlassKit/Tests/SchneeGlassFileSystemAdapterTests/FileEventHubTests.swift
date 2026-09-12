@@ -36,7 +36,7 @@ func rootChangeMapsToRootChanged() {
 func fileEventCallbackContextOwnershipIsBalanced() {
     let pair = AsyncStream<FileEvent>.makeStream()
     var box: FSEventCallbackBox? = FSEventCallbackBox(continuation: pair.continuation)
-    weak var weakBox: FSEventCallbackBox? = box
+    weak let weakBox: FSEventCallbackBox? = box
 
     let rawInfo: UnsafeRawPointer
     if let box {
