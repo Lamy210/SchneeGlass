@@ -32,6 +32,31 @@ func rootChangeMapsToRootChanged() {
     #expect(FileEventFlagMapper.map(flags) == .rootChanged)
 }
 
+@Test("FSEvents callback context retain and release are balanced")
+func fileEventCallbackContextOwnershipIsBalanced() {
+    let pair = AsyncStream<FileEvent>.makeStream()
+    var box: FSEventCallbackBox? = FSEventCallbackBox(continuation: pair.continuation)
+    weak var weakBox: FSEventCallbackBox? = box
+
+    let rawInfo: UnsafeRawPointer
+    if let box {
+        rawInfo = UnsafeRawPointer(Unmanaged.passUnretained(box).toOpaque())
+    } else {
+        Issue.record("Expected callback box")
+        return
+    }
+
+    let retainedInfo = FSEventCallbackContextOwnership.retain(rawInfo)
+    #expect(retainedInfo == rawInfo)
+
+    box = nil
+    #expect(weakBox != nil)
+
+    FSEventCallbackContextOwnership.release(retainedInfo)
+    #expect(weakBox == nil)
+    pair.continuation.finish()
+}
+
 @Test("FSEvents subscription eventually reports a direct filesystem change")
 func fileEventHubReportsFilesystemChange() async throws {
     let fileManager = FileManager.default

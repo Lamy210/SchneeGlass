@@ -7,11 +7,28 @@ public enum FileEventHubError: Error, Hashable, Sendable {
     case streamStartFailed
 }
 
-private final class FSEventCallbackBox {
+final class FSEventCallbackBox {
     let continuation: AsyncStream<FileEvent>.Continuation
 
     init(continuation: AsyncStream<FileEvent>.Continuation) {
         self.continuation = continuation
+    }
+}
+
+enum FSEventCallbackContextOwnership {
+    static func retain(_ info: UnsafeRawPointer?) -> UnsafeRawPointer? {
+        guard let info else {
+            return nil
+        }
+        _ = Unmanaged<FSEventCallbackBox>.fromOpaque(info).retain()
+        return info
+    }
+
+    static func release(_ info: UnsafeRawPointer?) {
+        guard let info else {
+            return
+        }
+        Unmanaged<FSEventCallbackBox>.fromOpaque(info).release()
     }
 }
 
@@ -64,7 +81,6 @@ public actor FileEventHub: FileEventStreaming {
 
     private struct Session {
         let stream: FSEventStreamRef
-        let callbackInfo: UnsafeMutableRawPointer
         let continuation: AsyncStream<FileEvent>.Continuation
     }
 
@@ -84,14 +100,24 @@ public actor FileEventHub: FileEventStreaming {
         let subscriptionID = UUID()
         let pair = AsyncStream<FileEvent>.makeStream()
         let callbackBox = FSEventCallbackBox(continuation: pair.continuation)
-        let retainedBox = Unmanaged.passRetained(callbackBox)
-        let callbackInfo = retainedBox.toOpaque()
+        let callbackInfo = Unmanaged.passUnretained(callbackBox).toOpaque()
+
+        // `info` is initially unretained. Keep this local owner alive for the whole setup method;
+        // FSEventStreamCreate synchronously invokes the context retain callback when it accepts the
+        // context, after which CoreServices owns the callback box until the stream is released.
+        defer {
+            withExtendedLifetime(callbackBox) {}
+        }
 
         var context = FSEventStreamContext(
             version: 0,
             info: callbackInfo,
-            retain: nil,
-            release: nil,
+            retain: { info in
+                FSEventCallbackContextOwnership.retain(info)
+            },
+            release: { info in
+                FSEventCallbackContextOwnership.release(info)
+            },
             copyDescription: nil
         )
 
@@ -109,7 +135,6 @@ public actor FileEventHub: FileEventStreaming {
             latency,
             creationFlags
         ) else {
-            retainedBox.release()
             throw FileEventHubError.streamCreationFailed
         }
 
@@ -118,13 +143,11 @@ public actor FileEventHub: FileEventStreaming {
         guard FSEventStreamStart(stream) else {
             FSEventStreamInvalidate(stream)
             FSEventStreamRelease(stream)
-            retainedBox.release()
             throw FileEventHubError.streamStartFailed
         }
 
         sessions[subscriptionID] = Session(
             stream: stream,
-            callbackInfo: callbackInfo,
             continuation: pair.continuation
         )
 
@@ -161,8 +184,10 @@ public actor FileEventHub: FileEventStreaming {
 
         FSEventStreamStop(session.stream)
         FSEventStreamInvalidate(session.stream)
+        // The stream owns its callback context through FSEventStreamContext retain/release callbacks.
+        // Releasing the stream therefore releases the box only when CoreServices is finished with the
+        // context, rather than guessing callback lifetime from the actor's stop timing.
         FSEventStreamRelease(session.stream)
-        Unmanaged<FSEventCallbackBox>.fromOpaque(session.callbackInfo).release()
         session.continuation.finish()
     }
 }
