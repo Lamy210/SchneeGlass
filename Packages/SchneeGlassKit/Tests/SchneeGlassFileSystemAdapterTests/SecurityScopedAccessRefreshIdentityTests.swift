@@ -158,3 +158,33 @@ func staleLegacyBookmarkWithoutObservedIdentityKeepsCompatibility() async throws
     await coordinator.release(handleID: acquisition.handle.id)
     #expect(await accessor.counters().stops == 1)
 }
+
+@Test
+func staleLegacyVolumeOnlyBookmarkKeepsCompatibilityWithoutFalseFolderProof() async throws {
+    let url = URL(fileURLWithPath: "/tmp/schneeglass-refresh-volume-only", isDirectory: true)
+    let volumeOnly = ResourceFingerprint(
+        volumeIdentifier: "volume-a",
+        resourceIdentifier: nil
+    )
+    let accessor = RefreshIdentityResourceAccessor(
+        resolvedURL: url,
+        fingerprints: [volumeOnly]
+    )
+    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+
+    let acquisition = try await coordinator.acquire(
+        source: refreshIdentitySource(at: url, fingerprint: volumeOnly),
+        glassID: GlassID()
+    )
+
+    #expect(acquisition.refreshedSource?.fingerprint == volumeOnly)
+    #expect(acquisition.handle.fingerprint == volumeOnly)
+
+    let beforeRelease = await accessor.counters()
+    #expect(beforeRelease.fingerprints == 1)
+    #expect(beforeRelease.bookmarks == 1)
+    #expect(beforeRelease.stops == 0)
+
+    await coordinator.release(handleID: acquisition.handle.id)
+    #expect(await accessor.counters().stops == 1)
+}
