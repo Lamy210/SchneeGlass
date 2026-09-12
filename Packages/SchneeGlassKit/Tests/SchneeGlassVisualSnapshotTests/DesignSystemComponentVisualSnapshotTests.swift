@@ -1,7 +1,5 @@
-import AppKit
 import Foundation
 import SchneeGlassDesignSystem
-import SnapshotTesting
 import SwiftUI
 import Testing
 
@@ -13,7 +11,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func stateMessageDetailLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -32,7 +30,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func stateMessageNoDetailDark() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -49,7 +47,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func fileTileRegularLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -62,7 +60,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func fileTileDirectoryLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -75,7 +73,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func fileTilePackageDark() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -88,7 +86,7 @@ struct DesignSystemComponentVisualSnapshotTests {
 
     @Test
     func fileTileLongNameLight() {
-        guard visualSnapshotsAreEnabled else {
+        guard VisualSnapshotHarness.isEnabled else {
             return
         }
 
@@ -97,10 +95,6 @@ struct DesignSystemComponentVisualSnapshotTests {
             title: "Quarterly Design Review Notes.pdf",
             colorScheme: .light
         )
-    }
-
-    private var visualSnapshotsAreEnabled: Bool {
-        ProcessInfo.processInfo.environment["SCHNEEGLASS_VISUAL_SNAPSHOTS"] == "1"
     }
 
     private func assertFileTileSnapshot(
@@ -139,40 +133,17 @@ struct DesignSystemComponentVisualSnapshotTests {
         column: UInt = #column,
         @ViewBuilder content: () -> Content
     ) {
-        let rootView = ZStack {
-            Color(nsColor: .windowBackgroundColor)
-
-            content()
-                .padding(20)
-        }
-        .frame(width: size.width, height: size.height)
-        .environment(\.colorScheme, colorScheme)
-        .environment(\.locale, Locale(identifier: "en_US_POSIX"))
-        .transaction { transaction in
-            transaction.disablesAnimations = true
-        }
-
-        let hostingView = NSHostingView(rootView: rootView)
-        hostingView.frame = NSRect(origin: .zero, size: size)
-        hostingView.appearance = NSAppearance(
-            named: colorScheme == .dark ? .darkAqua : .aqua
-        )
-        hostingView.layoutSubtreeIfNeeded()
-
-        print("SCHNEEGLASS_DESIGN_SYSTEM_SNAPSHOT_RESULT \(testName)")
-        assertSnapshot(
-            of: hostingView,
-            as: .image(
-                precision: 0.995,
-                perceptualPrecision: 0.99,
-                size: size
-            ),
-            named: "macos-26-xcode-26.6",
+        VisualSnapshotHarness.assertView(
+            size: size,
+            colorScheme: colorScheme,
+            padding: 20,
+            marker: "SCHNEEGLASS_DESIGN_SYSTEM_SNAPSHOT_RESULT",
             fileID: fileID,
-            file: filePath,
+            filePath: filePath,
             testName: testName,
             line: line,
-            column: column
+            column: column,
+            content: content
         )
     }
 }
