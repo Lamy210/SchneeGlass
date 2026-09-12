@@ -1,5 +1,6 @@
 import FileDomain
 import SchneeGlassApplication
+import SchneeGlassDesignSystem
 import SchneeGlassDomain
 import SwiftUI
 
@@ -66,18 +67,20 @@ struct DesktopGlassSurface: View {
     @State private var showsRemoveConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: SchneeGlassSpacing.surfaceContent) {
             header
             content
         }
-        .padding(14)
+        .padding(SchneeGlassPadding.desktopGlass)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.regularMaterial)
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: SchneeGlassRadius.glassSurface, style: .continuous)
                 .stroke(borderStyle, lineWidth: borderWidth)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(
+            RoundedRectangle(cornerRadius: SchneeGlassRadius.glassSurface, style: .continuous)
+        )
         .overlay {
             FileURLDropTarget(
                 onPlan: onPlanDrop,
@@ -99,16 +102,16 @@ struct DesktopGlassSurface: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: SchneeGlassSpacing.controlGroup) {
             Image(systemName: "folder")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             Text(entry.title)
-                .font(.headline)
+                .font(SchneeGlassTypography.surfaceTitle)
                 .lineLimit(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: SchneeGlassSpacing.controlGroup)
             statusLabel
 
             Menu {
@@ -118,7 +121,10 @@ struct DesktopGlassSurface: View {
                 .disabled(!canRemove)
             } label: {
                 Image(systemName: "ellipsis")
-                    .frame(width: 24, height: 24)
+                    .frame(
+                        width: SchneeGlassMetrics.menuIconFrame,
+                        height: SchneeGlassMetrics.menuIconFrame
+                    )
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -142,7 +148,7 @@ struct DesktopGlassSurface: View {
     private var content: some View {
         switch entry.contentState {
         case .loading:
-            HStack(spacing: 8) {
+            HStack(spacing: SchneeGlassSpacing.controlGroup) {
                 ProgressView()
                     .controlSize(.small)
                 Text("Loading folder…")
@@ -160,15 +166,15 @@ struct DesktopGlassSurface: View {
             }
 
         case .empty:
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Spacer()
                 Image(systemName: "tray.and.arrow.down")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text("Drop files here")
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text("Files are copied. Originals stay where they are.")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Spacer()
@@ -176,15 +182,15 @@ struct DesktopGlassSurface: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .unavailable:
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Spacer()
                 Image(systemName: "externaldrive.badge.exclamationmark")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text("Folder unavailable")
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text("The Glass stays here so it can be reconnected without losing its layout.")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Spacer()
@@ -193,15 +199,15 @@ struct DesktopGlassSurface: View {
 
         case let .failed(error):
             let presentation = GlassContentFailurePresentation.make(for: error)
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Spacer()
                 Image(systemName: "arrow.clockwise.circle")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text(presentation.title)
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text(presentation.detail)
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Spacer()
@@ -303,29 +309,35 @@ struct DesktopGlassSurface: View {
             Rectangle()
                 .fill(.black.opacity(0.12))
 
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 if showsProgress {
                     ProgressView()
                         .controlSize(.small)
                 } else {
                     Image(systemName: icon)
-                        .font(.title2)
+                        .font(SchneeGlassTypography.largeSymbol)
                 }
 
                 Text(title)
-                    .font(.callout.weight(.semibold))
+                    .font(SchneeGlassTypography.strongBody)
                     .multilineTextAlignment(.center)
 
                 if let detail {
                     Text(detail)
-                        .font(.caption)
+                        .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
             }
-            .padding(16)
-            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(18)
+            .padding(SchneeGlassPadding.desktopOverlayContent)
+            .background(
+                .thickMaterial,
+                in: RoundedRectangle(
+                    cornerRadius: SchneeGlassRadius.desktopDropOverlay,
+                    style: .continuous
+                )
+            )
+            .padding(SchneeGlassPadding.desktopOverlayInset)
         }
     }
 }
@@ -336,20 +348,27 @@ private struct DesktopFileGrid: View {
     let onReveal: (GlassItem) -> Void
 
     private let columns = [
-        GridItem(.adaptive(minimum: 74, maximum: 92), spacing: 10, alignment: .top)
+        GridItem(
+            .adaptive(
+                minimum: SchneeGlassMetrics.desktopFileTileMinimumWidth,
+                maximum: SchneeGlassMetrics.fileTileMaximumWidth
+            ),
+            spacing: SchneeGlassSpacing.fileGridColumn,
+            alignment: .top
+        )
     ]
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: SchneeGlassSpacing.fileGrid) {
             ForEach(snapshot.items) { item in
-                VStack(spacing: 6) {
+                VStack(spacing: SchneeGlassSpacing.compactContent) {
                     Image(systemName: symbolName(for: item.kind))
-                        .font(.system(size: 28))
+                        .font(.system(size: SchneeGlassMetrics.fileIconSize))
                         .foregroundStyle(.primary)
-                        .frame(height: 32)
+                        .frame(height: SchneeGlassMetrics.fileIconHeight)
 
                     Text(item.displayName)
-                        .font(.caption)
+                        .font(SchneeGlassTypography.supporting)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
@@ -373,7 +392,7 @@ private struct DesktopFileGrid: View {
 
             if snapshot.isTruncated {
                 Label("Showing the first 500 items", systemImage: "ellipsis.circle")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
         }

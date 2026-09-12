@@ -1,11 +1,12 @@
 #if canImport(SwiftUI)
 import SwiftUI
 
+@available(*, deprecated, message: "Use the semantic SchneeGlassSpacing, SchneeGlassRadius, and SchneeGlassMetrics tokens instead.")
 public enum SchneeGlassDesignTokens {
-    public static let cornerRadius: CGFloat = 20
-    public static let innerSpacing: CGFloat = 12
-    public static let gridSpacing: CGFloat = 10
-    public static let headerHeight: CGFloat = 36
-    public static let minimumHitTarget: CGFloat = 28
+    public static let cornerRadius = SchneeGlassRadius.glassSurface
+    public static let innerSpacing = SchneeGlassSpacing.surfaceContent
+    public static let gridSpacing = SchneeGlassSpacing.fileGridColumn
+    public static let headerHeight = SchneeGlassMetrics.headerHeight
+    public static let minimumHitTarget = SchneeGlassMetrics.minimumControlHitTarget
 }
 #endif

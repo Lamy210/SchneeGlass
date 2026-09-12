@@ -1,5 +1,6 @@
 import FileDomain
 import SchneeGlassApplication
+import SchneeGlassDesignSystem
 import SwiftUI
 
 public struct SchneeGlassWorkspaceView: View {
@@ -20,16 +21,16 @@ public struct SchneeGlassWorkspaceView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: SchneeGlassSpacing.surfaceContent) {
             Image(systemName: "snowflake")
                 .font(.title2.weight(.medium))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("SchneeGlass")
-                    .font(.headline)
+                    .font(SchneeGlassTypography.surfaceTitle)
                 Text("Your folders, right where you need them.")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
 
@@ -40,7 +41,7 @@ public struct SchneeGlassWorkspaceView: View {
                     ProgressView()
                         .controlSize(.small)
                     Text("Restoring…")
-                        .font(.caption)
+                        .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -61,7 +62,7 @@ public struct SchneeGlassWorkspaceView: View {
             .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add Glass")
         }
-        .padding(16)
+        .padding(SchneeGlassPadding.workspaceContent)
     }
 
     @ViewBuilder
@@ -70,7 +71,7 @@ public struct SchneeGlassWorkspaceView: View {
             emptyWorkspace
         } else {
             ScrollView {
-                LazyVStack(spacing: 16) {
+                LazyVStack(spacing: SchneeGlassSpacing.workspaceSection) {
                     if let message = model.userMessage {
                         messageBanner(message)
                     }
@@ -109,20 +110,20 @@ public struct SchneeGlassWorkspaceView: View {
                         )
                     }
                 }
-                .padding(16)
+                .padding(SchneeGlassPadding.workspaceContent)
             }
         }
     }
 
     private var emptyWorkspace: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: SchneeGlassSpacing.workspaceSection) {
             Spacer()
 
             if model.isRestoring {
                 ProgressView()
                     .controlSize(.regular)
                 Text("Restoring your Glasses…")
-                    .font(.callout)
+                    .font(SchneeGlassTypography.body)
                     .foregroundStyle(.secondary)
             } else {
                 Image(systemName: "rectangle.stack.badge.plus")
@@ -130,11 +131,11 @@ public struct SchneeGlassWorkspaceView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
 
-                VStack(spacing: 6) {
+                VStack(spacing: SchneeGlassSpacing.compactContent) {
                     Text("Put a folder on your desktop")
-                        .font(.title3.weight(.semibold))
+                        .font(SchneeGlassTypography.emptyStateTitle)
                     Text("Choose a folder to create your first Glass. SchneeGlass stores a reference to the folder; it does not take ownership of your files.")
-                        .font(.callout)
+                        .font(SchneeGlassTypography.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 420)
@@ -156,17 +157,17 @@ public struct SchneeGlassWorkspaceView: View {
 
             Spacer()
         }
-        .padding(24)
+        .padding(SchneeGlassPadding.emptyWorkspace)
     }
 
     private func messageBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: SchneeGlassSpacing.messageContent) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             Text(message)
-                .font(.callout)
+                .font(SchneeGlassTypography.body)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
@@ -177,8 +178,11 @@ public struct SchneeGlassWorkspaceView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(SchneeGlassPadding.messageBanner)
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: SchneeGlassRadius.messageBanner, style: .continuous)
+        )
     }
 }
 
@@ -195,10 +199,10 @@ private struct GlassPreviewSurface: View {
     @State private var showsRemoveConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: SchneeGlassSpacing.surfaceContent) {
             HStack {
                 Text(entry.title)
-                    .font(.headline)
+                    .font(SchneeGlassTypography.surfaceTitle)
                     .lineLimit(1)
 
                 Spacer()
@@ -212,7 +216,10 @@ private struct GlassPreviewSurface: View {
                     .disabled(!canRemove)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 24, height: 24)
+                        .frame(
+                            width: SchneeGlassMetrics.menuIconFrame,
+                            height: SchneeGlassMetrics.menuIconFrame
+                        )
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -221,11 +228,14 @@ private struct GlassPreviewSurface: View {
 
             stateContent
         }
-        .padding(16)
+        .padding(SchneeGlassPadding.glassPreview)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: SchneeGlassRadius.glassSurface, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: SchneeGlassRadius.glassSurface, style: .continuous)
                 .stroke(borderStyle, lineWidth: borderWidth)
         }
         .overlay {
@@ -283,7 +293,7 @@ private struct GlassPreviewSurface: View {
                 ProgressView()
                     .controlSize(.small)
                 Text(presentation.title)
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
             }
 
         case let .dropValid(plan):
@@ -295,13 +305,13 @@ private struct GlassPreviewSurface: View {
                 DropOverlaySurface {
                     if case let .symbol(systemImage) = presentation.indicator {
                         Image(systemName: systemImage)
-                            .font(.title2)
+                            .font(SchneeGlassTypography.largeSymbol)
                     }
                     Text(presentation.title)
-                        .font(.callout.weight(.semibold))
+                        .font(SchneeGlassTypography.strongBody)
                     if let detail = presentation.detail {
                         Text(detail)
-                            .font(.caption)
+                            .font(SchneeGlassTypography.supporting)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -316,13 +326,13 @@ private struct GlassPreviewSurface: View {
             DropOverlaySurface {
                 if case let .symbol(systemImage) = presentation.indicator {
                     Image(systemName: systemImage)
-                        .font(.title2)
+                        .font(SchneeGlassTypography.largeSymbol)
                 }
                 Text(presentation.title)
-                    .font(.callout.weight(.semibold))
+                    .font(SchneeGlassTypography.strongBody)
                 if let detail = presentation.detail {
                     Text(detail)
-                        .font(.caption)
+                        .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -338,10 +348,10 @@ private struct GlassPreviewSurface: View {
                 ProgressView()
                     .controlSize(.regular)
                 Text(presentation.title)
-                    .font(.callout.weight(.semibold))
+                    .font(SchneeGlassTypography.strongBody)
                 if let detail = presentation.detail {
                     Text(detail)
-                        .font(.caption)
+                        .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -352,11 +362,11 @@ private struct GlassPreviewSurface: View {
     private var statusLabel: some View {
         if case .copying = entry.interactionState {
             Label("Copying", systemImage: "doc.on.doc")
-                .font(.caption)
+                .font(SchneeGlassTypography.status)
                 .foregroundStyle(.secondary)
         } else if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
             Label(presentation.label, systemImage: presentation.systemImage)
-                .font(.caption)
+                .font(SchneeGlassTypography.status)
                 .foregroundStyle(.secondary)
         } else {
             ProgressView()
@@ -368,7 +378,7 @@ private struct GlassPreviewSurface: View {
     private var stateContent: some View {
         switch entry.contentState {
         case .loading:
-            HStack(spacing: 8) {
+            HStack(spacing: SchneeGlassSpacing.controlGroup) {
                 ProgressView()
                     .controlSize(.small)
                 Text("Loading folder…")
@@ -384,41 +394,41 @@ private struct GlassPreviewSurface: View {
             )
 
         case .empty:
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Image(systemName: "tray")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text("Drop files here")
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text("Files are copied. Originals stay where they are.")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 100)
 
         case .unavailable:
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Image(systemName: "externaldrive.badge.exclamationmark")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text("Folder unavailable")
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text("Reconnect support will be exposed through Recovery.")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 100)
 
         case let .failed(error):
             let presentation = GlassContentFailurePresentation.make(for: error)
-            VStack(spacing: 8) {
+            VStack(spacing: SchneeGlassSpacing.controlGroup) {
                 Image(systemName: "arrow.clockwise.circle")
-                    .font(.title2)
+                    .font(SchneeGlassTypography.largeSymbol)
                     .foregroundStyle(.secondary)
                 Text(presentation.title)
-                    .font(.callout.weight(.medium))
+                    .font(SchneeGlassTypography.emphasizedBody)
                 Text(presentation.detail)
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 100)
@@ -435,15 +445,15 @@ private struct DropOverlaySurface<Content: View>: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: SchneeGlassRadius.workspaceDropOverlay, style: .continuous)
                 .fill(.regularMaterial)
 
-            VStack(spacing: 7) {
+            VStack(spacing: SchneeGlassSpacing.workspaceDropOverlayContent) {
                 content
             }
-            .padding(20)
+            .padding(SchneeGlassPadding.workspaceOverlayContent)
         }
-        .padding(4)
+        .padding(SchneeGlassPadding.workspaceOverlayInset)
     }
 }
 
@@ -453,21 +463,28 @@ private struct FilePreviewGrid: View {
     let onReveal: (GlassItem) -> Void
 
     private let columns = [
-        GridItem(.adaptive(minimum: 76, maximum: 92), spacing: 10, alignment: .top)
+        GridItem(
+            .adaptive(
+                minimum: SchneeGlassMetrics.workspaceFileTileMinimumWidth,
+                maximum: SchneeGlassMetrics.fileTileMaximumWidth
+            ),
+            spacing: SchneeGlassSpacing.fileGridColumn,
+            alignment: .top
+        )
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: SchneeGlassSpacing.fileGridSection) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: SchneeGlassSpacing.fileGrid) {
                 ForEach(snapshot.items) { item in
-                    VStack(spacing: 6) {
+                    VStack(spacing: SchneeGlassSpacing.compactContent) {
                         Image(systemName: symbolName(for: item.kind))
-                            .font(.system(size: 28))
+                            .font(.system(size: SchneeGlassMetrics.fileIconSize))
                             .foregroundStyle(.primary)
-                            .frame(height: 32)
+                            .frame(height: SchneeGlassMetrics.fileIconHeight)
 
                         Text(item.displayName)
-                            .font(.caption)
+                            .font(SchneeGlassTypography.supporting)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
@@ -492,7 +509,7 @@ private struct FilePreviewGrid: View {
 
             if snapshot.isTruncated {
                 Label("Showing the first 500 items", systemImage: "ellipsis.circle")
-                    .font(.caption)
+                    .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
         }
