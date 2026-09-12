@@ -220,6 +220,17 @@ public actor GlassRuntimeSession {
                         return
                     }
                     stateContinuation?.yield(Self.contentState(for: snapshot))
+                } catch let error as FolderSnapshotReadError {
+                    guard !Task.isCancelled, lifecycle == .running else {
+                        return
+                    }
+
+                    switch error {
+                    case .rootIdentityMismatch:
+                        stateContinuation?.yield(.unavailable(.replacementDetected))
+                        await stopFromEventLoop()
+                        return
+                    }
                 } catch {
                     guard !Task.isCancelled, lifecycle == .running else {
                         return
