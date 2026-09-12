@@ -130,6 +130,12 @@ public actor GlassRuntimeSession {
         return plan
     }
 
+    /// Releases planning-time authority for a copy plan that the presentation layer no longer
+    /// intends to execute. The operation is idempotent; stale or already-consumed plans are ignored.
+    public func abandonCopyPlan(_ plan: CopyBatchPlan) async {
+        await abandonPendingPlanIfOwned(plan)
+    }
+
     public func executeCopy(_ plan: CopyBatchPlan) async throws -> CopyBatchResult {
         guard lifecycle == .running else {
             await abandonPendingPlanIfOwned(plan)
