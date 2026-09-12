@@ -11,10 +11,12 @@ private enum FolderSourceFactoryTestError: Error, Sendable {
 private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing {
     let bookmarkData: Data
     let fingerprintValues: [ResourceFingerprint?]
+    let persistentIdentityValue: PersistentFolderIdentity?
     let failBookmark: Bool
     let failFingerprint: Bool
     private(set) var bookmarkURLs: [URL] = []
     private(set) var fingerprintURLs: [URL] = []
+    private(set) var persistentIdentityURLs: [URL] = []
     private var fingerprintCallCount = 0
 
     init(
@@ -24,11 +26,13 @@ private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing 
             resourceIdentifier: "resource"
         ),
         fingerprintValues: [ResourceFingerprint?]? = nil,
+        persistentIdentityValue: PersistentFolderIdentity? = nil,
         failBookmark: Bool = false,
         failFingerprint: Bool = false
     ) {
         self.bookmarkData = bookmarkData
         self.fingerprintValues = fingerprintValues ?? [fingerprintValue]
+        self.persistentIdentityValue = persistentIdentityValue
         self.failBookmark = failBookmark
         self.failFingerprint = failFingerprint
     }
@@ -59,13 +63,18 @@ private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing 
         return fingerprintValues[index]
     }
 
-    func observedURLs() -> (bookmark: [URL], fingerprint: [URL]) {
-        (bookmarkURLs, fingerprintURLs)
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+        persistentIdentityURLs.append(url)
+        return persistentIdentityValue
+    }
+
+    func observedURLs() -> (bookmark: [URL], fingerprint: [URL], persistentIdentity: [URL]) {
+        (bookmarkURLs, fingerprintURLs, persistentIdentityURLs)
     }
 }
 
 @Test
-func folderSourceFactoryCreatesBookmarkAndFingerprintFromStandardizedURL() async throws {
+func folderSourceFactoryValidatesRuntimeFingerprintWithoutPersistingIt() async throws {
     let accessor = FakeFolderSourceResourceAccessor()
     let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
     let selected = URL(fileURLWithPath: "/tmp/Folder/../Folder", isDirectory: true)
@@ -76,12 +85,27 @@ func folderSourceFactoryCreatesBookmarkAndFingerprintFromStandardizedURL() async
 
     #expect(source.bookmarkData == Data([1, 2, 3]))
     #expect(source.lastKnownPath == expected.path)
-    #expect(source.fingerprint == ResourceFingerprint(
-        volumeIdentifier: "volume",
-        resourceIdentifier: "resource"
-    ))
+    #expect(source.fingerprint == nil)
+    #expect(source.persistentIdentity == nil)
     #expect(observed.bookmark == [expected])
     #expect(observed.fingerprint == [expected, expected])
+    #expect(observed.persistentIdentity == [expected, expected])
+}
+
+@Test
+func folderSourceFactoryPersistsRestartSafeIdentityWithoutRuntimeFingerprint() async throws {
+    let identity = PersistentFolderIdentity(
+        volumeUUIDString: "58F0D944-7AE3-4B65-B918-29C31B7A06CB",
+        documentIdentifier: 8123
+    )
+    let accessor = FakeFolderSourceResourceAccessor(persistentIdentityValue: identity)
+    let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
+    let selected = URL(fileURLWithPath: "/tmp/PersistentIdentity", isDirectory: true)
+
+    let source = try await factory.createSource(for: selected)
+
+    #expect(source.fingerprint == nil)
+    #expect(source.persistentIdentity == identity)
 }
 
 @Test
