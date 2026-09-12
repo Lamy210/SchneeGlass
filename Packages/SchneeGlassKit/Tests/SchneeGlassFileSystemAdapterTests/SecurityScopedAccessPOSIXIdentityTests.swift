@@ -154,6 +154,10 @@ func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprint(
 
     #expect(acquisition.refreshedSource?.bookmarkData == Data([0x02]))
     #expect(acquisition.handle.fingerprint == nil)
+    #expect(acquisition.handle.runtimeDirectoryIdentity == RuntimeDirectoryIdentity(
+        deviceIdentifier: identity.device,
+        objectIdentifier: identity.inode
+    ))
     #expect(await accessor.counters().stops == 0)
 
     await coordinator.release(handleID: acquisition.handle.id)
