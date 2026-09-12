@@ -6,57 +6,91 @@ fail() {
   exit 1
 }
 
-[[ "$#" -ge 3 ]] || fail "usage: $0 <branch-json> <rules-pages-json> <required-check> [required-check ...]"
+[[ "$#" -ge 4 ]] \
+  || fail "usage: $0 <branch-json> <rules-pages-json> <required-app-id> <required-check> [required-check ...]"
 
 BRANCH_JSON="$1"
 RULES_PAGES_JSON="$2"
-shift 2
+REQUIRED_APP_ID="$3"
+shift 3
 
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 [[ -f "$BRANCH_JSON" ]] || fail "branch JSON does not exist: $BRANCH_JSON"
 [[ -f "$RULES_PAGES_JSON" ]] || fail "rules JSON does not exist: $RULES_PAGES_JSON"
+[[ "$REQUIRED_APP_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "required app ID must be a positive integer: $REQUIRED_APP_ID"
 
 jq -e 'type == "object"' "$BRANCH_JSON" >/dev/null \
   || fail "branch payload must be a JSON object"
 jq -e 'type == "array" and all(.[]; type == "array")' "$RULES_PAGES_JSON" >/dev/null \
   || fail "rules payload must be a slurped array of JSON-array pages"
 
-OBSERVED="$(mktemp)"
-trap 'rm -f "$OBSERVED"' EXIT
+BOUND_OBSERVED="$(mktemp)"
+OTHER_OBSERVED="$(mktemp)"
+trap 'rm -f "$BOUND_OBSERVED" "$OTHER_OBSERVED"' EXIT
 
-# Classic branch-protection status checks are exposed on the branch summary. Support both
-# historical `contexts` and the more specific `checks[].context` representation.
-jq -r '
+# A release gate must prove both the exact context and the expected producer. Classic
+# `contexts` are deliberately not authority here because they do not expose an explicit app
+# binding. Only `checks[]` entries pinned to the expected GitHub App are accepted.
+jq -r --argjson expected "$REQUIRED_APP_ID" '
+  (.protection.required_status_checks.checks // [])[]?
+  | select(.context | type == "string" and length > 0)
+  | select(.app_id == $expected)
+  | .context
+' "$BRANCH_JSON" >> "$BOUND_OBSERVED"
+
+jq -r --argjson expected "$REQUIRED_APP_ID" '
   (
-    (.protection.required_status_checks.contexts // [])[]?,
-    (.protection.required_status_checks.checks // [])[]?.context
+    (.protection.required_status_checks.contexts // [])[]?
+    | select(type == "string" and length > 0)
+    | . + " [classic context without explicit app binding]"
+  ),
+  (
+    (.protection.required_status_checks.checks // [])[]?
+    | select(.context | type == "string" and length > 0)
+    | select(.app_id != $expected)
+    | .context + " [classic app_id=" + ((.app_id // "null") | tostring) + "]"
   )
-  | select(type == "string" and length > 0)
-' "$BRANCH_JSON" >> "$OBSERVED"
+' "$BRANCH_JSON" >> "$OTHER_OBSERVED"
 
-# Rulesets are readable with repository Metadata permission. `gh api --paginate --slurp`
-# stores each REST page as one element in the outer array, so flatten those pages before
-# collecting active required-status-check rule contexts.
-jq -r '
+# The active branch-rules endpoint returns only rules that currently apply. Ruleset checks are
+# accepted only when `integration_id` explicitly pins them to the expected GitHub App.
+jq -r --argjson expected "$REQUIRED_APP_ID" '
   .[][]
   | select(.type == "required_status_checks")
-  | (.parameters.required_status_checks // [])[]?.context
-  | select(type == "string" and length > 0)
-' "$RULES_PAGES_JSON" >> "$OBSERVED"
+  | (.parameters.required_status_checks // [])[]?
+  | select(.context | type == "string" and length > 0)
+  | select(.integration_id == $expected)
+  | .context
+' "$RULES_PAGES_JSON" >> "$BOUND_OBSERVED"
 
-sort -u -o "$OBSERVED" "$OBSERVED"
+jq -r --argjson expected "$REQUIRED_APP_ID" '
+  .[][]
+  | select(.type == "required_status_checks")
+  | (.parameters.required_status_checks // [])[]?
+  | select(.context | type == "string" and length > 0)
+  | select(.integration_id != $expected)
+  | .context + " [ruleset integration_id=" + ((.integration_id // "null") | tostring) + "]"
+' "$RULES_PAGES_JSON" >> "$OTHER_OBSERVED"
+
+sort -u -o "$BOUND_OBSERVED" "$BOUND_OBSERVED"
+sort -u -o "$OTHER_OBSERVED" "$OTHER_OBSERVED"
 
 for required_check in "$@"; do
   [[ -n "$required_check" ]] || fail "required check name must not be empty"
-  if ! grep -Fqx -- "$required_check" "$OBSERVED"; then
-    echo "Observed required checks:" >&2
-    if [[ -s "$OBSERVED" ]]; then
-      sed 's/^/  - /' "$OBSERVED" >&2
+  if ! grep -Fqx -- "$required_check" "$BOUND_OBSERVED"; then
+    echo "Observed checks bound to app ID $REQUIRED_APP_ID:" >&2
+    if [[ -s "$BOUND_OBSERVED" ]]; then
+      sed 's/^/  - /' "$BOUND_OBSERVED" >&2
     else
       echo "  (none)" >&2
     fi
-    fail "missing required status check: $required_check"
+    if [[ -s "$OTHER_OBSERVED" ]]; then
+      echo "Observed unbound or other-source checks (not accepted):" >&2
+      sed 's/^/  - /' "$OTHER_OBSERVED" >&2
+    fi
+    fail "missing required status check from app ID $REQUIRED_APP_ID: $required_check"
   fi
 done
 
-echo "Release required checks verified: $*"
+echo "Release required checks verified for app ID $REQUIRED_APP_ID: $*"
