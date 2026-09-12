@@ -27,7 +27,7 @@ func contentStatusPresentationCoversEveryContentState() {
     )
     #expect(
         GlassContentStatusPresentation.make(for: .failed(.unexpected))
-            == .init(label: "Needs reconnect", systemImage: "arrow.clockwise.circle")
+            == .init(label: "Needs attention", systemImage: "arrow.clockwise.circle")
     )
 }
 
@@ -85,7 +85,7 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
     assertRejection(
         .destinationUnavailable,
         workspaceTitle: "Folder unavailable",
-        workspaceDetail: "Reconnect the Glass before copying files.",
+        workspaceDetail: "Restart SchneeGlass to retry. If the folder stays unavailable, remove this Glass and add the folder again.",
         desktopTitle: "Folder unavailable",
         desktopDetail: nil
     )
