@@ -7,16 +7,22 @@ import Testing
 
 private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing {
     private let resolvedURL: URL
+    private let isStale: Bool
     private var stopCounter = 0
     private var bookmarkCounter = 0
+    private var fingerprintCounter = 0
 
-    init(resolvedURL: URL) {
+    init(
+        resolvedURL: URL,
+        isStale: Bool = true
+    ) {
         self.resolvedURL = resolvedURL
+        self.isStale = isStale
     }
 
     func resolveBookmark(_ data: Data) async throws -> ResolvedSecurityScopedResource {
         _ = data
-        return ResolvedSecurityScopedResource(url: resolvedURL, isStale: true)
+        return ResolvedSecurityScopedResource(url: resolvedURL, isStale: isStale)
     }
 
     func createBookmark(for url: URL) async throws -> Data {
@@ -37,7 +43,11 @@ private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing
 
     func fingerprint(for url: URL) async throws -> ResourceFingerprint? {
         _ = url
-        return nil
+        fingerprintCounter += 1
+        return ResourceFingerprint(
+            volumeIdentifier: "foundation-volume-should-not-be-read",
+            resourceIdentifier: "foundation-resource-should-not-be-read"
+        )
     }
 
     func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
@@ -45,8 +55,8 @@ private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing
         return nil
     }
 
-    func counters() -> (stops: Int, bookmarks: Int) {
-        (stopCounter, bookmarkCounter)
+    func counters() -> (stops: Int, bookmarks: Int, fingerprints: Int) {
+        (stopCounter, bookmarkCounter, fingerprintCounter)
     }
 }
 
@@ -77,6 +87,43 @@ private func runtimeDirectoryIdentity(
 }
 
 @Test
+func nonStaleAccessUsesPOSIXIdentityWithoutFoundationFingerprintRead() async throws {
+    let url = URL(fileURLWithPath: "/tmp/schneeglass-posix-access-stable", isDirectory: true)
+    let accessor = POSIXIdentityTestResourceAccessor(
+        resolvedURL: url,
+        isStale: false
+    )
+    let identity = runtimeDirectoryIdentity(inode: 41)
+    let identityReader = SequenceRuntimeDirectoryIdentityReader([identity])
+    let coordinator = SecurityScopedAccessCoordinator(
+        resourceAccessor: accessor,
+        runtimeIdentityReader: identityReader
+    )
+
+    let acquisition = try await coordinator.acquire(
+        source: FolderSource(bookmarkData: Data([0x01]), lastKnownPath: url.path),
+        glassID: GlassID()
+    )
+
+    #expect(acquisition.refreshedSource == nil)
+    #expect(acquisition.handle.fingerprint == nil)
+    #expect(acquisition.handle.runtimeDirectoryIdentity == RuntimeDirectoryIdentity(
+        deviceIdentifier: identity.device,
+        objectIdentifier: identity.inode
+    ))
+
+    let beforeRelease = await accessor.counters()
+    #expect(beforeRelease.bookmarks == 0)
+    #expect(beforeRelease.stops == 0)
+    #expect(beforeRelease.fingerprints == 0)
+
+    await coordinator.release(handleID: acquisition.handle.id)
+    let afterRelease = await accessor.counters()
+    #expect(afterRelease.stops == 1)
+    #expect(afterRelease.fingerprints == 0)
+}
+
+@Test
 func staleBookmarkRefreshRejectsPOSIXDirectoryReplacementWithoutFoundationFingerprint() async {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-posix-refresh-replacement", isDirectory: true)
     let accessor = POSIXIdentityTestResourceAccessor(resolvedURL: url)
@@ -104,6 +151,7 @@ func staleBookmarkRefreshRejectsPOSIXDirectoryReplacementWithoutFoundationFinger
     let counters = await accessor.counters()
     #expect(counters.bookmarks == 1)
     #expect(counters.stops == 1)
+    #expect(counters.fingerprints == 0)
 }
 
 @Test
@@ -134,10 +182,11 @@ func staleBookmarkRefreshFailsClosedWhenPOSIXIdentityDisappears() async {
     let counters = await accessor.counters()
     #expect(counters.bookmarks == 1)
     #expect(counters.stops == 1)
+    #expect(counters.fingerprints == 0)
 }
 
 @Test
-func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprint() async throws {
+func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprintRead() async throws {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-posix-refresh-stable", isDirectory: true)
     let accessor = POSIXIdentityTestResourceAccessor(resolvedURL: url)
     let identity = runtimeDirectoryIdentity(inode: 41)
@@ -158,8 +207,13 @@ func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprint(
         deviceIdentifier: identity.device,
         objectIdentifier: identity.inode
     ))
-    #expect(await accessor.counters().stops == 0)
+
+    let beforeRelease = await accessor.counters()
+    #expect(beforeRelease.stops == 0)
+    #expect(beforeRelease.fingerprints == 0)
 
     await coordinator.release(handleID: acquisition.handle.id)
-    #expect(await accessor.counters().stops == 1)
+    let afterRelease = await accessor.counters()
+    #expect(afterRelease.stops == 1)
+    #expect(afterRelease.fingerprints == 0)
 }
