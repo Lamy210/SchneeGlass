@@ -88,6 +88,10 @@ Status: **DONE**
 
 - acquire / release lifecycle
 - stale bookmark refresh
+- security-scoped bookmarkをprimary persistent resource referenceとして使用
+- restart-safe supplemental identityとして`PersistentFolderIdentity(volumeUUIDString, documentIdentifier)`を使用
+- live operationではdescriptor-derived `RuntimeDirectoryIdentity(st_dev, st_ino)`をprimary identityとして使用
+- POSIX runtime identity取得不可時のみFoundation `ResourceFingerprint`をcompatibility fallbackとして使用
 - resource replacement detection
 - failure cleanup
 
@@ -98,6 +102,7 @@ Status: **DONE**
 - hidden item filtering
 - 500-item display limit
 - symlink / alias / package / directory / regular classification
+- snapshot root continuityはPOSIX runtime identityをprimary、Foundation root fingerprintをfallbackとして検証
 - 500-item performance baseline
   - 501 direct-child fixture
   - 3-run measurement
@@ -128,6 +133,9 @@ Status: **DONE for regular-file v0.1 scope**
 - collision / same-directory / cloud-placeholder rejection
 - case-sensitivity handling
 - perform-time re-plan
+- destination runtime identityをplanning前後で再検証
+- symbolic-link destinationをphysical directoryとして扱わずplanning段階でreject
+- safe destination commit capabilityをexecution contractと整合
 
 ### TASK-008 — Recovery Metadata Store
 Status: **DONE**
@@ -149,6 +157,9 @@ Status: **DONE for regular-file v0.1 scope**
 - no overwrite
 - partial-success semantics
 - fault-injection / real-filesystem safety tests
+- production source inode / destination directory descriptor pinning
+- destination leaseはruntime POSIX identityをprimary authorityとして検証
+- Foundation directory identifiersはfallback proofが必要な場合のみ取得・比較
 
 ---
 
@@ -164,6 +175,7 @@ Status: **DONE**
 - explicit backup restore
 - corrupt current preserve
 - unsafe backup identifier rejection
+- legacy schema-v1 `source.fingerprint`をdecode可能のまま維持し、新規saveではboot-local fingerprintを永続化しない
 
 ### TASK-011 — Startup / Recovery Coordinator
 Status: **DONE for v0.1**
@@ -183,7 +195,11 @@ Status: **DONE for v0.1**
 - Copy / Recovery mutationのApplication-level相互排他
 - destination reconnect
   - folder picker後のrecord/config再load
-  - fingerprint identity validation
+  - saved / selected双方の`PersistentFolderIdentity` exact-match validation
+    - `volumeUUIDString`
+    - `documentIdentifier`
+  - boot/session-local `ResourceFingerprint`をreconnect authorityとして使用しない
+  - persistent identity dimension不足時はfail-closed
   - stale reconnect rejection
   - security-scoped access validation
 - read-only manual inspection
@@ -371,6 +387,7 @@ Status: **DONE for v0.1 code/document baseline / release record pending**
 - release evidence schema / exact candidate workflow identity documentation
 - public build-number history gate documentation
 - snapshot performance baseline / technical-debt revisit contract
+- persistent / runtime / fallback folder identity contract documentation
 
 Release時に残る記録:
 
