@@ -127,6 +127,35 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
+            // Refreshing bookmark data is another async identity boundary. If this access already
+            // exposed physical identity, require every observed dimension to remain available and
+            // unchanged before returning bookmark data that callers may persist for later sessions.
+            if let actualFingerprint {
+                let refreshedFingerprint: ResourceFingerprint?
+                do {
+                    refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+                } catch {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.identityVerificationIsUnavailable(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.representsReplacement(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.resourceReplacementDetected
+                }
+            }
+
             refreshedSource = FolderSource(
                 bookmarkData: refreshedBookmark,
                 lastKnownPath: resolved.url.path,
