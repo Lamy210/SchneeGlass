@@ -31,18 +31,38 @@ Binding performs all of the following before mutation begins:
 
 - open destination with `O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW`,
 - verify the open descriptor still matches the destination pathname,
-- require a directory-specific resource identifier from the acquired access or authoritative plan,
-- compare available `FolderAccessHandle` fingerprint values,
-- compare the authoritative `DestinationDescriptor` resource identifier,
+- prefer the non-persistent `RuntimeDirectoryIdentity` captured from descriptor metadata when the
+  security-scoped access was acquired,
+- compare that runtime identity directly with the destination descriptor's `st_dev` / `st_ino`,
+- retain the acquired Foundation directory resource identifier and authoritative
+  `DestinationDescriptor` resource identifier only as compatibility/fallback proof,
 - require the volume to advertise exclusive rename support.
 
 A volume identifier alone is not sufficient because it cannot distinguish two directories on the
-same filesystem. If both the acquired access and authoritative plan lack a directory resource
-identifier, production mutation fails closed rather than accepting an identity that cannot detect a
-planning-to-execution directory replacement.
+same filesystem. Production mutation requires at least one directory-specific proof: the acquired
+runtime descriptor identity, an acquired Foundation directory resource identifier, or an
+authoritative plan directory resource identifier. If none is available, mutation fails closed.
+
+`RuntimeDirectoryIdentity` is deliberately process-local and non-Codable. It is continuity proof for
+a live authorized access and must never become persisted folder authority.
 
 Every operation ID in the batch is then associated with that same open directory descriptor plus its
 single-component staging/final filenames.
+
+### Drop preview and authoritative planning
+
+`FoundationDropFileSystemInspector` uses the same identity hierarchy before advertising a safe copy:
+
+1. when `FolderAccessHandle.runtimeDirectoryIdentity` exists, it re-observes descriptor-derived POSIX
+   identity before and after path-based filesystem capability reads and requires an exact match;
+2. the normal POSIX-backed path does not require or stringify Foundation `fileResourceIdentifier`;
+3. when no acquired runtime identity exists, an acquired Foundation directory resource identifier may
+   be used as a strict compatibility fallback and must match the currently observed identifier;
+4. if no directory-specific proof is available, the folder remains observable but
+   `supportsSafeDestinationCommit` is `false`.
+
+The planning check is conservative rather than mutation authority. The execution lease repeats the
+physical descriptor validation immediately before any destination mutation.
 
 ### Staging creation
 
@@ -80,9 +100,9 @@ production `PinnedSourceFileCopying` uses only the descriptor-relative committer
 ### Unsupported volumes / identities
 
 If Foundation does not report `volumeSupportsExclusiveRenaming == true`, production Drop execution
-fails closed. Likewise, if no directory-specific resource identity is available to compare planning
-and execution, production Drop execution fails closed. v0.1 does not silently fall back to a weaker
-path-based or volume-only identity implementation.
+fails closed. Likewise, if no directory-specific runtime or fallback identity is available to compare
+planning and execution, production Drop execution fails closed. v0.1 does not silently fall back to a
+weaker pathname-only or volume-only identity implementation.
 
 `FoundationDropFileSystemInspector` exposes the same prerequisite as
 `StorageCapabilities.supportsSafeDestinationCommit`. Native Drop preview and authoritative planning
@@ -118,7 +138,9 @@ the production source-copy boundary.
 Regression tests must cover:
 
 - destination rename/recreate between authoritative planning and execution,
-- missing directory-specific identity rejection,
+- acquired runtime identity match, mismatch, and disappearance during Drop inspection,
+- Foundation directory-resource fallback when acquired POSIX identity is unavailable,
+- missing directory-specific identity rejection before mutation,
 - existing final entry preservation,
 - descriptor-relative commit after destination pathname replacement,
 - source/destination lease cleanup on failure and success,
@@ -130,6 +152,8 @@ Regression tests must cover:
 Advantages:
 
 - destination mutation authority is physical rather than pathname-based,
+- normal local-filesystem planning and execution no longer depend on opaque Foundation resource-ID
+  stringification when acquired POSIX runtime identity is available,
 - destination replacement cannot redirect a copy,
 - no-overwrite commit is atomic at the filesystem boundary,
 - source, destination, staging, and recovery identity now all have explicit descriptor-backed
@@ -141,8 +165,10 @@ Advantages:
 Costs:
 
 - production Drop execution is unavailable on volumes without exclusive rename support,
-- production Drop execution is unavailable when a directory-specific resource identity cannot be
-  established,
+- production Drop execution is unavailable when a directory-specific runtime or fallback identity
+  cannot be established,
+- Foundation resource identifiers remain as a compatibility fallback for access handles that do not
+  carry runtime descriptor identity,
 - POSIX-specific implementation and tests increase,
 - production commit no longer relies on `FileManager.moveItem`/`NSFileCoordinator` for the final
   local rename; network destinations are already outside v0.1 scope.
