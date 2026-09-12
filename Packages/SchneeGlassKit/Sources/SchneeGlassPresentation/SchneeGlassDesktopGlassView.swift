@@ -53,7 +53,7 @@ public struct SchneeGlassDesktopGlassView: View {
     }
 }
 
-private struct DesktopGlassSurface: View {
+struct DesktopGlassSurface: View {
     let entry: GlassWorkspaceEntry
     let canRemove: Bool
     let onOpen: (GlassItem) -> Void
