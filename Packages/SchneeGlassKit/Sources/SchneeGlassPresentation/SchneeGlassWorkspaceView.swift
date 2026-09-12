@@ -394,43 +394,28 @@ private struct GlassPreviewSurface: View {
             )
 
         case .empty:
-            VStack(spacing: SchneeGlassSpacing.controlGroup) {
-                Image(systemName: "tray")
-                    .font(SchneeGlassTypography.largeSymbol)
-                    .foregroundStyle(.secondary)
-                Text("Drop files here")
-                    .font(SchneeGlassTypography.emphasizedBody)
-                Text("Files are copied. Originals stay where they are.")
-                    .font(SchneeGlassTypography.supporting)
-                    .foregroundStyle(.secondary)
-            }
+            SchneeGlassStateMessage(
+                systemImage: "tray",
+                title: "Drop files here",
+                detail: "Files are copied. Originals stay where they are."
+            )
             .frame(maxWidth: .infinity, minHeight: 100)
 
         case .unavailable:
-            VStack(spacing: SchneeGlassSpacing.controlGroup) {
-                Image(systemName: "externaldrive.badge.exclamationmark")
-                    .font(SchneeGlassTypography.largeSymbol)
-                    .foregroundStyle(.secondary)
-                Text("Folder unavailable")
-                    .font(SchneeGlassTypography.emphasizedBody)
-                Text("Reconnect support will be exposed through Recovery.")
-                    .font(SchneeGlassTypography.supporting)
-                    .foregroundStyle(.secondary)
-            }
+            SchneeGlassStateMessage(
+                systemImage: "externaldrive.badge.exclamationmark",
+                title: "Folder unavailable",
+                detail: "Reconnect support will be exposed through Recovery."
+            )
             .frame(maxWidth: .infinity, minHeight: 100)
 
         case let .failed(error):
             let presentation = GlassContentFailurePresentation.make(for: error)
-            VStack(spacing: SchneeGlassSpacing.controlGroup) {
-                Image(systemName: "arrow.clockwise.circle")
-                    .font(SchneeGlassTypography.largeSymbol)
-                    .foregroundStyle(.secondary)
-                Text(presentation.title)
-                    .font(SchneeGlassTypography.emphasizedBody)
-                Text(presentation.detail)
-                    .font(SchneeGlassTypography.supporting)
-                    .foregroundStyle(.secondary)
-            }
+            SchneeGlassStateMessage(
+                systemImage: "arrow.clockwise.circle",
+                title: presentation.title,
+                detail: presentation.detail
+            )
             .frame(maxWidth: .infinity, minHeight: 100)
         }
     }
@@ -477,18 +462,11 @@ private struct FilePreviewGrid: View {
         VStack(alignment: .leading, spacing: SchneeGlassSpacing.fileGridSection) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: SchneeGlassSpacing.fileGrid) {
                 ForEach(snapshot.items) { item in
-                    VStack(spacing: SchneeGlassSpacing.compactContent) {
-                        Image(systemName: symbolName(for: item.kind))
-                            .font(.system(size: SchneeGlassMetrics.fileIconSize))
-                            .foregroundStyle(.primary)
-                            .frame(height: SchneeGlassMetrics.fileIconHeight)
-
-                        Text(item.displayName)
-                            .font(SchneeGlassTypography.supporting)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                    }
+                    let presentation = GlassItemPresentation.make(for: item)
+                    SchneeGlassFileTile(
+                        systemImage: presentation.systemImage,
+                        title: item.displayName
+                    )
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
                         onOpen(item)
@@ -502,7 +480,7 @@ private struct FilePreviewGrid: View {
                         }
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(accessibilityLabel(for: item))
+                    .accessibilityLabel(presentation.accessibilityLabel)
                     .accessibilityHint("Double-click to open")
                 }
             }
@@ -512,38 +490,6 @@ private struct FilePreviewGrid: View {
                     .font(SchneeGlassTypography.supporting)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    private func symbolName(for kind: FileKind) -> String {
-        switch kind {
-        case .regular:
-            return "doc"
-        case .directory:
-            return "folder"
-        case .package:
-            return "shippingbox"
-        case .alias:
-            return "arrowshape.turn.up.right"
-        case .symbolicLink:
-            return "link"
-        case .unsupported:
-            return "questionmark.square"
-        }
-    }
-
-    private func accessibilityLabel(for item: GlassItem) -> String {
-        switch item.kind {
-        case .directory:
-            return "Folder, \(item.displayName)"
-        case .package:
-            return "Package, \(item.displayName)"
-        case .alias:
-            return "Alias, \(item.displayName)"
-        case .symbolicLink:
-            return "Symbolic link, \(item.displayName)"
-        case .regular, .unsupported:
-            return item.displayName
         }
     }
 }
