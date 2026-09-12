@@ -182,10 +182,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
     func destinationDescriptor(for access: FolderAccessHandle) async -> DestinationDescriptor? {
         let destination = access.url.standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory),
-              isDirectory.boolValue
-        else {
+        guard isPhysicalDirectory(at: destination) else {
             return nil
         }
 
@@ -214,6 +211,13 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
             }
 
             let values = try destination.resourceValues(forKeys: resourceKeys)
+
+            // Preview/planning must not advertise a path shape that the execution lease will reject
+            // with O_NOFOLLOW. Re-check after path-based capability reads so a symlink/root swap is
+            // conservatively rejected before a copy plan is exposed.
+            guard isPhysicalDirectory(at: destination) else {
+                return nil
+            }
 
             if let expectedRuntimeIdentity {
                 // Bracket path-based capability reads with the identity captured when the
@@ -281,6 +285,15 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
 
     func itemExists(at url: URL) -> Bool {
         fileManager.fileExists(atPath: url.standardizedFileURL.path)
+    }
+
+    private func isPhysicalDirectory(at url: URL) -> Bool {
+        do {
+            let attributes = try fileManager.attributesOfItem(atPath: url.path)
+            return attributes[.type] as? FileAttributeType == .typeDirectory
+        } catch {
+            return false
+        }
     }
 
     private func runtimeIdentityMatches(
