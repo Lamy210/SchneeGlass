@@ -4,19 +4,10 @@ import SwiftUI
 public struct SchneeGlassFileTile: View {
     private let systemImage: String
     private let title: String
-    private let accessibilityLabel: String
-    private let accessibilityHint: String
 
-    public init(
-        systemImage: String,
-        title: String,
-        accessibilityLabel: String,
-        accessibilityHint: String
-    ) {
+    public init(systemImage: String, title: String) {
         self.systemImage = systemImage
         self.title = title
-        self.accessibilityLabel = accessibilityLabel
-        self.accessibilityHint = accessibilityHint
     }
 
     public var body: some View {
@@ -32,10 +23,6 @@ public struct SchneeGlassFileTile: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(accessibilityHint)
     }
 }
 #endif
