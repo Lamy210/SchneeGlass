@@ -13,6 +13,15 @@ protocol SecurityScopedResourceAccessing: Sendable {
     func startAccessing(_ url: URL) async -> Bool
     func stopAccessing(_ url: URL) async
     func fingerprint(for url: URL) async throws -> ResourceFingerprint?
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity?
+}
+
+extension SecurityScopedResourceAccessing {
+    /// Test doubles and specialized accessors may not expose restart-safe metadata. Production's
+    /// Foundation accessor overrides this method.
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+        nil
+    }
 }
 
 struct FoundationSecurityScopedResourceAccessor: SecurityScopedResourceAccessing {
@@ -61,6 +70,24 @@ struct FoundationSecurityScopedResourceAccessor: SecurityScopedResourceAccessing
             resourceIdentifier: resourceIdentifier
         )
     }
+
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+        let values = try url.resourceValues(forKeys: [
+            .volumeUUIDStringKey,
+            .documentIdentifierKey,
+        ])
+
+        // A document identifier is unique only within its volume. Without the persistent volume UUID
+        // it is not useful as a persisted comparison token, so omit the supplemental identity.
+        guard let volumeUUIDString = values.volumeUUIDString else {
+            return nil
+        }
+
+        return PersistentFolderIdentity(
+            volumeUUIDString: volumeUUIDString,
+            documentIdentifier: values.documentIdentifier
+        )
+    }
 }
 
 public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
@@ -101,18 +128,34 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             actualFingerprint = nil
         }
 
-        // A saved identity is useful only if every identifier it recorded can still be observed.
-        // Treat missing comparison data as an access-establishment failure rather than silently
-        // accepting a folder whose physical identity can no longer be proven.
-        if Self.identityVerificationIsUnavailable(
-            expected: source.fingerprint,
-            actual: actualFingerprint
+        let actualPersistentIdentity: PersistentFolderIdentity?
+        do {
+            actualPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
+        } catch {
+            // Restart-safe metadata is supplemental when no persisted proof exists. If a previous
+            // configuration did persist such proof, inability to re-observe it must fail closed.
+            if source.persistentIdentity != nil {
+                await resourceAccessor.stopAccessing(resolved.url)
+                throw FolderAccessError.bookmarkResolutionFailed
+            }
+            actualPersistentIdentity = nil
+        }
+
+        // A security-scoped bookmark is the primary persistent resource reference. When a source
+        // also carries restart-safe metadata, every recorded dimension must still be observable and
+        // equal. Boot-local fileResourceIdentifier/volumeIdentifier values are deliberately ignored.
+        if Self.persistentIdentityVerificationIsUnavailable(
+            expected: source.persistentIdentity,
+            actual: actualPersistentIdentity
         ) {
             await resourceAccessor.stopAccessing(resolved.url)
             throw FolderAccessError.bookmarkResolutionFailed
         }
 
-        if Self.representsReplacement(expected: source.fingerprint, actual: actualFingerprint) {
+        if Self.representsPersistentReplacement(
+            expected: source.persistentIdentity,
+            actual: actualPersistentIdentity
+        ) {
             await resourceAccessor.stopAccessing(resolved.url)
             throw FolderAccessError.resourceReplacementDetected
         }
@@ -127,12 +170,10 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
-            // A directory resource identifier is the dimension that proves which folder this is.
-            // Legacy volume-only fingerprints remain compatible, but when directory identity is
-            // available it must survive the async bookmark refresh unchanged before persistence.
-            if let actualFingerprint,
-               actualFingerprint.resourceIdentifier != nil
-            {
+            // A directory runtime identifier protects the bookmark-refresh async boundary during
+            // this boot. Legacy sources that expose no directory identifier keep their historical
+            // bookmark-only compatibility rather than inventing stronger proof from volume identity.
+            if actualFingerprint?.resourceIdentifier != nil {
                 let refreshedFingerprint: ResourceFingerprint?
                 do {
                     refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
@@ -141,7 +182,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                     throw FolderAccessError.bookmarkResolutionFailed
                 }
 
-                if Self.identityVerificationIsUnavailable(
+                if Self.runtimeIdentityVerificationIsUnavailable(
                     expected: actualFingerprint,
                     actual: refreshedFingerprint
                 ) {
@@ -149,7 +190,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                     throw FolderAccessError.bookmarkResolutionFailed
                 }
 
-                if Self.representsReplacement(
+                if Self.representsRuntimeReplacement(
                     expected: actualFingerprint,
                     actual: refreshedFingerprint
                 ) {
@@ -158,10 +199,49 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 }
             }
 
+            let refreshedPersistentIdentity: PersistentFolderIdentity?
+            do {
+                refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
+            } catch {
+                if actualPersistentIdentity != nil {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+                refreshedPersistentIdentity = nil
+            }
+
+            if Self.persistentIdentityVerificationIsUnavailable(
+                expected: actualPersistentIdentity,
+                actual: refreshedPersistentIdentity
+            ) {
+                await resourceAccessor.stopAccessing(resolved.url)
+                throw FolderAccessError.bookmarkResolutionFailed
+            }
+
+            if Self.representsPersistentReplacement(
+                expected: actualPersistentIdentity,
+                actual: refreshedPersistentIdentity
+            ) {
+                await resourceAccessor.stopAccessing(resolved.url)
+                throw FolderAccessError.resourceReplacementDetected
+            }
+
             refreshedSource = FolderSource(
                 bookmarkData: refreshedBookmark,
                 lastKnownPath: resolved.url.path,
-                fingerprint: actualFingerprint
+                persistentIdentity: refreshedPersistentIdentity
+            )
+        } else if source.persistentIdentity != actualPersistentIdentity
+                    || source.fingerprint != nil
+                    || source.lastKnownPath != resolved.url.path
+        {
+            // This is also the in-place migration path for schema-v1 files. Preserve the existing
+            // bookmark, discard the decoded legacy boot-local fingerprint in memory, and add whatever
+            // restart-safe metadata the resolved resource currently exposes.
+            refreshedSource = FolderSource(
+                bookmarkData: source.bookmarkData,
+                lastKnownPath: resolved.url.path,
+                persistentIdentity: actualPersistentIdentity
             )
         } else {
             refreshedSource = nil
@@ -195,7 +275,52 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         }
     }
 
-    private static func identityVerificationIsUnavailable(
+    private static func persistentIdentityVerificationIsUnavailable(
+        expected: PersistentFolderIdentity?,
+        actual: PersistentFolderIdentity?
+    ) -> Bool {
+        guard let expected else {
+            return false
+        }
+        guard let actual else {
+            return expected.volumeUUIDString != nil || expected.documentIdentifier != nil
+        }
+
+        if expected.volumeUUIDString != nil, actual.volumeUUIDString == nil {
+            return true
+        }
+        if expected.documentIdentifier != nil, actual.documentIdentifier == nil {
+            return true
+        }
+        return false
+    }
+
+    private static func representsPersistentReplacement(
+        expected: PersistentFolderIdentity?,
+        actual: PersistentFolderIdentity?
+    ) -> Bool {
+        guard let expected, let actual else {
+            return false
+        }
+
+        if let expectedVolume = expected.volumeUUIDString,
+           let actualVolume = actual.volumeUUIDString,
+           expectedVolume != actualVolume
+        {
+            return true
+        }
+
+        if let expectedDocument = expected.documentIdentifier,
+           let actualDocument = actual.documentIdentifier,
+           expectedDocument != actualDocument
+        {
+            return true
+        }
+
+        return false
+    }
+
+    private static func runtimeIdentityVerificationIsUnavailable(
         expected: ResourceFingerprint?,
         actual: ResourceFingerprint?
     ) -> Bool {
@@ -221,7 +346,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         return false
     }
 
-    private static func representsReplacement(
+    private static func representsRuntimeReplacement(
         expected: ResourceFingerprint?,
         actual: ResourceFingerprint?
     ) -> Bool {

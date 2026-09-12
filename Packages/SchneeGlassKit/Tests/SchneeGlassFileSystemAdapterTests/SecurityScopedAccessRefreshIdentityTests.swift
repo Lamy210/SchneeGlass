@@ -160,7 +160,7 @@ func staleLegacyBookmarkWithoutObservedIdentityKeepsCompatibility() async throws
 }
 
 @Test
-func staleLegacyVolumeOnlyBookmarkKeepsCompatibilityWithoutFalseFolderProof() async throws {
+func staleLegacyVolumeOnlyBookmarkKeepsCompatibilityWithoutPersistingRuntimeIdentity() async throws {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-refresh-volume-only", isDirectory: true)
     let volumeOnly = ResourceFingerprint(
         volumeIdentifier: "volume-a",
@@ -177,7 +177,7 @@ func staleLegacyVolumeOnlyBookmarkKeepsCompatibilityWithoutFalseFolderProof() as
         glassID: GlassID()
     )
 
-    #expect(acquisition.refreshedSource?.fingerprint == volumeOnly)
+    #expect(acquisition.refreshedSource?.fingerprint == nil)
     #expect(acquisition.handle.fingerprint == volumeOnly)
 
     let beforeRelease = await accessor.counters()

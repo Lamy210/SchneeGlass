@@ -8,6 +8,7 @@ private actor FakeSecurityScopedResourceAccessor: SecurityScopedResourceAccessin
     let resolvedResource: ResolvedSecurityScopedResource
     let startResult: Bool
     let fingerprintValue: ResourceFingerprint?
+    let persistentIdentityValue: PersistentFolderIdentity?
     let refreshedBookmarkData: Data
 
     private var stopCalls = 0
@@ -18,6 +19,7 @@ private actor FakeSecurityScopedResourceAccessor: SecurityScopedResourceAccessin
         isStale: Bool = false,
         startResult: Bool = true,
         fingerprintValue: ResourceFingerprint? = nil,
+        persistentIdentityValue: PersistentFolderIdentity? = nil,
         refreshedBookmarkData: Data = Data([0x42])
     ) {
         self.resolvedResource = ResolvedSecurityScopedResource(
@@ -26,6 +28,7 @@ private actor FakeSecurityScopedResourceAccessor: SecurityScopedResourceAccessin
         )
         self.startResult = startResult
         self.fingerprintValue = fingerprintValue
+        self.persistentIdentityValue = persistentIdentityValue
         self.refreshedBookmarkData = refreshedBookmarkData
     }
 
@@ -50,9 +53,23 @@ private actor FakeSecurityScopedResourceAccessor: SecurityScopedResourceAccessin
         fingerprintValue
     }
 
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+        persistentIdentityValue
+    }
+
     func counters() -> (stopCalls: Int, createBookmarkCalls: Int) {
         (stopCalls, createBookmarkCalls)
     }
+}
+
+private func persistentIdentity(
+    volume: String = "volume-uuid-a",
+    document: Int = 41
+) -> PersistentFolderIdentity {
+    PersistentFolderIdentity(
+        volumeUUIDString: volume,
+        documentIdentifier: document
+    )
 }
 
 @Test
@@ -62,15 +79,17 @@ func acquireAndReleaseBalancesSecurityScope() async throws {
         volumeIdentifier: "volume-a",
         resourceIdentifier: "folder-a"
     )
+    let identity = persistentIdentity()
     let accessor = FakeSecurityScopedResourceAccessor(
         resolvedURL: url,
-        fingerprintValue: fingerprint
+        fingerprintValue: fingerprint,
+        persistentIdentityValue: identity
     )
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
     let source = FolderSource(
         bookmarkData: Data([0x01]),
         lastKnownPath: url.path,
-        fingerprint: fingerprint
+        persistentIdentity: identity
     )
 
     let acquisition = try await coordinator.acquire(
@@ -112,22 +131,29 @@ func staleBookmarkReturnsRefreshedSource() async throws {
         volumeIdentifier: "volume-a",
         resourceIdentifier: "folder-a"
     )
+    let identity = persistentIdentity()
     let accessor = FakeSecurityScopedResourceAccessor(
         resolvedURL: url,
         isStale: true,
         fingerprintValue: fingerprint,
+        persistentIdentityValue: identity,
         refreshedBookmarkData: refreshedBookmark
     )
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
 
     let acquisition = try await coordinator.acquire(
-        source: FolderSource(bookmarkData: Data([0x01]), lastKnownPath: "/old/path"),
+        source: FolderSource(
+            bookmarkData: Data([0x01]),
+            lastKnownPath: "/old/path",
+            persistentIdentity: identity
+        ),
         glassID: GlassID()
     )
 
     #expect(acquisition.refreshedSource?.bookmarkData == refreshedBookmark)
     #expect(acquisition.refreshedSource?.lastKnownPath == url.path)
-    #expect(acquisition.refreshedSource?.fingerprint == fingerprint)
+    #expect(acquisition.refreshedSource?.fingerprint == nil)
+    #expect(acquisition.refreshedSource?.persistentIdentity == identity)
 
     let counters = await accessor.counters()
     #expect(counters.createBookmarkCalls == 1)
@@ -136,28 +162,26 @@ func staleBookmarkReturnsRefreshedSource() async throws {
 }
 
 @Test
-func replacementDetectionStopsAccessBeforeThrowing() async {
+func persistentIdentityReplacementStopsAccessBeforeThrowing() async {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-replacement", isDirectory: true)
     let accessor = FakeSecurityScopedResourceAccessor(
         resolvedURL: url,
         fingerprintValue: ResourceFingerprint(
-            volumeIdentifier: "volume-a",
-            resourceIdentifier: "new-folder"
-        )
+            volumeIdentifier: "boot-volume-new",
+            resourceIdentifier: "boot-folder-new"
+        ),
+        persistentIdentityValue: persistentIdentity(document: 99)
     )
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
     let source = FolderSource(
         bookmarkData: Data([0x01]),
         lastKnownPath: url.path,
-        fingerprint: ResourceFingerprint(
-            volumeIdentifier: "volume-a",
-            resourceIdentifier: "old-folder"
-        )
+        persistentIdentity: persistentIdentity(document: 41)
     )
 
     do {
         _ = try await coordinator.acquire(source: source, glassID: GlassID())
-        Issue.record("Expected resource replacement detection")
+        Issue.record("Expected persistent resource replacement detection")
     } catch let error as FolderAccessError {
         #expect(error == .resourceReplacementDetected)
     } catch {
@@ -166,6 +190,46 @@ func replacementDetectionStopsAccessBeforeThrowing() async {
 
     let counters = await accessor.counters()
     #expect(counters.stopCalls == 1)
+}
+
+@Test
+func legacyBootLocalFingerprintMismatchMigratesInsteadOfRejectingBookmark() async throws {
+    let url = URL(fileURLWithPath: "/tmp/schneeglass-restart-migration", isDirectory: true)
+    let oldBootFingerprint = ResourceFingerprint(
+        volumeIdentifier: "boot-1-volume",
+        resourceIdentifier: "boot-1-folder"
+    )
+    let newBootFingerprint = ResourceFingerprint(
+        volumeIdentifier: "boot-2-volume",
+        resourceIdentifier: "boot-2-folder"
+    )
+    let identity = persistentIdentity()
+    let accessor = FakeSecurityScopedResourceAccessor(
+        resolvedURL: url,
+        fingerprintValue: newBootFingerprint,
+        persistentIdentityValue: identity
+    )
+    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+    let legacySource = FolderSource(
+        bookmarkData: Data([0x01]),
+        lastKnownPath: url.path,
+        fingerprint: oldBootFingerprint
+    )
+
+    let acquisition = try await coordinator.acquire(
+        source: legacySource,
+        glassID: GlassID()
+    )
+
+    #expect(acquisition.handle.fingerprint == newBootFingerprint)
+    #expect(acquisition.refreshedSource?.persistentIdentity == identity)
+    #expect(acquisition.refreshedSource?.fingerprint == nil)
+    #expect(acquisition.refreshedSource?.bookmarkData == legacySource.bookmarkData)
+
+    await coordinator.release(handleID: acquisition.handle.id)
+    let counters = await accessor.counters()
+    #expect(counters.stopCalls == 1)
+    #expect(counters.createBookmarkCalls == 0)
 }
 
 @Test

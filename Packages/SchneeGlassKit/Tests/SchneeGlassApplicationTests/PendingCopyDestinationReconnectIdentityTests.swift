@@ -84,16 +84,11 @@ private actor ReconnectIdentitySourceCreator: FolderSourceCreating {
 }
 
 private actor ReconnectIdentityAccessController: FolderAccessControlling {
-    private let observedFingerprint: ResourceFingerprint?
     private let refreshedSource: FolderSource?
     private var acquireCounter = 0
     private var releaseCounter = 0
 
-    init(
-        observedFingerprint: ResourceFingerprint?,
-        refreshedSource: FolderSource? = nil
-    ) {
-        self.observedFingerprint = observedFingerprint
+    init(refreshedSource: FolderSource? = nil) {
         self.refreshedSource = refreshedSource
     }
 
@@ -105,8 +100,7 @@ private actor ReconnectIdentityAccessController: FolderAccessControlling {
         return FolderAccessAcquisition(
             handle: FolderAccessHandle(
                 glassID: glassID,
-                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true),
-                fingerprint: observedFingerprint
+                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true)
             ),
             refreshedSource: refreshedSource
         )
@@ -126,31 +120,31 @@ private actor ReconnectIdentityAccessController: FolderAccessControlling {
     }
 }
 
-private func reconnectIdentityFingerprint(
-    volume: String = "volume-A",
-    resource: String? = "folder-1"
-) -> ResourceFingerprint {
-    ResourceFingerprint(
-        volumeIdentifier: volume,
-        resourceIdentifier: resource
+private func reconnectPersistentIdentity(
+    volume: String? = "volume-uuid-A",
+    document: Int? = 41
+) -> PersistentFolderIdentity {
+    PersistentFolderIdentity(
+        volumeUUIDString: volume,
+        documentIdentifier: document
     )
 }
 
 private func reconnectIdentitySource(
     bookmark: UInt8,
     path: String,
-    fingerprint: ResourceFingerprint?
+    persistentIdentity: PersistentFolderIdentity?
 ) -> FolderSource {
     FolderSource(
         bookmarkData: Data([bookmark]),
         lastKnownPath: path,
-        fingerprint: fingerprint
+        persistentIdentity: persistentIdentity
     )
 }
 
 private func reconnectIdentityConfiguration(
     glassID: GlassID,
-    fingerprint: ResourceFingerprint?
+    persistentIdentity: PersistentFolderIdentity?
 ) throws -> GlassConfiguration {
     try GlassConfiguration(
         id: glassID,
@@ -158,7 +152,7 @@ private func reconnectIdentityConfiguration(
         source: reconnectIdentitySource(
             bookmark: 1,
             path: "/old/Documents",
-            fingerprint: fingerprint
+            persistentIdentity: persistentIdentity
         ),
         placement: GlassPlacement(x: 10, y: 20),
         showOnAllSpaces: false,
@@ -203,27 +197,24 @@ private func reconnectIdentityUseCase(
 @MainActor
 func reconnectPersistsRefreshedSourceReturnedByValidatedAccess() async throws {
     let glassID = GlassID()
-    let fingerprint = reconnectIdentityFingerprint()
+    let identity = reconnectPersistentIdentity()
     let original = try reconnectIdentityConfiguration(
         glassID: glassID,
-        fingerprint: fingerprint
+        persistentIdentity: identity
     )
     let selected = reconnectIdentitySource(
         bookmark: 9,
         path: "/new/Documents",
-        fingerprint: fingerprint
+        persistentIdentity: identity
     )
     let refreshed = reconnectIdentitySource(
         bookmark: 10,
         path: "/resolved/Documents",
-        fingerprint: fingerprint
+        persistentIdentity: identity
     )
     let record = reconnectIdentityRecord(glassID: glassID)
     let store = ReconnectIdentityConfigurationStore(configuration: original)
-    let access = ReconnectIdentityAccessController(
-        observedFingerprint: fingerprint,
-        refreshedSource: refreshed
-    )
+    let access = ReconnectIdentityAccessController(refreshedSource: refreshed)
     let useCase = reconnectIdentityUseCase(
         record: record,
         configurationStore: store,
@@ -244,22 +235,21 @@ func reconnectPersistsRefreshedSourceReturnedByValidatedAccess() async throws {
 
 @Test
 @MainActor
-func reconnectRejectsVolumeOnlyIdentityBeforeAccessOrSave() async throws {
+func reconnectRejectsVolumeOnlyPersistentIdentityBeforeAccessOrSave() async throws {
     let glassID = GlassID()
+    let volumeOnly = reconnectPersistentIdentity(document: nil)
     let original = try reconnectIdentityConfiguration(
         glassID: glassID,
-        fingerprint: reconnectIdentityFingerprint(resource: nil)
+        persistentIdentity: volumeOnly
     )
     let selected = reconnectIdentitySource(
         bookmark: 9,
         path: "/new/Documents",
-        fingerprint: reconnectIdentityFingerprint(resource: nil)
+        persistentIdentity: volumeOnly
     )
     let record = reconnectIdentityRecord(glassID: glassID)
     let store = ReconnectIdentityConfigurationStore(configuration: original)
-    let access = ReconnectIdentityAccessController(
-        observedFingerprint: reconnectIdentityFingerprint(resource: nil)
-    )
+    let access = ReconnectIdentityAccessController()
     let useCase = reconnectIdentityUseCase(
         record: record,
         configurationStore: store,
@@ -281,23 +271,26 @@ func reconnectRejectsVolumeOnlyIdentityBeforeAccessOrSave() async throws {
 
 @Test
 @MainActor
-func reconnectRejectsAccessTimeIdentityChangeAndReleasesAccess() async throws {
+func reconnectRejectsAccessTimePersistentIdentityChangeAndReleasesAccess() async throws {
     let glassID = GlassID()
-    let expectedFingerprint = reconnectIdentityFingerprint(resource: "folder-1")
+    let expectedIdentity = reconnectPersistentIdentity(document: 41)
     let original = try reconnectIdentityConfiguration(
         glassID: glassID,
-        fingerprint: expectedFingerprint
+        persistentIdentity: expectedIdentity
     )
     let selected = reconnectIdentitySource(
         bookmark: 9,
         path: "/new/Documents",
-        fingerprint: expectedFingerprint
+        persistentIdentity: expectedIdentity
+    )
+    let replacement = reconnectIdentitySource(
+        bookmark: 10,
+        path: "/resolved/Documents",
+        persistentIdentity: reconnectPersistentIdentity(document: 99)
     )
     let record = reconnectIdentityRecord(glassID: glassID)
     let store = ReconnectIdentityConfigurationStore(configuration: original)
-    let access = ReconnectIdentityAccessController(
-        observedFingerprint: reconnectIdentityFingerprint(resource: "replacement-folder")
-    )
+    let access = ReconnectIdentityAccessController(refreshedSource: replacement)
     let useCase = reconnectIdentityUseCase(
         record: record,
         configurationStore: store,

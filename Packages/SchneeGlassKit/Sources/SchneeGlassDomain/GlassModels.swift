@@ -8,6 +8,11 @@ public struct GlassID: Hashable, Codable, Sendable {
     }
 }
 
+/// Boot/session-local filesystem identity used only while a resolved folder access is active.
+///
+/// Foundation's `volumeIdentifier` and `fileResourceIdentifier` are intentionally not persistent
+/// across system restarts. This type therefore remains available to runtime safety code, but it must
+/// never be treated as a persisted folder identity.
 public struct ResourceFingerprint: Hashable, Codable, Sendable {
     public let volumeIdentifier: String?
     public let resourceIdentifier: String?
@@ -18,15 +23,78 @@ public struct ResourceFingerprint: Hashable, Codable, Sendable {
     }
 }
 
+/// Restart-safe supplemental identity for a security-scoped folder reference.
+///
+/// The security-scoped bookmark remains the primary persistent resource reference. These values are
+/// persisted only when Foundation exposes restart-safe identifiers for the selected volume. A
+/// document identifier is meaningful only together with its volume UUID because document IDs are
+/// unique within a volume, not globally.
+public struct PersistentFolderIdentity: Hashable, Codable, Sendable {
+    public let volumeUUIDString: String?
+    public let documentIdentifier: Int?
+
+    public init(volumeUUIDString: String?, documentIdentifier: Int?) {
+        self.volumeUUIDString = volumeUUIDString
+        self.documentIdentifier = documentIdentifier
+    }
+
+    public var hasDirectoryIdentity: Bool {
+        volumeUUIDString != nil && documentIdentifier != nil
+    }
+}
+
 public struct FolderSource: Hashable, Codable, Sendable {
     public let bookmarkData: Data
     public let lastKnownPath: String
+
+    /// Runtime-only compatibility value. New persistence never writes this field because its
+    /// Foundation identifiers are not stable across a system restart.
     public let fingerprint: ResourceFingerprint?
 
-    public init(bookmarkData: Data, lastKnownPath: String, fingerprint: ResourceFingerprint? = nil) {
+    /// Optional restart-safe proof captured alongside the security-scoped bookmark.
+    public let persistentIdentity: PersistentFolderIdentity?
+
+    public init(
+        bookmarkData: Data,
+        lastKnownPath: String,
+        fingerprint: ResourceFingerprint? = nil,
+        persistentIdentity: PersistentFolderIdentity? = nil
+    ) {
         self.bookmarkData = bookmarkData
         self.lastKnownPath = lastKnownPath
         self.fingerprint = fingerprint
+        self.persistentIdentity = persistentIdentity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bookmarkData
+        case lastKnownPath
+        case fingerprint
+        case persistentIdentity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bookmarkData = try container.decode(Data.self, forKey: .bookmarkData)
+        lastKnownPath = try container.decode(String.self, forKey: .lastKnownPath)
+
+        // Decode the legacy boot-local fingerprint so schema-v1 configuration/backups remain
+        // readable. Production restore/reconnect code must not use it as restart-safe authority.
+        fingerprint = try container.decodeIfPresent(ResourceFingerprint.self, forKey: .fingerprint)
+        persistentIdentity = try container.decodeIfPresent(
+            PersistentFolderIdentity.self,
+            forKey: .persistentIdentity
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bookmarkData, forKey: .bookmarkData)
+        try container.encode(lastKnownPath, forKey: .lastKnownPath)
+        try container.encodeIfPresent(persistentIdentity, forKey: .persistentIdentity)
+
+        // Never persist `fingerprint`: fileResourceIdentifier/volumeIdentifier are explicitly not
+        // stable across system restarts. Legacy files that contain it are migrated on the next save.
     }
 }
 

@@ -11,17 +11,20 @@ private enum IdentityAvailabilityTestError: Error, Sendable {
 private actor IdentityAvailabilityResourceAccessor: SecurityScopedResourceAccessing {
     private let resolvedURL: URL
     private let fingerprintValue: ResourceFingerprint?
-    private let fingerprintThrows: Bool
+    private let persistentIdentityValue: PersistentFolderIdentity?
+    private let persistentIdentityThrows: Bool
     private var stopCounter = 0
 
     init(
         resolvedURL: URL,
-        fingerprintValue: ResourceFingerprint?,
-        fingerprintThrows: Bool = false
+        fingerprintValue: ResourceFingerprint? = nil,
+        persistentIdentityValue: PersistentFolderIdentity? = nil,
+        persistentIdentityThrows: Bool = false
     ) {
         self.resolvedURL = resolvedURL
         self.fingerprintValue = fingerprintValue
-        self.fingerprintThrows = fingerprintThrows
+        self.persistentIdentityValue = persistentIdentityValue
+        self.persistentIdentityThrows = persistentIdentityThrows
     }
 
     func resolveBookmark(_ data: Data) async throws -> ResolvedSecurityScopedResource {
@@ -46,10 +49,15 @@ private actor IdentityAvailabilityResourceAccessor: SecurityScopedResourceAccess
 
     func fingerprint(for url: URL) async throws -> ResourceFingerprint? {
         _ = url
-        if fingerprintThrows {
+        return fingerprintValue
+    }
+
+    func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+        _ = url
+        if persistentIdentityThrows {
             throw IdentityAvailabilityTestError.injected
         }
-        return fingerprintValue
+        return persistentIdentityValue
     }
 
     func stopCount() -> Int {
@@ -61,20 +69,17 @@ private func identityProtectedSource(at url: URL) -> FolderSource {
     FolderSource(
         bookmarkData: Data([0x01]),
         lastKnownPath: url.path,
-        fingerprint: ResourceFingerprint(
-            volumeIdentifier: "volume-a",
-            resourceIdentifier: "folder-a"
+        persistentIdentity: PersistentFolderIdentity(
+            volumeUUIDString: "volume-uuid-a",
+            documentIdentifier: 41
         )
     )
 }
 
 @Test
-func savedFolderIdentityMissingAtAccessTimeFailsClosedAndStopsScope() async {
+func savedPersistentFolderIdentityMissingAtAccessTimeFailsClosedAndStopsScope() async {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-identity-unavailable", isDirectory: true)
-    let accessor = IdentityAvailabilityResourceAccessor(
-        resolvedURL: url,
-        fingerprintValue: nil
-    )
+    let accessor = IdentityAvailabilityResourceAccessor(resolvedURL: url)
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
 
     do {
@@ -82,7 +87,7 @@ func savedFolderIdentityMissingAtAccessTimeFailsClosedAndStopsScope() async {
             source: identityProtectedSource(at: url),
             glassID: GlassID()
         )
-        Issue.record("Expected unverifiable saved identity to fail closed")
+        Issue.record("Expected unverifiable saved persistent identity to fail closed")
     } catch let error as FolderAccessError {
         #expect(error == .bookmarkResolutionFailed)
     } catch {
@@ -93,13 +98,13 @@ func savedFolderIdentityMissingAtAccessTimeFailsClosedAndStopsScope() async {
 }
 
 @Test
-func missingExpectedIdentityDimensionFailsClosedBeforeAccessIsReturned() async {
+func missingExpectedPersistentIdentityDimensionFailsClosedBeforeAccessIsReturned() async {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-partial-identity", isDirectory: true)
     let accessor = IdentityAvailabilityResourceAccessor(
         resolvedURL: url,
-        fingerprintValue: ResourceFingerprint(
-            volumeIdentifier: "volume-a",
-            resourceIdentifier: nil
+        persistentIdentityValue: PersistentFolderIdentity(
+            volumeUUIDString: "volume-uuid-a",
+            documentIdentifier: nil
         )
     )
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
@@ -109,7 +114,7 @@ func missingExpectedIdentityDimensionFailsClosedBeforeAccessIsReturned() async {
             source: identityProtectedSource(at: url),
             glassID: GlassID()
         )
-        Issue.record("Expected incomplete identity comparison to fail closed")
+        Issue.record("Expected incomplete persistent identity comparison to fail closed")
     } catch let error as FolderAccessError {
         #expect(error == .bookmarkResolutionFailed)
     } catch {
@@ -120,12 +125,11 @@ func missingExpectedIdentityDimensionFailsClosedBeforeAccessIsReturned() async {
 }
 
 @Test
-func fingerprintReadFailureForSavedIdentityFailsClosedAndStopsScope() async {
+func persistentIdentityReadFailureForSavedProofFailsClosedAndStopsScope() async {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-identity-read-failure", isDirectory: true)
     let accessor = IdentityAvailabilityResourceAccessor(
         resolvedURL: url,
-        fingerprintValue: nil,
-        fingerprintThrows: true
+        persistentIdentityThrows: true
     )
     let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
 
@@ -134,12 +138,39 @@ func fingerprintReadFailureForSavedIdentityFailsClosedAndStopsScope() async {
             source: identityProtectedSource(at: url),
             glassID: GlassID()
         )
-        Issue.record("Expected fingerprint read failure to fail closed")
+        Issue.record("Expected persistent identity read failure to fail closed")
     } catch let error as FolderAccessError {
         #expect(error == .bookmarkResolutionFailed)
     } catch {
         Issue.record("Unexpected error: \(error)")
     }
 
+    #expect(await accessor.stopCount() == 1)
+}
+
+@Test
+func persistentIdentityReadFailureWithoutSavedProofKeepsBookmarkCompatibility() async throws {
+    let url = URL(fileURLWithPath: "/tmp/schneeglass-no-persistent-proof", isDirectory: true)
+    let runtime = ResourceFingerprint(
+        volumeIdentifier: "boot-volume",
+        resourceIdentifier: "boot-folder"
+    )
+    let accessor = IdentityAvailabilityResourceAccessor(
+        resolvedURL: url,
+        fingerprintValue: runtime,
+        persistentIdentityThrows: true
+    )
+    let coordinator = SecurityScopedAccessCoordinator(resourceAccessor: accessor)
+
+    let acquisition = try await coordinator.acquire(
+        source: FolderSource(bookmarkData: Data([0x01]), lastKnownPath: url.path),
+        glassID: GlassID()
+    )
+
+    #expect(acquisition.handle.fingerprint == runtime)
+    #expect(acquisition.refreshedSource == nil)
+    #expect(await accessor.stopCount() == 0)
+
+    await coordinator.release(handleID: acquisition.handle.id)
     #expect(await accessor.stopCount() == 1)
 }

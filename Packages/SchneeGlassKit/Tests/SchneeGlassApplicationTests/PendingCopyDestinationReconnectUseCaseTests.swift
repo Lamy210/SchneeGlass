@@ -100,8 +100,7 @@ private actor ReconnectAccessController: FolderAccessControlling {
         return FolderAccessAcquisition(
             handle: FolderAccessHandle(
                 glassID: glassID,
-                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true),
-                fingerprint: source.fingerprint
+                url: URL(fileURLWithPath: source.lastKnownPath, isDirectory: true)
             )
         )
     }
@@ -111,13 +110,19 @@ private actor ReconnectAccessController: FolderAccessControlling {
     func releaseCount() -> Int { releases }
 }
 
-private func reconnectFingerprint(resource: String) -> ResourceFingerprint {
-    ResourceFingerprint(volumeIdentifier: "volume-A", resourceIdentifier: resource)
+private func reconnectPersistentIdentity(
+    volume: String = "volume-uuid-A",
+    document: Int = 101
+) -> PersistentFolderIdentity {
+    PersistentFolderIdentity(
+        volumeUUIDString: volume,
+        documentIdentifier: document
+    )
 }
 
 private func reconnectConfiguration(
     glassID: GlassID,
-    fingerprint: ResourceFingerprint? = reconnectFingerprint(resource: "folder-1"),
+    persistentIdentity: PersistentFolderIdentity? = reconnectPersistentIdentity(),
     title: String = "Documents"
 ) throws -> GlassConfiguration {
     try GlassConfiguration(
@@ -126,11 +131,23 @@ private func reconnectConfiguration(
         source: FolderSource(
             bookmarkData: Data([1]),
             lastKnownPath: "/old/Documents",
-            fingerprint: fingerprint
+            persistentIdentity: persistentIdentity
         ),
         placement: GlassPlacement(x: 12, y: 34),
         showOnAllSpaces: true,
         createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+}
+
+private func reconnectSource(
+    bookmark: Data,
+    path: String,
+    persistentIdentity: PersistentFolderIdentity = reconnectPersistentIdentity()
+) -> FolderSource {
+    FolderSource(
+        bookmarkData: bookmark,
+        lastKnownPath: path,
+        persistentIdentity: persistentIdentity
     )
 }
 
@@ -188,14 +205,13 @@ func reconnectCancelDoesNotAcquireLeaseOrSave() async throws {
 
 @Test
 @MainActor
-func reconnectMatchingFingerprintPersistsOnlyNewSourceAndValidatesAccess() async throws {
+func reconnectMatchingPersistentIdentityPersistsOnlyNewSourceAndValidatesAccess() async throws {
     let glassID = GlassID()
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
-    let selected = FolderSource(
-        bookmarkData: Data([9, 9]),
-        lastKnownPath: "/new/Documents",
-        fingerprint: reconnectFingerprint(resource: "folder-1")
+    let selected = reconnectSource(
+        bookmark: Data([9, 9]),
+        path: "/new/Documents"
     )
     let store = ReconnectConfigurationStore(configurations: [original])
     let access = ReconnectAccessController()
@@ -223,14 +239,14 @@ func reconnectMatchingFingerprintPersistsOnlyNewSourceAndValidatesAccess() async
 
 @Test
 @MainActor
-func reconnectRejectsFingerprintMismatchBeforeAccessOrSave() async throws {
+func reconnectRejectsPersistentIdentityMismatchBeforeAccessOrSave() async throws {
     let glassID = GlassID()
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
-    let selected = FolderSource(
-        bookmarkData: Data([2]),
-        lastKnownPath: "/wrong",
-        fingerprint: reconnectFingerprint(resource: "different-folder")
+    let selected = reconnectSource(
+        bookmark: Data([2]),
+        path: "/wrong",
+        persistentIdentity: reconnectPersistentIdentity(document: 999)
     )
     let store = ReconnectConfigurationStore(configurations: [original])
     let access = ReconnectAccessController()
@@ -259,11 +275,7 @@ func reconnectRejectsConfigurationChangedWhilePickerWasOpen() async throws {
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
     let changed = try reconnectConfiguration(glassID: glassID, title: "Changed")
-    let selected = FolderSource(
-        bookmarkData: Data([3]),
-        lastKnownPath: "/new/Documents",
-        fingerprint: reconnectFingerprint(resource: "folder-1")
-    )
+    let selected = reconnectSource(bookmark: Data([3]), path: "/new/Documents")
     let store = ReconnectConfigurationStore(configurations: [original])
     let useCase = reconnectUseCase(
         record: record,
@@ -290,11 +302,7 @@ func reconnectRejectsConfigurationChangedAfterFinalRead() async throws {
     let glassID = GlassID()
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
-    let selected = FolderSource(
-        bookmarkData: Data([8]),
-        lastKnownPath: "/new/Documents",
-        fingerprint: reconnectFingerprint(resource: "folder-1")
-    )
+    let selected = reconnectSource(bookmark: Data([8]), path: "/new/Documents")
     let store = ReconnectConfigurationStore(
         configurations: [original],
         rejectConditionalSave: true
@@ -328,11 +336,7 @@ func reconnectRejectsWhileCopyActiveWithoutConfigurationWrite() async throws {
     let glassID = GlassID()
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
-    let selected = FolderSource(
-        bookmarkData: Data([4]),
-        lastKnownPath: "/new/Documents",
-        fingerprint: reconnectFingerprint(resource: "folder-1")
-    )
+    let selected = reconnectSource(bookmark: Data([4]), path: "/new/Documents")
     let store = ReconnectConfigurationStore(configurations: [original])
     let gate = FileOperationActivityGate()
     #expect(await gate.beginCopy())
@@ -360,11 +364,7 @@ func reconnectAccessFailureReleasesRecoveryLeaseAndDoesNotSave() async throws {
     let glassID = GlassID()
     let record = reconnectRecord(glassID: glassID)
     let original = try reconnectConfiguration(glassID: glassID)
-    let selected = FolderSource(
-        bookmarkData: Data([5]),
-        lastKnownPath: "/new/Documents",
-        fingerprint: reconnectFingerprint(resource: "folder-1")
-    )
+    let selected = reconnectSource(bookmark: Data([5]), path: "/new/Documents")
     let store = ReconnectConfigurationStore(configurations: [original])
     let gate = FileOperationActivityGate()
     let useCase = reconnectUseCase(

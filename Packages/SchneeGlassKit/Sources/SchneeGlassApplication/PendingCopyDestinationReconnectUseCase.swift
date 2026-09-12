@@ -69,8 +69,8 @@ public actor PendingCopyDestinationReconnectUseCase {
         }
 
         try Self.validateSelectedIdentity(
-            expected: preflight.configuration.source.fingerprint,
-            selected: selectedSource.fingerprint
+            expected: preflight.configuration.source.persistentIdentity,
+            selected: selectedSource.persistentIdentity
         )
 
         switch await activityGate.beginRecoveryMutation() {
@@ -138,8 +138,8 @@ public actor PendingCopyDestinationReconnectUseCase {
         }
 
         try Self.validateSelectedIdentity(
-            expected: current.configuration.source.fingerprint,
-            selected: selectedSource.fingerprint
+            expected: current.configuration.source.persistentIdentity,
+            selected: selectedSource.persistentIdentity
         )
 
         let validationAccess: FolderAccessAcquisition
@@ -153,19 +153,14 @@ public actor PendingCopyDestinationReconnectUseCase {
         }
 
         let persistedSource = validationAccess.refreshedSource ?? selectedSource
-        let observedFingerprint = validationAccess.handle.fingerprint
         await accessController.release(handleID: validationAccess.handle.id)
 
-        // The folder selected before the Recovery lease was acquired must still resolve to the exact
-        // same directory when access is established. A volume identifier alone cannot distinguish
-        // two directories on one volume, so reconnect authority requires the directory resource ID.
+        // Reconnect crosses process/system-restart boundaries, so boot-local Foundation resource
+        // identifiers are not valid authority here. Automatic reconnect requires the persistent
+        // volume UUID plus per-volume document identifier on both the saved and selected folders.
         try Self.validateSelectedIdentity(
-            expected: current.configuration.source.fingerprint,
-            selected: observedFingerprint
-        )
-        try Self.validateSelectedIdentity(
-            expected: current.configuration.source.fingerprint,
-            selected: persistedSource.fingerprint
+            expected: current.configuration.source.persistentIdentity,
+            selected: persistedSource.persistentIdentity
         )
 
         let updatedConfiguration: GlassConfiguration
@@ -215,25 +210,23 @@ public actor PendingCopyDestinationReconnectUseCase {
     }
 
     private static func validateSelectedIdentity(
-        expected: ResourceFingerprint?,
-        selected: ResourceFingerprint?
+        expected: PersistentFolderIdentity?,
+        selected: PersistentFolderIdentity?
     ) throws {
-        guard let expectedResource = expected?.resourceIdentifier,
-              let selectedResource = selected?.resourceIdentifier
+        guard let expected,
+              let selected,
+              let expectedVolume = expected.volumeUUIDString,
+              let selectedVolume = selected.volumeUUIDString,
+              let expectedDocument = expected.documentIdentifier,
+              let selectedDocument = selected.documentIdentifier
         else {
             throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
         }
-        guard expectedResource == selectedResource else {
-            throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
-        }
 
-        if let expectedVolume = expected?.volumeIdentifier {
-            guard let selectedVolume = selected?.volumeIdentifier else {
-                throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
-            }
-            guard expectedVolume == selectedVolume else {
-                throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
-            }
+        guard expectedVolume == selectedVolume,
+              expectedDocument == selectedDocument
+        else {
+            throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
         }
     }
 }
