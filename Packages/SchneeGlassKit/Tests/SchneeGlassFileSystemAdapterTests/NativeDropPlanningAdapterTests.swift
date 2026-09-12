@@ -299,6 +299,59 @@ func dropInspectorFailsClosedWhenAcquiredRuntimeIdentityDisappearsDuringInspecti
 }
 
 @Test
+func dropInspectorRejectsSymbolicLinkDestinationBeforeRuntimeIdentityInspection() async throws {
+    let parent = try makeDropDestinationRoot("symlink-runtime")
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    let target = parent.appendingPathComponent("target", isDirectory: true)
+    let symbolicLink = parent.appendingPathComponent("destination-link", isDirectory: true)
+    try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+    try FileManager.default.createSymbolicLink(at: symbolicLink, withDestinationURL: target)
+
+    let targetIdentity = try #require(POSIXDirectoryIdentityReader.identity(at: target))
+    let identityReader = DropRuntimeIdentityReader([targetIdentity])
+    let inspector = FoundationDropFileSystemInspector(runtimeIdentityReader: identityReader)
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: symbolicLink,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: targetIdentity.device,
+            objectIdentifier: targetIdentity.inode
+        )
+    )
+
+    #expect(await inspector.destinationDescriptor(for: access) == nil)
+    #expect(await identityReader.urls().isEmpty)
+}
+
+@Test
+func dropInspectorRejectsSymbolicLinkDestinationEvenWithFoundationFallbackProof() async throws {
+    let parent = try makeDropDestinationRoot("symlink-fallback")
+    defer { try? FileManager.default.removeItem(at: parent) }
+
+    let target = parent.appendingPathComponent("target", isDirectory: true)
+    let symbolicLink = parent.appendingPathComponent("destination-link", isDirectory: true)
+    try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+    try FileManager.default.createSymbolicLink(at: symbolicLink, withDestinationURL: target)
+
+    let values = try target.resourceValues(forKeys: [.fileResourceIdentifierKey])
+    let resourceIdentifier = try #require(
+        values.fileResourceIdentifier.map { String(describing: $0) }
+    )
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: symbolicLink,
+        fingerprint: ResourceFingerprint(
+            volumeIdentifier: nil,
+            resourceIdentifier: resourceIdentifier
+        )
+    )
+    let inspector = FoundationDropFileSystemInspector()
+
+    #expect(await inspector.destinationDescriptor(for: access) == nil)
+}
+
+@Test
 func dropInspectorKeepsExistingDestinationVisibleWithoutAcquiredDirectoryProof() async throws {
     let destination = try makeDropDestinationRoot("missing-proof")
     defer { try? FileManager.default.removeItem(at: destination) }
