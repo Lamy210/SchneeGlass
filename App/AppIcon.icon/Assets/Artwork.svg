@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="#0f172a"/>
+  <g stroke="#38bdf8" stroke-width="2" stroke-opacity="0.32" fill="none">
+    <line x1="128" y1="76" x2="128" y2="42"/>
+    <line x1="176" y1="96" x2="202" y2="74"/>
+    <line x1="184" y1="154" x2="208" y2="176"/>
+    <line x1="128" y1="184" x2="128" y2="214"/>
+    <line x1="72" y1="154" x2="48" y2="176"/>
+    <line x1="80" y1="96" x2="54" y2="74"/>
+  </g>
+  <path d="M54 90 Q54 76 68 76 H106 Q114 76 120 84 L130 96 H188 Q202 96 202 110 V172 Q202 186 188 186 H68 Q54 186 54 172 Z" fill="none" stroke="url(#g)" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="70" y="112" width="116" height="54" rx="14" fill="none" stroke="#38bdf8" stroke-opacity="0.48" stroke-width="2"/>
+  <g transform="translate(128 139)">
+    <g stroke="#7dd3fc" stroke-width="3" stroke-linecap="round" fill="none">
+      <line x1="0" y1="-17" x2="0" y2="17"/>
+      <line x1="-15" y1="-8.5" x2="15" y2="8.5"/>
+      <line x1="-15" y1="8.5" x2="15" y2="-8.5"/>
+    </g>
+    <circle cx="0" cy="0" r="6" fill="url(#g)"/>
+  </g>
+  <g fill="none" stroke="#7dd3fc" stroke-width="1.5">
+    <polygon points="128,34 136,39 136,49 128,54 120,49 120,39"/>
+    <polygon points="204,64 212,69 212,79 204,84 196,79 196,69"/>
+    <polygon points="212,168 220,173 220,183 212,188 204,183 204,173"/>
+    <polygon points="128,202 136,207 136,217 128,222 120,217 120,207"/>
+    <polygon points="44,168 52,173 52,183 44,188 36,183 36,173"/>
+    <polygon points="52,64 60,69 60,79 52,84 44,79 44,69"/>
+  </g>
+  <g fill="#7dd3fc">
+    <circle cx="86" cy="128" r="5"/>
+    <circle cx="86" cy="150" r="5" fill-opacity="0.72"/>
+  </g>
+  <g stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-opacity="0.65">
+    <line x1="98" y1="128" x2="111" y2="128"/>
+    <line x1="98" y1="150" x2="108" y2="150"/>
+  </g>
+</svg>
