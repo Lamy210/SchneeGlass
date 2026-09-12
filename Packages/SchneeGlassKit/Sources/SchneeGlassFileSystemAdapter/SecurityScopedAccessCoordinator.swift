@@ -1,6 +1,7 @@
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 
 struct ResolvedSecurityScopedResource: Sendable {
     let url: URL
@@ -96,14 +97,20 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     }
 
     private let resourceAccessor: any SecurityScopedResourceAccessing
+    private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
     private var activeAccesses: [UUID: ActiveAccess] = [:]
 
     public init() {
         self.resourceAccessor = FoundationSecurityScopedResourceAccessor()
+        self.runtimeIdentityReader = POSIXRuntimeDirectoryIdentityReader()
     }
 
-    init(resourceAccessor: any SecurityScopedResourceAccessing) {
+    init(
+        resourceAccessor: any SecurityScopedResourceAccessing,
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
+    ) {
         self.resourceAccessor = resourceAccessor
+        self.runtimeIdentityReader = runtimeIdentityReader
     }
 
     public func acquire(
@@ -120,6 +127,8 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         guard await resourceAccessor.startAccessing(resolved.url) else {
             throw FolderAccessError.accessDenied
         }
+
+        let actualRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(for: resolved.url)
 
         let actualFingerprint: ResourceFingerprint?
         do {
@@ -170,10 +179,20 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
-            // A directory runtime identifier protects the bookmark-refresh async boundary during
-            // this boot. Legacy sources that expose no directory identifier keep their historical
-            // bookmark-only compatibility rather than inventing stronger proof from volume identity.
-            if actualFingerprint?.resourceIdentifier != nil {
+            // Prefer descriptor-derived POSIX identity around the bookmark refresh boundary. It
+            // observes the opened directory object directly instead of depending on Foundation's
+            // opaque identifiers. The Foundation fingerprint remains a compatibility fallback when
+            // descriptor identity is unavailable on the current filesystem/location.
+            if let actualRuntimeDirectoryIdentity {
+                guard let refreshedRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(for: resolved.url) else {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+                guard refreshedRuntimeDirectoryIdentity == actualRuntimeDirectoryIdentity else {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.resourceReplacementDetected
+                }
+            } else if actualFingerprint?.resourceIdentifier != nil {
                 let refreshedFingerprint: ResourceFingerprint?
                 do {
                     refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
