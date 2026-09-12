@@ -17,6 +17,8 @@ public struct SchneeGlassWorkspaceView: View {
             isCreatingGlass: model.isCreatingGlass,
             isRestoring: model.isRestoring,
             isMutatingConfiguration: model.isMutatingConfiguration,
+            canAddGlass: model.canAddGlass,
+            requiresConfigurationRecovery: model.requiresConfigurationRecovery,
             userMessage: model.userMessage,
             onAddGlass: {
                 Task {
@@ -59,6 +61,8 @@ struct WorkspaceSurface: View {
     let isCreatingGlass: Bool
     let isRestoring: Bool
     let isMutatingConfiguration: Bool
+    let canAddGlass: Bool
+    let requiresConfigurationRecovery: Bool
     let userMessage: String?
     let onAddGlass: @MainActor () -> Void
     let onDismissMessage: @MainActor () -> Void
@@ -113,7 +117,7 @@ struct WorkspaceSurface: View {
                     Label("Add Glass", systemImage: "plus")
                 }
             }
-            .disabled(isMutatingConfiguration)
+            .disabled(!canAddGlass)
             .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add Glass")
         }
@@ -135,6 +139,7 @@ struct WorkspaceSurface: View {
                         GlassPreviewSurface(
                             entry: entry,
                             canRemove: !isMutatingConfiguration
+                                && !requiresConfigurationRecovery
                                 && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
                             onOpen: onOpen,
                             onReveal: onReveal,
@@ -168,6 +173,21 @@ struct WorkspaceSurface: View {
                 Text("Restoring your Glasses…")
                     .font(SchneeGlassTypography.body)
                     .foregroundStyle(.secondary)
+            } else if requiresConfigurationRecovery {
+                Image(systemName: "externaldrive.badge.exclamationmark")
+                    .font(.system(size: 44, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+
+                VStack(spacing: SchneeGlassSpacing.compactContent) {
+                    Text("Configuration recovery required")
+                        .font(SchneeGlassTypography.emptyStateTitle)
+                    Text("SchneeGlass couldn't read its saved configuration. Open Settings and restore a valid Configuration Backup before adding or changing a Glass.")
+                        .font(SchneeGlassTypography.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 440)
+                }
             } else {
                 Image(systemName: "rectangle.stack.badge.plus")
                     .font(.system(size: 44, weight: .regular))
@@ -186,7 +206,7 @@ struct WorkspaceSurface: View {
 
                 Button("Add Glass", action: onAddGlass)
                     .buttonStyle(.borderedProminent)
-                    .disabled(isMutatingConfiguration)
+                    .disabled(!canAddGlass)
             }
 
             if let userMessage {
