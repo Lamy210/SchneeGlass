@@ -56,7 +56,6 @@ struct DesignSystemComponentVisualSnapshotTests {
         assertFileTileSnapshot(
             systemImage: "doc",
             title: "Design.pdf",
-            accessibilityLabel: "Design.pdf",
             colorScheme: .light
         )
     }
@@ -70,7 +69,6 @@ struct DesignSystemComponentVisualSnapshotTests {
         assertFileTileSnapshot(
             systemImage: "folder",
             title: "Assets",
-            accessibilityLabel: "Folder, Assets",
             colorScheme: .light
         )
     }
@@ -84,7 +82,6 @@ struct DesignSystemComponentVisualSnapshotTests {
         assertFileTileSnapshot(
             systemImage: "shippingbox",
             title: "SchneeGlass.app",
-            accessibilityLabel: "Package, SchneeGlass.app",
             colorScheme: .dark
         )
     }
@@ -98,7 +95,6 @@ struct DesignSystemComponentVisualSnapshotTests {
         assertFileTileSnapshot(
             systemImage: "doc",
             title: "Quarterly Design Review Notes.pdf",
-            accessibilityLabel: "Quarterly Design Review Notes.pdf",
             colorScheme: .light
         )
     }
@@ -110,7 +106,6 @@ struct DesignSystemComponentVisualSnapshotTests {
     private func assertFileTileSnapshot(
         systemImage: String,
         title: String,
-        accessibilityLabel: String,
         colorScheme: ColorScheme,
         fileID: StaticString = #fileID,
         filePath: StaticString = #filePath,
@@ -129,9 +124,7 @@ struct DesignSystemComponentVisualSnapshotTests {
         ) {
             SchneeGlassFileTile(
                 systemImage: systemImage,
-                title: title,
-                accessibilityLabel: accessibilityLabel,
-                accessibilityHint: "Double-click to open"
+                title: title
             )
         }
     }
