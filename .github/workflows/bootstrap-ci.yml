@@ -8,8 +8,7 @@ on:
       - 'bootstrap/**'
 
 permissions:
-  actions: read
-  contents: write
+  contents: read
 
 concurrency:
   group: bootstrap-ci-${{ github.workflow }}-${{ github.ref }}
@@ -85,44 +84,6 @@ jobs:
             Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__
           if-no-files-found: error
           retention-days: 3
-
-      - name: Recover PR 114 unavailable snapshot baseline
-        if: ${{ failure() && steps.visual_snapshots.outcome == 'failure' && github.event_name == 'pull_request' && github.event.pull_request.number == 114 && github.head_ref == 'fix/unavailable-folder-recovery-guidance' && github.event.pull_request.head.repo.full_name == github.repository && github.actor == 'Lamy210' }}
-        env:
-          TARGET_BRANCH: fix/unavailable-folder-recovery-guidance
-          SNAPSHOT_ARTIFACT_ID: '10304384823'
-          CAPTURE_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/pr114-snapshot.zip"
-          extract="$RUNNER_TEMP/pr114-snapshot"
-          target="Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__/DesktopGlassVisualSnapshotTests/unavailableLight.macos-26-xcode-26-6.png"
-
-          curl --fail-with-body --location --silent --show-error \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer $CAPTURE_TOKEN" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/${SNAPSHOT_ARTIFACT_ID}/zip" \
-            --output "$archive"
-          mkdir -p "$extract"
-          unzip -q "$archive" -d "$extract"
-          actual="$(find "$extract" -type f -path '*/_temp/visual-snapshot-artifacts/DesktopGlassVisualSnapshotTests/unavailableLight.macos-26-xcode-26-6.png' -print -quit)"
-          test -n "$actual"
-          test -f "$actual"
-          file "$actual" | grep -F 'PNG image data'
-
-          git fetch origin "refs/heads/$TARGET_BRANCH"
-          git checkout --detach FETCH_HEAD
-          cp "$actual" "$target"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$target"
-          if git diff --cached --quiet; then
-            echo 'Expected snapshot baseline to change.' >&2
-            exit 1
-          fi
-          git commit -m 'test: capture unavailable snapshot baseline'
-          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
 
       - name: AddressSanitizer package tests
         if: github.event_name == 'pull_request'
