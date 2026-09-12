@@ -77,12 +77,14 @@ struct FoundationSecurityScopedResourceAccessor: SecurityScopedResourceAccessing
             .documentIdentifierKey,
         ])
 
-        guard values.volumeUUIDString != nil || values.documentIdentifier != nil else {
+        // A document identifier is unique only within its volume. Without the persistent volume UUID
+        // it is not useful as a persisted comparison token, so omit the supplemental identity.
+        guard let volumeUUIDString = values.volumeUUIDString else {
             return nil
         }
 
         return PersistentFolderIdentity(
-            volumeUUIDString: values.volumeUUIDString,
+            volumeUUIDString: volumeUUIDString,
             documentIdentifier: values.documentIdentifier
         )
     }
@@ -130,8 +132,13 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         do {
             actualPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
         } catch {
-            await resourceAccessor.stopAccessing(resolved.url)
-            throw FolderAccessError.bookmarkResolutionFailed
+            // Restart-safe metadata is supplemental when no persisted proof exists. If a previous
+            // configuration did persist such proof, inability to re-observe it must fail closed.
+            if source.persistentIdentity != nil {
+                await resourceAccessor.stopAccessing(resolved.url)
+                throw FolderAccessError.bookmarkResolutionFailed
+            }
+            actualPersistentIdentity = nil
         }
 
         // A security-scoped bookmark is the primary persistent resource reference. When a source
@@ -166,13 +173,22 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             // Bookmark refresh is an async boundary. Runtime identity is valid for this active boot
             // and protects that boundary; restart-safe identity protects persisted state.
             let refreshedFingerprint: ResourceFingerprint?
-            let refreshedPersistentIdentity: PersistentFolderIdentity?
             do {
                 refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
-                refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
             } catch {
                 await resourceAccessor.stopAccessing(resolved.url)
                 throw FolderAccessError.bookmarkResolutionFailed
+            }
+
+            let refreshedPersistentIdentity: PersistentFolderIdentity?
+            do {
+                refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
+            } catch {
+                if actualPersistentIdentity != nil {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+                refreshedPersistentIdentity = nil
             }
 
             if Self.runtimeIdentityVerificationIsUnavailable(
