@@ -132,6 +132,65 @@ func snapshotKeepsLegacyFingerprintlessAccessCompatible() async throws {
 }
 
 @Test
+func snapshotRejectsRootThatDoesNotMatchAcquiredRuntimeIdentity() async throws {
+    let root = try makeSnapshotIdentityRoot("acquired-posix-mismatch")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let observed = POSIXDirectoryIdentity(device: 7, inode: 99)
+    let reader = SnapshotRuntimeIdentityReader([observed])
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: root,
+        fingerprint: nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: 7,
+            objectIdentifier: 41
+        )
+    )
+
+    do {
+        _ = try await NativeFolderSnapshotReader(
+            fileManager: .default,
+            runtimeIdentityReader: reader
+        ).snapshot(for: access, generation: 3)
+        Issue.record("Expected acquired runtime directory identity mismatch")
+    } catch let error as FolderSnapshotReadError {
+        #expect(error == .rootIdentityMismatch)
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+}
+
+@Test
+func snapshotAcceptsRootMatchingAcquiredRuntimeIdentity() async throws {
+    let root = try makeSnapshotIdentityRoot("acquired-posix-match")
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let child = root.appendingPathComponent("visible.txt", isDirectory: false)
+    try Data("visible".utf8).write(to: child)
+
+    let observed = POSIXDirectoryIdentity(device: 7, inode: 41)
+    let reader = SnapshotRuntimeIdentityReader([observed, observed])
+    let access = FolderAccessHandle(
+        glassID: GlassID(),
+        url: root,
+        fingerprint: nil,
+        runtimeDirectoryIdentity: RuntimeDirectoryIdentity(
+            deviceIdentifier: observed.device,
+            objectIdentifier: observed.inode
+        )
+    )
+
+    let snapshot = try await NativeFolderSnapshotReader(
+        fileManager: .default,
+        runtimeIdentityReader: reader
+    ).snapshot(for: access, generation: 4)
+
+    #expect(snapshot.items.map(\.displayName) == ["visible.txt"])
+    #expect(snapshot.generation == 4)
+}
+
+@Test
 func snapshotRejectsPOSIXRootReplacementAcrossEnumeration() async throws {
     let root = try makeSnapshotIdentityRoot("posix-replacement")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -153,7 +212,7 @@ func snapshotRejectsPOSIXRootReplacementAcrossEnumeration() async throws {
         _ = try await NativeFolderSnapshotReader(
             fileManager: .default,
             runtimeIdentityReader: reader
-        ).snapshot(for: access, generation: 3)
+        ).snapshot(for: access, generation: 5)
         Issue.record("Expected POSIX root identity mismatch")
     } catch let error as FolderSnapshotReadError {
         #expect(error == .rootIdentityMismatch)
@@ -181,7 +240,7 @@ func snapshotFailsClosedWhenObservedPOSIXIdentityDisappears() async throws {
         _ = try await NativeFolderSnapshotReader(
             fileManager: .default,
             runtimeIdentityReader: reader
-        ).snapshot(for: access, generation: 4)
+        ).snapshot(for: access, generation: 6)
         Issue.record("Expected missing POSIX root identity to fail closed")
     } catch let error as FolderSnapshotReadError {
         #expect(error == .rootIdentityMismatch)
