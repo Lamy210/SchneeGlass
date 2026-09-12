@@ -1,4 +1,3 @@
-import Foundation
 import FileDomain
 import SchneeGlassDomain
 
@@ -173,6 +172,13 @@ public struct FileEventSubscription: Sendable {
     }
 }
 
+/// Semantic snapshot failures that affect the runtime lifecycle rather than representing a
+/// transient enumeration/metadata problem. Adapters throw these without exposing their concrete
+/// implementation error types to Application.
+public enum FolderSnapshotReadError: Error, Hashable, Sendable {
+    case rootIdentityMismatch
+}
+
 public protocol FolderSnapshotReading: Sendable {
     func snapshot(for access: FolderAccessHandle, generation: UInt64) async throws -> FolderSnapshot
 }
@@ -188,26 +194,9 @@ public protocol FileCopying: Sendable {
 
 /// Releases any planning-time authority held for an authorized copy request that will not execute.
 /// Implementations must be idempotent because the same operation may already have been superseded or
-/// consumed by another safety path before abandonment is observed.
+/// consumed by the copy path.
 public protocol AuthorizedCopyBatchAbandoning: Sendable {
     func abandon(_ request: AuthorizedCopyBatchRequest) async
-}
-
-public protocol ConfigurationPersisting: Sendable {
-    func load() async throws -> [GlassConfiguration]
-    func save(_ configurations: [GlassConfiguration]) async throws
-}
-
-/// Persistence capability for read-modify-write configuration commands.
-///
-/// Implementations must compare `expectedCurrent` and commit `configurations` as one serialized
-/// persistence operation. Returning `false` means another writer changed the current configuration;
-/// callers must not retry with their stale derived value.
-public protocol ConditionalConfigurationPersisting: ConfigurationPersisting {
-    func save(
-        _ configurations: [GlassConfiguration],
-        ifCurrentMatches expectedCurrent: [GlassConfiguration]
-    ) async throws -> Bool
 }
 
 public protocol FileEventStreaming: Sendable {
@@ -215,8 +204,19 @@ public protocol FileEventStreaming: Sendable {
     func stop(subscriptionID: UUID) async
 }
 
-public protocol WindowControlling: Sendable {
-    func show(glassID: GlassID) async
-    func hide(glassID: GlassID) async
-    func remove(glassID: GlassID) async
+public protocol ConfigurationPersisting: Sendable {
+    func load() async throws -> [GlassConfiguration]
+    func save(_ configurations: [GlassConfiguration]) async throws
+}
+
+public protocol FolderSelecting: Sendable {
+    func selectFolder() async -> URL?
+}
+
+public protocol FolderSourceCreating: Sendable {
+    func createSource(for selectedURL: URL) async throws -> FolderSource
+}
+
+public protocol InitialGlassPlacementProviding: Sendable {
+    func placementForNewGlass() async -> GlassPlacement
 }
