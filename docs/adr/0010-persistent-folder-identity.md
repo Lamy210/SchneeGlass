@@ -30,13 +30,13 @@ A document identifier is never treated as globally unique by itself. Automatic s
 
 Descriptor-derived POSIX directory identity is the primary current-session continuity proof.
 
-`FolderAccessHandle.runtimeDirectoryIdentity` carries a non-persistent `RuntimeDirectoryIdentity` derived from the directory object's `st_dev` and `st_ino`. When that identity is available, live safety checks use it for bookmark refresh, snapshot-root verification, Drop planning, and copy destination binding. Path-based capability reads are bracketed by POSIX identity checks where necessary, and copy execution still pins the destination directory descriptor before mutation.
+`FolderAccessHandle.runtimeDirectoryIdentity` carries a non-persistent `RuntimeDirectoryIdentity` derived from the directory object's `st_dev` and `st_ino`. When that identity is available, bookmark refresh, snapshot-root verification, Drop planning, and copy destination binding can validate the selected physical directory against it. Path-based capability reads are bracketed by POSIX identity checks where necessary, and copy execution still pins the destination directory descriptor before mutation.
 
 `RuntimeDirectoryIdentity` is intentionally not Codable and must never become persisted folder authority.
 
-`ResourceFingerprint` is retained only as a compatibility fallback for filesystems or locations where descriptor-derived runtime identity cannot be obtained. In that fallback path, Foundation `volumeIdentifier` / `fileResourceIdentifier` values may be observed for the active access, but they remain boot/session-local and must never be written into new configuration. A normal POSIX-backed access therefore leaves `FolderAccessHandle.fingerprint` unset.
+For access establishment, `ResourceFingerprint` is retained only as a compatibility fallback for filesystems or locations where descriptor-derived runtime identity cannot be obtained. In that fallback path, Foundation `volumeIdentifier` / `fileResourceIdentifier` values may be observed for the active access, but they remain boot/session-local and must never be written into new configuration. A normal POSIX-backed access therefore leaves `FolderAccessHandle.fingerprint` unset.
 
-This hierarchy avoids using opaque Foundation identifier stringification on the normal local-filesystem path while preserving compatibility for environments that cannot provide POSIX directory identity.
+Some downstream read-only snapshot metadata still observes Foundation resource identifiers independently for compatibility, display identity, and defense in depth. Those observations are not persisted folder authority and do not change the access-establishment hierarchy defined here.
 
 ### Legacy configuration migration
 
@@ -60,11 +60,11 @@ If a configuration already contains persistent identity proof:
 
 If no persistent proof was previously saved, inability to obtain supplemental persistent metadata does not invalidate an otherwise valid security-scoped bookmark.
 
-For current-session continuity:
+For current-session continuity during access establishment and bookmark refresh:
 
 - if POSIX runtime identity is available before an asynchronous safety boundary, disappearance of that identity at revalidation fails closed,
 - a changed POSIX runtime identity is `resourceReplacementDetected`,
-- Foundation fingerprint comparison is used only when POSIX runtime identity was unavailable for that access,
+- `ResourceFingerprint` comparison is used only when POSIX runtime identity was unavailable for that access,
 - no pathname-only or volume-only value is promoted to persisted authority.
 
 ### Pending Copy destination reconnect
@@ -84,15 +84,16 @@ If either dimension is unavailable, automatic reconnect fails closed rather than
 - legacy configuration remains loadable and migrates without destructive reset,
 - filesystems without persistent metadata remain usable for normal bookmark-based access,
 - reconnect remains strict because it changes persisted access authority,
-- normal local-filesystem runtime safety now uses documented descriptor metadata instead of opaque Foundation identifier strings,
-- Foundation runtime identifiers are isolated to compatibility fallback paths,
+- normal POSIX-backed access establishment uses documented descriptor metadata instead of reading opaque Foundation fingerprint values,
+- `ResourceFingerprint` is isolated to access compatibility fallback paths,
 - current copy descriptor pinning and mutation safety are not weakened.
 
 ### Trade-offs
 
 - normal access may rely on bookmark resolution alone when persistent metadata is unavailable,
 - automatic reconnect is unavailable on volumes that cannot provide both persistent identity dimensions,
-- fallback environments without POSIX runtime identity still depend on Foundation's boot-local resource identifiers for live comparison,
+- fallback environments without POSIX runtime identity still depend on Foundation's boot-local resource identifiers for live access comparison,
+- read-only snapshot metadata still has separate Foundation resource-identifier observations that require independent hardening if they are later promoted to stronger authority,
 - POSIX runtime identity is process/session-local and therefore cannot replace the security-scoped bookmark or restart-safe persistent metadata.
 
 ## Verification
@@ -106,7 +107,7 @@ Required automated coverage:
 - persisted restart-safe identity mismatch fails closed,
 - persisted identity becoming unavailable fails closed,
 - reconnect requires exact persistent directory identity,
-- POSIX-backed access does not read or populate a Foundation runtime fingerprint,
+- POSIX-backed access does not read or populate a Foundation `ResourceFingerprint`,
 - stable POSIX identity survives stale-bookmark refresh,
 - POSIX identity replacement or disappearance during stale-bookmark refresh fails closed,
 - Foundation fingerprint refresh comparison remains covered as an explicit POSIX-unavailable fallback.
