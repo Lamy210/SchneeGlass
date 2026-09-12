@@ -10,28 +10,55 @@ public enum NativeFolderSnapshotReaderError: Error, Hashable, Sendable {
     case itemMetadataUnavailable
 }
 
+struct SnapshotFolderFingerprint: Equatable, Sendable {
+    let volumeIdentifier: String?
+    let resourceIdentifier: String?
+}
+
+protocol SnapshotFolderFingerprintReading: Sendable {
+    func fingerprint(for url: URL) throws -> SnapshotFolderFingerprint
+}
+
+struct FoundationSnapshotFolderFingerprintReader: SnapshotFolderFingerprintReading {
+    func fingerprint(for url: URL) throws -> SnapshotFolderFingerprint {
+        let values: URLResourceValues
+        do {
+            values = try url.resourceValues(forKeys: [
+                .volumeIdentifierKey,
+                .fileResourceIdentifierKey,
+            ])
+        } catch {
+            throw NativeFolderSnapshotReaderError.folderMetadataUnavailable
+        }
+
+        return SnapshotFolderFingerprint(
+            volumeIdentifier: values.volumeIdentifier.map { String(describing: $0) },
+            resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
+        )
+    }
+}
+
 public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     public static let maximumDisplayedItems = 500
 
-    private struct ObservedFolderFingerprint: Equatable, Sendable {
-        let volumeIdentifier: String?
-        let resourceIdentifier: String?
-    }
-
     private let fileManager: FileManager
     private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
+    private let folderFingerprintReader: any SnapshotFolderFingerprintReading
 
     public init() {
         self.fileManager = .default
         self.runtimeIdentityReader = POSIXRuntimeDirectoryIdentityReader()
+        self.folderFingerprintReader = FoundationSnapshotFolderFingerprintReader()
     }
 
     init(
         fileManager: FileManager,
-        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader(),
+        folderFingerprintReader: any SnapshotFolderFingerprintReading = FoundationSnapshotFolderFingerprintReader()
     ) {
         self.fileManager = fileManager
         self.runtimeIdentityReader = runtimeIdentityReader
+        self.folderFingerprintReader = folderFingerprintReader
     }
 
     public func snapshot(
@@ -44,14 +71,24 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             expected: access.runtimeDirectoryIdentity
         )
 
-        let initialFingerprint = try folderFingerprint(for: access.url)
-        try Self.validate(
-            observed: initialFingerprint,
-            expectedVolumeIdentifier: access.fingerprint?.volumeIdentifier,
-            expectedResourceIdentifier: access.fingerprint?.resourceIdentifier
-        )
+        // A production POSIX-backed access already carries the exact directory device/inode that
+        // was authorized. Avoid reading or stringifying Foundation's opaque root identifiers on that
+        // path. Legacy/fallback handles keep the previous Foundation comparison contract.
+        let initialFingerprint: SnapshotFolderFingerprint?
+        if access.runtimeDirectoryIdentity == nil {
+            let observed = try folderFingerprintReader.fingerprint(for: access.url)
+            try Self.validate(
+                observed: observed,
+                expectedVolumeIdentifier: access.fingerprint?.volumeIdentifier,
+                expectedResourceIdentifier: access.fingerprint?.resourceIdentifier
+            )
+            initialFingerprint = observed
+        } else {
+            initialFingerprint = nil
+        }
+
         let folderIdentity = FolderIdentity(
-            resourceIdentifier: initialFingerprint.resourceIdentifier,
+            resourceIdentifier: initialFingerprint?.resourceIdentifier,
             standardizedURL: access.url
         )
 
@@ -107,9 +144,9 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             throw NativeFolderSnapshotReaderError.enumerationFailed
         }
 
-        // The root pathname can be replaced while enumeration is suspended in Foundation. Prefer
-        // descriptor-derived device/inode identity for the before/after boundary and retain the
-        // Foundation fingerprint checks as compatibility/authorization defense in depth.
+        // The root pathname can be replaced while enumeration is suspended in Foundation. The
+        // acquired descriptor identity is authoritative on the normal path. A snapshot that began
+        // without acquired POSIX proof keeps the previous Foundation fallback comparison.
         let finalRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
         if let initialRuntimeIdentity {
             guard let finalRuntimeIdentity,
@@ -123,14 +160,16 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             expected: access.runtimeDirectoryIdentity
         )
 
-        let finalFingerprint = try folderFingerprint(for: access.url)
-        try Self.validate(
-            observed: finalFingerprint,
-            expectedVolumeIdentifier: access.fingerprint?.volumeIdentifier,
-            expectedResourceIdentifier: access.fingerprint?.resourceIdentifier
-        )
-        guard finalFingerprint == initialFingerprint else {
-            throw FolderSnapshotReadError.rootIdentityMismatch
+        if let initialFingerprint {
+            let finalFingerprint = try folderFingerprintReader.fingerprint(for: access.url)
+            try Self.validate(
+                observed: finalFingerprint,
+                expectedVolumeIdentifier: access.fingerprint?.volumeIdentifier,
+                expectedResourceIdentifier: access.fingerprint?.resourceIdentifier
+            )
+            guard finalFingerprint == initialFingerprint else {
+                throw FolderSnapshotReadError.rootIdentityMismatch
+            }
         }
 
         items.sort(by: Self.itemSortOrder)
@@ -141,23 +180,6 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
             isTruncated: isTruncated,
             observedAt: Date(),
             generation: generation
-        )
-    }
-
-    private func folderFingerprint(for url: URL) throws -> ObservedFolderFingerprint {
-        let values: URLResourceValues
-        do {
-            values = try url.resourceValues(forKeys: [
-                .volumeIdentifierKey,
-                .fileResourceIdentifierKey,
-            ])
-        } catch {
-            throw NativeFolderSnapshotReaderError.folderMetadataUnavailable
-        }
-
-        return ObservedFolderFingerprint(
-            volumeIdentifier: values.volumeIdentifier.map { String(describing: $0) },
-            resourceIdentifier: values.fileResourceIdentifier.map { String(describing: $0) }
         )
     }
 
@@ -177,7 +199,7 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     }
 
     private static func validate(
-        observed: ObservedFolderFingerprint,
+        observed: SnapshotFolderFingerprint,
         expectedVolumeIdentifier: String?,
         expectedResourceIdentifier: String?
     ) throws {
