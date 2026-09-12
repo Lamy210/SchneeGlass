@@ -80,9 +80,9 @@ func snapshotRejectsRootThatDoesNotMatchSecurityScopedAccessFingerprint() async 
             for: access,
             generation: 1
         )
-        Issue.record("Expected folderIdentityMismatch")
-    } catch let error as NativeFolderSnapshotReaderError {
-        #expect(error == .folderIdentityMismatch)
+        Issue.record("Expected root identity mismatch")
+    } catch let error as FolderSnapshotReadError {
+        #expect(error == .rootIdentityMismatch)
     } catch {
         Issue.record("Unexpected error: \(error)")
     }
