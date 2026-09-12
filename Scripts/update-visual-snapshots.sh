@@ -22,6 +22,7 @@ export SNAPSHOT_TESTING_RECORD=all
 snapshot_suites=(
   DesktopGlassVisualSnapshotTests
   DesignSystemComponentVisualSnapshotTests
+  WorkspaceVisualSnapshotTests
 )
 
 printf 'Recording SchneeGlass visual snapshots with %s...\n' "$actual_xcode"

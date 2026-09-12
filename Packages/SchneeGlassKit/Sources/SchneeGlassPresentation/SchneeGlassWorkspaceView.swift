@@ -1,6 +1,7 @@
 import FileDomain
 import SchneeGlassApplication
 import SchneeGlassDesignSystem
+import SchneeGlassDomain
 import SwiftUI
 
 public struct SchneeGlassWorkspaceView: View {
@@ -11,6 +12,64 @@ public struct SchneeGlassWorkspaceView: View {
     }
 
     public var body: some View {
+        WorkspaceSurface(
+            glasses: model.glasses,
+            isCreatingGlass: model.isCreatingGlass,
+            isRestoring: model.isRestoring,
+            isMutatingConfiguration: model.isMutatingConfiguration,
+            userMessage: model.userMessage,
+            onAddGlass: {
+                Task {
+                    await model.addGlass()
+                }
+            },
+            onDismissMessage: model.dismissMessage,
+            onOpen: model.open,
+            onReveal: model.revealInFinder,
+            onRemove: { glassID in
+                Task {
+                    await model.removeGlass(id: glassID)
+                }
+            },
+            onPlanDrop: { glassID, urls in
+                let plan = await model.planDrop(
+                    glassID: glassID,
+                    sourceURLs: urls
+                )
+                if case .copy = plan {
+                    return true
+                }
+                return false
+            },
+            onCancelDrop: { glassID in
+                model.cancelDrop(glassID: glassID)
+            },
+            onPerformDrop: { glassID, urls in
+                _ = await model.performDrop(
+                    glassID: glassID,
+                    sourceURLs: urls
+                )
+            }
+        )
+    }
+}
+
+struct WorkspaceSurface: View {
+    let glasses: [GlassWorkspaceEntry]
+    let isCreatingGlass: Bool
+    let isRestoring: Bool
+    let isMutatingConfiguration: Bool
+    let userMessage: String?
+    let onAddGlass: @MainActor () -> Void
+    let onDismissMessage: @MainActor () -> Void
+    let onOpen: @MainActor (GlassItem) -> Void
+    let onReveal: @MainActor (GlassItem) -> Void
+    let onRemove: @MainActor (GlassID) -> Void
+    let onPlanDrop: @MainActor (GlassID, [URL]) async -> Bool
+    let onCancelDrop: @MainActor (GlassID) -> Void
+    let onPerformDrop: @MainActor (GlassID, [URL]) async -> Void
+
+    var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
@@ -36,7 +95,7 @@ public struct SchneeGlassWorkspaceView: View {
 
             Spacer()
 
-            if model.isRestoring {
+            if isRestoring {
                 HStack(spacing: 7) {
                     ProgressView()
                         .controlSize(.small)
@@ -46,19 +105,15 @@ public struct SchneeGlassWorkspaceView: View {
                 }
             }
 
-            Button {
-                Task {
-                    await model.addGlass()
-                }
-            } label: {
-                if model.isCreatingGlass {
+            Button(action: onAddGlass) {
+                if isCreatingGlass {
                     ProgressView()
                         .controlSize(.small)
                 } else {
                     Label("Add Glass", systemImage: "plus")
                 }
             }
-            .disabled(model.isMutatingConfiguration)
+            .disabled(isMutatingConfiguration)
             .keyboardShortcut("n", modifiers: .command)
             .accessibilityLabel("Add Glass")
         }
@@ -67,45 +122,33 @@ public struct SchneeGlassWorkspaceView: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.glasses.isEmpty {
+        if glasses.isEmpty {
             emptyWorkspace
         } else {
             ScrollView {
                 LazyVStack(spacing: SchneeGlassSpacing.workspaceSection) {
-                    if let message = model.userMessage {
-                        messageBanner(message)
+                    if let userMessage {
+                        messageBanner(userMessage)
                     }
 
-                    ForEach(model.glasses) { entry in
+                    ForEach(glasses) { entry in
                         GlassPreviewSurface(
                             entry: entry,
-                            canRemove: !model.isMutatingConfiguration
+                            canRemove: !isMutatingConfiguration
                                 && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
-                            onOpen: model.open,
-                            onReveal: model.revealInFinder,
+                            onOpen: onOpen,
+                            onReveal: onReveal,
                             onRemove: {
-                                Task {
-                                    await model.removeGlass(id: entry.id)
-                                }
+                                onRemove(entry.id)
                             },
                             onPlanDrop: { urls in
-                                let plan = await model.planDrop(
-                                    glassID: entry.id,
-                                    sourceURLs: urls
-                                )
-                                if case .copy = plan {
-                                    return true
-                                }
-                                return false
+                                await onPlanDrop(entry.id, urls)
                             },
                             onCancelDrop: {
-                                model.cancelDrop(glassID: entry.id)
+                                onCancelDrop(entry.id)
                             },
                             onPerformDrop: { urls in
-                                _ = await model.performDrop(
-                                    glassID: entry.id,
-                                    sourceURLs: urls
-                                )
+                                await onPerformDrop(entry.id, urls)
                             }
                         )
                     }
@@ -119,7 +162,7 @@ public struct SchneeGlassWorkspaceView: View {
         VStack(spacing: SchneeGlassSpacing.workspaceSection) {
             Spacer()
 
-            if model.isRestoring {
+            if isRestoring {
                 ProgressView()
                     .controlSize(.regular)
                 Text("Restoring your Glasses…")
@@ -141,17 +184,13 @@ public struct SchneeGlassWorkspaceView: View {
                         .frame(maxWidth: 420)
                 }
 
-                Button("Add Glass") {
-                    Task {
-                        await model.addGlass()
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isMutatingConfiguration)
+                Button("Add Glass", action: onAddGlass)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isMutatingConfiguration)
             }
 
-            if let message = model.userMessage {
-                messageBanner(message)
+            if let userMessage {
+                messageBanner(userMessage)
                     .frame(maxWidth: 440)
             }
 
@@ -170,9 +209,7 @@ public struct SchneeGlassWorkspaceView: View {
                 .font(SchneeGlassTypography.body)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                model.dismissMessage()
-            } label: {
+            Button(action: onDismissMessage) {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.plain)
