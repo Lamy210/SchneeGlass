@@ -9,6 +9,7 @@ private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing
     private let resolvedURL: URL
     private var stopCounter = 0
     private var bookmarkCounter = 0
+    private var fingerprintCounter = 0
 
     init(resolvedURL: URL) {
         self.resolvedURL = resolvedURL
@@ -37,7 +38,11 @@ private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing
 
     func fingerprint(for url: URL) async throws -> ResourceFingerprint? {
         _ = url
-        return nil
+        fingerprintCounter += 1
+        return ResourceFingerprint(
+            volumeIdentifier: "foundation-volume-should-not-be-read",
+            resourceIdentifier: "foundation-resource-should-not-be-read"
+        )
     }
 
     func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
@@ -45,8 +50,8 @@ private actor POSIXIdentityTestResourceAccessor: SecurityScopedResourceAccessing
         return nil
     }
 
-    func counters() -> (stops: Int, bookmarks: Int) {
-        (stopCounter, bookmarkCounter)
+    func counters() -> (stops: Int, bookmarks: Int, fingerprints: Int) {
+        (stopCounter, bookmarkCounter, fingerprintCounter)
     }
 }
 
@@ -104,6 +109,7 @@ func staleBookmarkRefreshRejectsPOSIXDirectoryReplacementWithoutFoundationFinger
     let counters = await accessor.counters()
     #expect(counters.bookmarks == 1)
     #expect(counters.stops == 1)
+    #expect(counters.fingerprints == 0)
 }
 
 @Test
@@ -134,10 +140,11 @@ func staleBookmarkRefreshFailsClosedWhenPOSIXIdentityDisappears() async {
     let counters = await accessor.counters()
     #expect(counters.bookmarks == 1)
     #expect(counters.stops == 1)
+    #expect(counters.fingerprints == 0)
 }
 
 @Test
-func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprint() async throws {
+func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprintRead() async throws {
     let url = URL(fileURLWithPath: "/tmp/schneeglass-posix-refresh-stable", isDirectory: true)
     let accessor = POSIXIdentityTestResourceAccessor(resolvedURL: url)
     let identity = runtimeDirectoryIdentity(inode: 41)
@@ -158,8 +165,13 @@ func staleBookmarkRefreshAcceptsStablePOSIXIdentityWithoutFoundationFingerprint(
         deviceIdentifier: identity.device,
         objectIdentifier: identity.inode
     ))
-    #expect(await accessor.counters().stops == 0)
+
+    let beforeRelease = await accessor.counters()
+    #expect(beforeRelease.stops == 0)
+    #expect(beforeRelease.fingerprints == 0)
 
     await coordinator.release(handleID: acquisition.handle.id)
-    #expect(await accessor.counters().stops == 1)
+    let afterRelease = await accessor.counters()
+    #expect(afterRelease.stops == 1)
+    #expect(afterRelease.fingerprints == 0)
 }
