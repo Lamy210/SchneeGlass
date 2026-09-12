@@ -8,7 +8,7 @@ on:
       - 'bootstrap/**'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: bootstrap-ci-${{ github.workflow }}-${{ github.ref }}
@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Toolchain
         run: |
@@ -49,6 +51,39 @@ jobs:
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
+
+      - name: Bootstrap visual snapshot references
+        if: github.event_name == 'pull_request' && github.head_ref == 'test/visual-snapshot-regression'
+        env:
+          SCHNEEGLASS_VISUAL_SNAPSHOTS: '1'
+        run: |
+          set +e
+          SNAPSHOT_TESTING_RECORD=all swift test \
+            --package-path Packages/SchneeGlassKit \
+            --filter DesktopGlassVisualSnapshotTests
+          record_status=$?
+          set -e
+
+          SNAPSHOT_DIR='Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__'
+          test -d "$SNAPSHOT_DIR" || {
+            echo "Snapshot record mode produced no references (exit $record_status)." >&2
+            exit 1
+          }
+
+          SNAPSHOT_TESTING_RECORD=never swift test \
+            --package-path Packages/SchneeGlassKit \
+            --filter DesktopGlassVisualSnapshotTests
+
+          git add "$SNAPSHOT_DIR"
+          if git diff --cached --quiet; then
+            echo 'Visual snapshot references are already current.'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test: record initial visual snapshot references [skip ci]'
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: AddressSanitizer package tests
         if: github.event_name == 'pull_request'
@@ -127,6 +162,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Toolchain
         run: |
