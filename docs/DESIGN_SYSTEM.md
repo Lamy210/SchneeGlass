@@ -189,4 +189,34 @@ For refactor-only Design System PRs:
 - canonical visual snapshot CI must pass in record-never mode
 - visual changes require a separate, reviewable design PR
 
-Design System component snapshots should test component variants exhaustively, while screen-level snapshots should cover representative compositions rather than every cross-product of states.
+Design System component snapshots test the reusable primitive directly, while screen-level snapshots cover representative compositions rather than every cross-product of states.
+
+### Component visual contract
+
+`DesignSystemComponentVisualSnapshotTests` owns the canonical visual contract for reusable Design System components. It intentionally imports `SchneeGlassDesignSystem` directly and uses neutral fixture values rather than Domain/Application state.
+
+Initial component baselines:
+
+```text
+SchneeGlassStateMessage
+├ detail / light
+└ no detail / dark
+
+SchneeGlassFileTile
+├ regular file / light
+├ directory / light
+├ package / dark
+└ long two-line filename / light
+```
+
+The component renderer uses GitHub-hosted macOS 26 / Xcode 26.6, fixed light/dark `NSAppearance`, `en_US_POSIX`, disabled animations, and fixed component hosting sizes. These references are verified only on the canonical runner because SwiftUI/AppKit/SF Symbols/font rasterization can differ by OS release.
+
+Normal package tests compile this suite but skip image rendering unless `SCHNEEGLASS_VISUAL_SNAPSHOTS=1` is present. Canonical CI always verifies with `SNAPSHOT_TESTING_RECORD=never` and requires a component-specific log marker so a filter mismatch cannot silently pass.
+
+Reference updates are explicit and local:
+
+```bash
+bash Scripts/update-visual-snapshots.sh
+```
+
+The updater records and then re-verifies both Desktop Glass and Design System component suites using Xcode 26.6. CI must never automatically approve or retain a changed reference image as the final repository state.
