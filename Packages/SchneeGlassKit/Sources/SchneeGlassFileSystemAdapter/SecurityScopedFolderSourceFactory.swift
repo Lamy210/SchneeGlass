@@ -16,7 +16,7 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
     public func createSource(for selectedURL: URL) async throws -> FolderSource {
         let url = selectedURL.standardizedFileURL
         let initialFingerprint = try await requiredFingerprint(for: url)
-        let initialPersistentIdentity = try await persistentIdentity(for: url)
+        let initialPersistentIdentity = await optionalPersistentIdentity(for: url)
 
         let bookmarkData: Data
         do {
@@ -30,7 +30,7 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
         // stayed stable across the operation. Persistent metadata is supplemental and is captured
         // only from that same stable resource.
         let finalFingerprint = try await requiredFingerprint(for: url)
-        let finalPersistentIdentity = try await persistentIdentity(for: url)
+        let finalPersistentIdentity = await optionalPersistentIdentity(for: url)
         guard finalFingerprint == initialFingerprint else {
             throw FolderSourceCreationError.resourceIdentityUnavailable
         }
@@ -65,11 +65,13 @@ public actor SecurityScopedFolderSourceFactory: FolderSourceCreating {
         }
     }
 
-    private func persistentIdentity(for url: URL) async throws -> PersistentFolderIdentity? {
+    private func optionalPersistentIdentity(for url: URL) async -> PersistentFolderIdentity? {
         do {
             return try await resourceAccessor.persistentIdentity(for: url)
         } catch {
-            throw FolderSourceCreationError.resourceIdentityUnavailable
+            // Persistent metadata is an optional supplement to the security-scoped bookmark. Some
+            // filesystems do not expose it; source creation must remain available there.
+            return nil
         }
     }
 }
