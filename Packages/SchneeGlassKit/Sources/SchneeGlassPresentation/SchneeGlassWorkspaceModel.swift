@@ -414,6 +414,13 @@ public final class SchneeGlassWorkspaceModel {
             return false
         }
 
+        guard canMutateConfiguration else {
+            await session.abandonCopyPlan(copyPlan)
+            updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+            presentConfigurationRecoveryRequirementIfNeeded()
+            return false
+        }
+
         let firstFilename = copyPlan.items.first?.destinationFilename ?? "file"
         updateInteraction(
             .copying(
