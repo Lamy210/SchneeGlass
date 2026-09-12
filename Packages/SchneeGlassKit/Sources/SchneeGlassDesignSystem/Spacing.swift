@@ -9,6 +9,7 @@ public enum SchneeGlassSpacing {
     public static let messageContent: CGFloat = 10
     public static let workspaceDropOverlayContent: CGFloat = 7
     public static let fileGrid: CGFloat = 12
+    public static let fileGridSection: CGFloat = 10
     public static let fileGridColumn: CGFloat = 10
 }
 
