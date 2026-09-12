@@ -127,6 +127,37 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                 throw FolderAccessError.bookmarkResolutionFailed
             }
 
+            // A directory resource identifier is the dimension that proves which folder this is.
+            // Legacy volume-only fingerprints remain compatible, but when directory identity is
+            // available it must survive the async bookmark refresh unchanged before persistence.
+            if let actualFingerprint,
+               actualFingerprint.resourceIdentifier != nil
+            {
+                let refreshedFingerprint: ResourceFingerprint?
+                do {
+                    refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+                } catch {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.identityVerificationIsUnavailable(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.bookmarkResolutionFailed
+                }
+
+                if Self.representsReplacement(
+                    expected: actualFingerprint,
+                    actual: refreshedFingerprint
+                ) {
+                    await resourceAccessor.stopAccessing(resolved.url)
+                    throw FolderAccessError.resourceReplacementDetected
+                }
+            }
+
             refreshedSource = FolderSource(
                 bookmarkData: refreshedBookmark,
                 lastKnownPath: resolved.url.path,
