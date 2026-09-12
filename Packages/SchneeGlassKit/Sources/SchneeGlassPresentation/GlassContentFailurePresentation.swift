@@ -15,9 +15,9 @@ struct GlassContentFailurePresentation: Equatable {
             )
         case .unexpected:
             return Self(
-                status: "Needs reconnect",
-                title: "This Glass needs to reconnect",
-                detail: "Restart SchneeGlass to retry. If it still fails, use Recovery."
+                status: "Needs attention",
+                title: "This Glass couldn't continue",
+                detail: "Restart SchneeGlass to retry. If it still fails, remove this Glass and add the folder again."
             )
         }
     }
