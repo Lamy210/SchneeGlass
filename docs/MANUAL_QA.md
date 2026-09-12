@@ -103,6 +103,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] same-directory dropを安全に拒否する
 - [ ] folder dropを安全に拒否する
 - [ ] package / symlinkをv0.1 contractどおり拒否する
+- [ ] destination pathnameがdirectoryへのsymbolic linkの場合、copy可能としてadvertiseせず安全に拒否する
+- [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
 
@@ -123,7 +125,11 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 - [ ] destination unavailable状態を表示できる
 - [ ] 正しい元destinationを選択するとreconnectできる
-- [ ] fingerprintが一致しないfolderは拒否する
+- [ ] saved / selected双方の`PersistentFolderIdentity.volumeUUIDString`が一致する
+- [ ] saved / selected双方の`PersistentFolderIdentity.documentIdentifier`が一致する
+- [ ] volume UUIDまたはdocument identifierが異なるfolderは拒否する
+- [ ] saved側で記録済みのpersistent identity dimensionがselected側で取得不能ならfail-closedする
+- [ ] boot/session-local `ResourceFingerprint`一致だけではreconnect authorityにならない
 - [ ] pickerを開いている間にconfig/recordが変わった場合staleとして拒否する
 - [ ] reconnectによってGlass ID/title/placementが不必要に変化しない
 - [ ] reconnect操作そのものはuser file contentを変更しない
