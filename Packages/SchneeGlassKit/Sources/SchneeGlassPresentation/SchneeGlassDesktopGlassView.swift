@@ -128,26 +128,13 @@ struct DesktopGlassSurface: View {
 
     @ViewBuilder
     private var statusLabel: some View {
-        switch entry.contentState {
-        case .loading:
+        if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
+            Image(systemName: presentation.systemImage)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(presentation.label)
+        } else {
             ProgressView()
                 .controlSize(.small)
-        case .ready:
-            Image(systemName: "checkmark.circle")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Connected")
-        case .empty:
-            Image(systemName: "tray")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Empty")
-        case .unavailable:
-            Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Unavailable")
-        case let .failed(error):
-            Image(systemName: "arrow.clockwise.circle")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(GlassContentFailurePresentation.make(for: error).status)
         }
     }
 
@@ -252,40 +239,58 @@ struct DesktopGlassSurface: View {
             EmptyView()
 
         case .hovered:
-            overlayCard(icon: "ellipsis", title: "Checking files…", detail: nil)
+            let presentation = GlassInteractionPresentation.hovered(surface: .desktop)
+            overlayCard(
+                icon: symbolName(from: presentation) ?? "ellipsis",
+                title: presentation.title,
+                detail: presentation.detail
+            )
 
         case let .dropValid(plan):
-            switch plan {
-            case let .copy(batch):
-                let count = batch.items.count
+            if let presentation = GlassInteractionPresentation.dropValid(
+                plan: plan,
+                glassTitle: entry.title,
+                surface: .desktop
+            ) {
                 overlayCard(
-                    icon: "doc.on.doc",
-                    title: count == 1
-                        ? "Copy \(batch.items[0].destinationFilename) to \(entry.title)"
-                        : "Copy \(count) files to \(entry.title)",
-                    detail: "Original files stay where they are."
+                    icon: symbolName(from: presentation) ?? "doc.on.doc",
+                    title: presentation.title,
+                    detail: presentation.detail
                 )
-            case .noOperation, .reject:
-                EmptyView()
             }
 
         case let .dropInvalid(reason):
+            let presentation = GlassInteractionPresentation.dropInvalid(
+                reason: reason,
+                glassTitle: entry.title,
+                surface: .desktop
+            )
             overlayCard(
-                icon: "nosign",
-                title: rejectionTitle(reason),
-                detail: rejectionDetail(reason)
+                icon: symbolName(from: presentation) ?? "nosign",
+                title: presentation.title,
+                detail: presentation.detail
             )
 
         case let .copying(progress):
+            let presentation = GlassInteractionPresentation.copying(
+                progress: progress,
+                glassTitle: entry.title,
+                surface: .desktop
+            )
             overlayCard(
                 icon: "doc.on.doc",
-                title: progress.totalCount == 1
-                    ? "Copying \(progress.currentFilename)…"
-                    : "Copying \(progress.currentIndex) of \(progress.totalCount)…",
-                detail: "Original files stay where they are.",
+                title: presentation.title,
+                detail: presentation.detail,
                 showsProgress: true
             )
         }
+    }
+
+    private func symbolName(from presentation: GlassInteractionPresentation) -> String? {
+        guard case let .symbol(systemImage) = presentation.indicator else {
+            return nil
+        }
+        return systemImage
     }
 
     private func overlayCard(
@@ -321,58 +326,6 @@ struct DesktopGlassSurface: View {
             .padding(16)
             .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(18)
-        }
-    }
-
-    private func rejectionTitle(_ reason: DropRejection) -> String {
-        switch reason {
-        case .unsupportedFolder:
-            return "Folders aren't supported yet"
-        case .unsupportedPackage:
-            return "Packages aren't supported yet"
-        case .unsupportedSymbolicLink:
-            return "Symbolic links aren't supported"
-        case .unsupportedItem:
-            return "This item can't be copied by SchneeGlass"
-        case .tooManyItems:
-            return "Too many files to copy at once"
-        case .collision:
-            return "A file with this name already exists"
-        case .containsSameDirectoryItem:
-            return "Already in \(entry.title)"
-        case .destinationUnavailable:
-            return "Folder unavailable"
-        case .destinationReadOnly:
-            return "Folder is read-only"
-        case .destinationCopySafetyUnsupported:
-            return "Copy isn't supported for this folder"
-        case .networkDestinationUnsupported:
-            return "Network destinations aren't supported yet"
-        case .sourceUnavailable:
-            return "A source file is unavailable"
-        case .sourceCapacityReached:
-            return "Copy capacity is busy"
-        case .cloudPlaceholderUnavailable:
-            return "Download the cloud file first"
-        }
-    }
-
-    private func rejectionDetail(_ reason: DropRejection) -> String? {
-        switch reason {
-        case let .tooManyItems(maximum):
-            return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
-        case let .sourceCapacityReached(maximum):
-            return "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
-        case .collision:
-            return "Nothing will be overwritten."
-        case .cloudPlaceholderUnavailable:
-            return "SchneeGlass won't start an unexpected cloud download."
-        case .unsupportedFolder:
-            return "v0.1 copies regular files only."
-        case .destinationCopySafetyUnsupported:
-            return "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
-        default:
-            return nil
         }
     }
 }
