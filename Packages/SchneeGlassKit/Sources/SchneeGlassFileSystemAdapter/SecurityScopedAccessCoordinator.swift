@@ -173,8 +173,8 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             // A directory runtime identifier protects the bookmark-refresh async boundary during
             // this boot. Legacy sources that expose no directory identifier keep their historical
             // bookmark-only compatibility rather than inventing stronger proof from volume identity.
-            let refreshedFingerprint: ResourceFingerprint?
             if actualFingerprint?.resourceIdentifier != nil {
+                let refreshedFingerprint: ResourceFingerprint?
                 do {
                     refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
                 } catch {
@@ -197,8 +197,6 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                     await resourceAccessor.stopAccessing(resolved.url)
                     throw FolderAccessError.resourceReplacementDetected
                 }
-            } else {
-                refreshedFingerprint = actualFingerprint
             }
 
             let refreshedPersistentIdentity: PersistentFolderIdentity?
@@ -231,7 +229,6 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
             refreshedSource = FolderSource(
                 bookmarkData: refreshedBookmark,
                 lastKnownPath: resolved.url.path,
-                fingerprint: refreshedFingerprint,
                 persistentIdentity: refreshedPersistentIdentity
             )
         } else if source.persistentIdentity != actualPersistentIdentity
@@ -239,12 +236,11 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
                     || source.lastKnownPath != resolved.url.path
         {
             // This is also the in-place migration path for schema-v1 files. Preserve the existing
-            // bookmark, drop the legacy boot-local fingerprint on the next encode, and add whatever
+            // bookmark, discard the decoded legacy boot-local fingerprint in memory, and add whatever
             // restart-safe metadata the resolved resource currently exposes.
             refreshedSource = FolderSource(
                 bookmarkData: source.bookmarkData,
                 lastKnownPath: resolved.url.path,
-                fingerprint: actualFingerprint,
                 persistentIdentity: actualPersistentIdentity
             )
         } else {
