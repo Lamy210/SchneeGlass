@@ -10,11 +10,12 @@ private enum FolderSourceFactoryTestError: Error, Sendable {
 
 private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing {
     let bookmarkData: Data
-    let fingerprintValue: ResourceFingerprint?
+    let fingerprintValues: [ResourceFingerprint?]
     let failBookmark: Bool
     let failFingerprint: Bool
     private(set) var bookmarkURLs: [URL] = []
     private(set) var fingerprintURLs: [URL] = []
+    private var fingerprintCallCount = 0
 
     init(
         bookmarkData: Data = Data([1, 2, 3]),
@@ -22,11 +23,12 @@ private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing 
             volumeIdentifier: "volume",
             resourceIdentifier: "resource"
         ),
+        fingerprintValues: [ResourceFingerprint?]? = nil,
         failBookmark: Bool = false,
         failFingerprint: Bool = false
     ) {
         self.bookmarkData = bookmarkData
-        self.fingerprintValue = fingerprintValue
+        self.fingerprintValues = fingerprintValues ?? [fingerprintValue]
         self.failBookmark = failBookmark
         self.failFingerprint = failFingerprint
     }
@@ -48,7 +50,13 @@ private actor FakeFolderSourceResourceAccessor: SecurityScopedResourceAccessing 
     func fingerprint(for url: URL) async throws -> ResourceFingerprint? {
         fingerprintURLs.append(url)
         if failFingerprint { throw FolderSourceFactoryTestError.injected }
-        return fingerprintValue
+
+        guard !fingerprintValues.isEmpty else {
+            return nil
+        }
+        let index = min(fingerprintCallCount, fingerprintValues.count - 1)
+        fingerprintCallCount += 1
+        return fingerprintValues[index]
     }
 
     func observedURLs() -> (bookmark: [URL], fingerprint: [URL]) {
@@ -73,7 +81,38 @@ func folderSourceFactoryCreatesBookmarkAndFingerprintFromStandardizedURL() async
         resourceIdentifier: "resource"
     ))
     #expect(observed.bookmark == [expected])
-    #expect(observed.fingerprint == [expected])
+    #expect(observed.fingerprint == [expected, expected])
+}
+
+@Test
+func folderSourceFactoryRejectsIdentityChangeDuringBookmarkCreation() async {
+    let before = ResourceFingerprint(
+        volumeIdentifier: "volume",
+        resourceIdentifier: "resource-before"
+    )
+    let after = ResourceFingerprint(
+        volumeIdentifier: "volume",
+        resourceIdentifier: "resource-after"
+    )
+    let accessor = FakeFolderSourceResourceAccessor(
+        fingerprintValues: [before, after]
+    )
+    let factory = SecurityScopedFolderSourceFactory(resourceAccessor: accessor)
+    let selected = URL(fileURLWithPath: "/tmp/ReplacedDuringBookmark", isDirectory: true)
+
+    do {
+        _ = try await factory.createSource(for: selected)
+        Issue.record("Expected unstable resource identity failure")
+    } catch let error as FolderSourceCreationError {
+        #expect(error == .resourceIdentityUnavailable)
+    } catch {
+        Issue.record("Unexpected error type: \(error)")
+    }
+
+    let expected = selected.standardizedFileURL
+    let observed = await accessor.observedURLs()
+    #expect(observed.bookmark == [expected])
+    #expect(observed.fingerprint == [expected, expected])
 }
 
 @Test
