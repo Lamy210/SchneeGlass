@@ -176,7 +176,7 @@ GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibili
 - Config Persistence / Backup
 - Explicit Configuration Recovery
 - Pending Copy Recovery Center / Explicit Safe Recovery
-- Recovery Destination Reconnect
+- Pending Copy Destination Reconnect
 - Read-only Recovery Manual Inspection
 - Window Position Recovery
 - Menu Bar
@@ -184,6 +184,7 @@ GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibili
 
 対象外:
 
+- General Glass source reconnect UI（v0.1ではrestart、必要ならGlassをremoveしてfolderを再追加する）
 - User-owned source Move
 - User-owned source Rename
 - User-owned source Delete
