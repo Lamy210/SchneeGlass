@@ -20,9 +20,10 @@ SchneeGlass currently has CI and workflows for:
 - final SHA-256 integrity manifest
 - signed/notarized candidate artifact and release evidence
 - public build-number monotonicity validation
+- source-bound Bootstrap CI governance validation before production publication
 - Manual QA-gated promotion to an immutable GitHub Release
 
-The remaining production gates are operational validation: configure the protected release environment and credentials, verify repository release governance, produce the first real signed/notarized candidate, complete Manual QA, and publish the first immutable v0.1 Release. These are tracked in Issue #33.
+The remaining production gates are operational validation: configure the protected release environment and credentials, configure repository release governance, produce the first real signed/notarized candidate, complete Manual QA, and publish the first immutable v0.1 Release. These are tracked in Issue #33.
 
 An unsigned CI artifact is for verification only. Do not publish it as a trusted end-user release.
 
@@ -200,7 +201,20 @@ The publication job is restricted to:
 - explicit publish confirmation
 - protected `production-release` environment
 
-`confirm_release_governance=true` is a human attestation that `main` branch protection/ruleset, required CI, and the release-source governance required for this release were reviewed. This gate exists because the release workflow cannot reliably read all repository Administration settings itself.
+`confirm_release_governance=true` remains a human attestation that release-source governance was reviewed. The workflow additionally performs read-only automatic checks that `main` is protected and that both Bootstrap CI jobs are configured as required status checks from the GitHub Actions App. This does not replace human review of repository settings that are not available through the workflow's non-Administration token, such as the pre-publication release-immutability setting and broader direct-push/bypass policy.
+
+### Required Bootstrap CI governance
+
+Immediately before publication, the workflow reads the current `main` branch summary and active branch rules. It combines classic branch-protection `checks[]` with active ruleset `required_status_checks` and requires these exact contexts:
+
+```text
+Canonical / Xcode 26.6 / App Build / Safety Guards
+Compatibility / macOS 15 / App Build
+```
+
+Both contexts must be explicitly source-bound to the GitHub Actions App (`app_id` / `integration_id` `15368`). Legacy classic `contexts` without an explicit app binding, a ruleset check with no `integration_id`, or a same-named check bound to another App does not satisfy production release governance.
+
+This is deliberately stricter than name-only matching: an unrelated integration must not be able to satisfy the production release gate merely by publishing a check with the expected name.
 
 ### Candidate workflow identity
 
@@ -222,6 +236,8 @@ This prevents a lookalike workflow with the same display name from being promote
 
 Before creating a Release it revalidates:
 
+- current `main` reports `protected=true`
+- both exact Bootstrap CI job contexts are required and explicitly bound to the GitHub Actions App
 - exact candidate workflow identity above
 - strict schema v1 `RELEASE_EVIDENCE.txt`
 - requested version
@@ -278,6 +294,8 @@ A checksum proves artifact integrity relative to the manifest; it does **not** r
 A production macOS release must not be published until all of the following are green:
 
 - canonical CI and compatibility CI
+- current `main` branch protection is enabled
+- Canonical and Compatibility Bootstrap CI jobs are required and source-bound to the GitHub Actions App
 - release metadata validation
 - AddressSanitizer baseline
 - scheduled/manual diagnostics appropriate for the release window
@@ -314,15 +332,21 @@ See [`docs/RELEASE_CREDENTIALS.md`](docs/RELEASE_CREDENTIALS.md).
 
 ## Repository governance boundary
 
-The release code cannot prove all GitHub repository settings by itself. Before first publication, Issue #33 requires human verification of:
+The release workflow now automatically verifies the subset of repository governance available through read-only Metadata APIs:
+
+- current `main` reports `protected=true`
+- the Canonical Bootstrap CI job is required
+- the macOS 15 Compatibility Bootstrap CI job is required
+- both required checks are explicitly bound to the GitHub Actions App
+
+Before first publication, Issue #33 still requires human configuration/review of:
 
 - release immutability enabled
-- `main` branch protection / ruleset
-- unvalidated direct pushes to release source sufficiently restricted
-- Bootstrap CI treated as a required release check
+- `main` protection/ruleset configured so the automated required-check gate passes
+- unvalidated direct pushes and bypasses to the release source sufficiently restricted
 - production environment approval/deployment protection where available
 
-The publication workflow requires `confirm_release_governance=true` after this review. The GitHub integration used during development may not have Administration read access, so lack of API visibility must not be interpreted as proof that those settings are enabled.
+The publication workflow requires `confirm_release_governance=true` after this review. The workflow intentionally fails closed if it cannot read the branch/rules metadata or if either source-bound Bootstrap check is absent. Settings that require repository Administration visibility remain human-attested and are independently checked where possible after publication (for example, the final Release must report `isImmutable=true`).
 
 ## Bad release / rollback policy
 
@@ -345,7 +369,7 @@ The remaining work is operational, not missing release-pipeline code:
 
 1. configure `production-release` environment credentials/variables
 2. enable and verify repository release immutability
-3. verify `main` branch/release governance
+3. configure `main` branch/ruleset so both Bootstrap CI jobs are required from the GitHub Actions App, and review direct-push/bypass governance
 4. run the first real Developer ID signed/notarized candidate
 5. verify schema v1 signed ZIP evidence, including actual `bundle_build`
 6. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
