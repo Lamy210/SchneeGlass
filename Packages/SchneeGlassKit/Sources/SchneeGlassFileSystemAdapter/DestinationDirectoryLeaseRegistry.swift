@@ -346,6 +346,7 @@ actor DestinationDirectoryLeaseRegistry {
 
     private static func isSinglePathComponent(_ value: String) -> Bool {
         !value.isEmpty
+            && !value.utf8.contains(0)
             && value != "."
             && value != ".."
             && (value as NSString).lastPathComponent == value
