@@ -32,13 +32,19 @@ public actor InternalStagingCommitter: StagingCommitting {
     private static let stagingSuffix = ".partial"
 
     private let fileManager: FileManager
+    private let semanticMetadataReader: any SourceSemanticMetadataReading
 
     public init() {
         self.fileManager = .default
+        self.semanticMetadataReader = FoundationSourceSemanticMetadataReader()
     }
 
-    init(fileManager: FileManager) {
+    init(
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+    ) {
         self.fileManager = fileManager
+        self.semanticMetadataReader = semanticMetadataReader
     }
 
     /// Test/support convenience that derives authorization from a fresh app-owned staging item.
@@ -52,7 +58,8 @@ public actor InternalStagingCommitter: StagingCommitting {
 
         let authorization = try Self.currentAuthorization(
             at: staging,
-            fileManager: fileManager
+            fileManager: fileManager,
+            semanticMetadataReader: semanticMetadataReader
         )
         try await commit(
             stagingURL: staging,
@@ -90,10 +97,12 @@ public actor InternalStagingCommitter: StagingCommitting {
             expectedFilename: staging.lastPathComponent,
             authorization: authorization,
             stagingDescriptor: stagingDescriptor,
-            fileManager: fileManager
+            fileManager: fileManager,
+            semanticMetadataReader: semanticMetadataReader
         )
 
         let fileManager = self.fileManager
+        let semanticMetadataReader = self.semanticMetadataReader
         var coordinationError: NSError?
         var operationError: StagingCommitError?
 
@@ -117,7 +126,8 @@ public actor InternalStagingCommitter: StagingCommitting {
                     expectedFilename: staging.lastPathComponent,
                     authorization: authorization,
                     stagingDescriptor: stagingDescriptor,
-                    fileManager: fileManager
+                    fileManager: fileManager,
+                    semanticMetadataReader: semanticMetadataReader
                 )
 
                 guard !fileManager.fileExists(atPath: coordinatedDestination.path) else {
@@ -176,7 +186,8 @@ public actor InternalStagingCommitter: StagingCommitting {
 
     private static func currentAuthorization(
         at url: URL,
-        fileManager: FileManager
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading
     ) throws -> StagingCommitAuthorization {
         let candidate = url.standardizedFileURL
         let attributes: [FileAttributeKey: Any]
@@ -196,19 +207,17 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.sizeMismatch
         }
 
-        let values: URLResourceValues
+        let semanticMetadata: SourceSemanticMetadata
         do {
-            values = try candidate.resourceValues(forKeys: [
-                .isAliasFileKey,
-                .isPackageKey,
-            ])
+            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
         } catch {
             throw StagingCommitError.commitFailed
         }
 
-        guard values.isAliasFile != true,
-              values.isPackage != true
-        else {
+        guard RegularSourceSemanticClassifier.isPlainFile(
+            isAlias: semanticMetadata.isAlias,
+            isPackage: semanticMetadata.isPackage
+        ) else {
             throw StagingCommitError.unexpectedFileType
         }
         guard let identity = try PendingCopyFileIdentity.createToken(
@@ -230,7 +239,8 @@ public actor InternalStagingCommitter: StagingCommitting {
         expectedFilename: String,
         authorization: StagingCommitAuthorization,
         stagingDescriptor: Int32,
-        fileManager: FileManager
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading
     ) throws {
         let candidate = url.standardizedFileURL
         guard candidate.deletingLastPathComponent() == expectedDestination,
@@ -273,19 +283,17 @@ public actor InternalStagingCommitter: StagingCommitting {
             throw StagingCommitError.sizeMismatch
         }
 
-        let values: URLResourceValues
+        let semanticMetadata: SourceSemanticMetadata
         do {
-            values = try candidate.resourceValues(forKeys: [
-                .isAliasFileKey,
-                .isPackageKey,
-            ])
+            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
         } catch {
             throw StagingCommitError.commitFailed
         }
 
-        guard values.isAliasFile != true,
-              values.isPackage != true
-        else {
+        guard RegularSourceSemanticClassifier.isPlainFile(
+            isAlias: semanticMetadata.isAlias,
+            isPackage: semanticMetadata.isPackage
+        ) else {
             throw StagingCommitError.unexpectedFileType
         }
 
