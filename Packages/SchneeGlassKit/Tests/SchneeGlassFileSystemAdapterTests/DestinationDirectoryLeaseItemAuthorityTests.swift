@@ -24,7 +24,8 @@ private func makeItemAuthorityRequest(
         fingerprint: ResourceFingerprint(
             volumeIdentifier: volumeIdentifier,
             resourceIdentifier: resourceIdentifier
-        )
+        ),
+        runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destination)
     )
     let descriptor = DestinationDescriptor(
         glassID: glassID,
