@@ -16,7 +16,10 @@ enum PendingCopyRecoveryRecordValidator {
     }
 
     private static func isSinglePathComponent(_ filename: String) -> Bool {
-        guard !filename.isEmpty else {
+        guard !filename.isEmpty,
+              filename != ".",
+              filename != ".."
+        else {
             return false
         }
         return (filename as NSString).lastPathComponent == filename
