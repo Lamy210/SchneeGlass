@@ -5,6 +5,7 @@ import SchneeGlassApplication
 
 enum SourceFileLeaseError: Error, Hashable, Sendable {
     case sourceUnavailable
+    case destinationUnavailable
     case unsupportedItem
     case sourceChanged
     case permissionDenied
@@ -13,6 +14,21 @@ enum SourceFileLeaseError: Error, Hashable, Sendable {
     case stagingIdentityPreparationFailed
     case capacityExceeded(maximum: Int)
     case copyFailed(Int32)
+}
+
+enum DestinationWriteErrnoClassifier {
+    static func classify(_ error: Int32) -> SourceFileLeaseError {
+        switch error {
+        case EROFS:
+            return .destinationUnavailable
+        case EACCES, EPERM:
+            return .permissionDenied
+        case ENOSPC, EDQUOT:
+            return .insufficientSpace
+        default:
+            return .copyFailed(error)
+        }
+    }
 }
 
 struct PreparedSourceLease: Hashable, Sendable {
@@ -374,27 +390,14 @@ public actor SourceFileLeaseRegistry {
     }
 
     private static func mapDestinationOpenError(_ error: Int32) -> SourceFileLeaseError {
-        switch error {
-        case EEXIST:
+        if error == EEXIST {
             return .collision
-        case EACCES, EPERM:
-            return .permissionDenied
-        case ENOSPC, EDQUOT:
-            return .insufficientSpace
-        default:
-            return .copyFailed(error)
         }
+        return DestinationWriteErrnoClassifier.classify(error)
     }
 
     private static func mapCopyError(_ error: Int32) -> SourceFileLeaseError {
-        switch error {
-        case EACCES, EPERM:
-            return .permissionDenied
-        case ENOSPC, EDQUOT:
-            return .insufficientSpace
-        default:
-            return .copyFailed(error)
-        }
+        DestinationWriteErrnoClassifier.classify(error)
     }
 }
 
@@ -497,6 +500,8 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
         switch error {
         case .sourceUnavailable:
             return .sourceUnavailable
+        case .destinationUnavailable:
+            return .destinationUnavailable
         case .unsupportedItem:
             return .unsupportedItem
         case .sourceChanged:
