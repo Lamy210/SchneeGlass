@@ -22,6 +22,7 @@ protocol CopyFileSystemAccessing: Sendable {
     func isWritableDirectory(at url: URL) async -> Bool
     func supportsCaseSensitiveNames(at url: URL) async -> Bool?
     func itemExists(at url: URL) async -> Bool
+    func itemExists(at url: URL, operationID: UUID) async -> Bool
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
     func regularFileSize(at url: URL) async throws -> Int64
     func resourceIdentifier(at url: URL) async -> String?
@@ -409,8 +410,14 @@ actor SafeFileCopyEngine: FileCopying {
                 )
             }
 
-            let finalExists = await fileSystem.itemExists(at: finalURL)
-            let stagingExists = await fileSystem.itemExists(at: stagingURL)
+            let finalExists = await fileSystem.itemExists(
+                at: finalURL,
+                operationID: item.operationID
+            )
+            let stagingExists = await fileSystem.itemExists(
+                at: stagingURL,
+                operationID: item.operationID
+            )
             if finalExists || stagingExists {
                 return .failed(
                     index: index,
@@ -482,7 +489,10 @@ actor SafeFileCopyEngine: FileCopying {
             )
         }
 
-        if await fileSystem.itemExists(at: item.finalURL) {
+        if await fileSystem.itemExists(
+            at: item.finalURL,
+            operationID: item.plan.operationID
+        ) {
             return .failure(
                 CopyItemFailure(operationID: item.plan.operationID, reason: .collision)
             )
@@ -524,7 +534,10 @@ actor SafeFileCopyEngine: FileCopying {
         operationID: UUID,
         stagingURL: URL
     ) async {
-        guard !(await fileSystem.itemExists(at: stagingURL)) else {
+        guard !(await fileSystem.itemExists(
+            at: stagingURL,
+            operationID: operationID
+        )) else {
             return
         }
 
