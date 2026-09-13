@@ -47,6 +47,7 @@ private actor RuntimeCopyCancellationSnapshotReader: FolderSnapshotReading {
 
 private actor RuntimeCopyCancellationDropPlanner: DropPlanning {
     private var plans: [CopyBatchPlan]
+    private var abandonedRequests: [AuthorizedCopyBatchRequest] = []
 
     init(plans: [CopyBatchPlan]) {
         self.plans = plans
@@ -62,6 +63,14 @@ private actor RuntimeCopyCancellationDropPlanner: DropPlanning {
             return .noOperation
         }
         return .copy(plans.removeFirst())
+    }
+
+    func abandon(_ request: AuthorizedCopyBatchRequest) async {
+        abandonedRequests.append(request)
+    }
+
+    func abandoned() -> [AuthorizedCopyBatchRequest] {
+        abandonedRequests
     }
 }
 
@@ -124,6 +133,7 @@ private func makeRuntimeCopyCancellationFixture<C: FileCopying>(
 ) throws -> (
     session: GlassRuntimeSession,
     plans: [CopyBatchPlan],
+    planner: RuntimeCopyCancellationDropPlanner,
     eventContinuation: AsyncStream<FileEvent>.Continuation
 ) {
     let root = URL(fileURLWithPath: "/tmp/SchneeGlassRuntimeCancellation", isDirectory: true)
@@ -172,6 +182,7 @@ private func makeRuntimeCopyCancellationFixture<C: FileCopying>(
             ]
         )
     }
+    let planner = RuntimeCopyCancellationDropPlanner(plans: plans)
 
     return (
         session: GlassRuntimeSession(
@@ -179,10 +190,11 @@ private func makeRuntimeCopyCancellationFixture<C: FileCopying>(
             eventStreaming: RuntimeCopyCancellationEventStreaming(),
             snapshotReader: RuntimeCopyCancellationSnapshotReader(),
             accessController: RuntimeCopyCancellationAccessController(),
-            dropPlanning: RuntimeCopyCancellationDropPlanner(plans: plans),
+            dropPlanning: planner,
             fileCopying: copying
         ),
         plans: plans,
+        planner: planner,
         eventContinuation: eventPair.continuation
     )
 }
@@ -246,6 +258,9 @@ func runtimeSessionPreservesCancellationRequestedBeforeCopyTaskRegistration() as
     #expect(cancelledResult.failed?.reason == .cancelled)
     #expect(cancelledResult.succeeded.isEmpty)
     #expect(await copying.invocationCount() == 0)
+    let abandonedAfterCancellation = await fixture.planner.abandoned()
+    #expect(abandonedAfterCancellation.count == 1)
+    #expect(abandonedAfterCancellation.first?.plan == firstPlan)
 
     let secondPlanned = await session.planDrop(sourceURLs: fixture.plans[1].items.map(\.sourceURL))
     guard case let .copy(secondPlan) = secondPlanned else {
@@ -258,6 +273,7 @@ func runtimeSessionPreservesCancellationRequestedBeforeCopyTaskRegistration() as
     #expect(freshResult.failed == nil)
     #expect(freshResult.succeeded.count == 1)
     #expect(await copying.invocationCount() == 1)
+    #expect(await fixture.planner.abandoned().count == 1)
 
     fixture.eventContinuation.finish()
     await session.stop()
