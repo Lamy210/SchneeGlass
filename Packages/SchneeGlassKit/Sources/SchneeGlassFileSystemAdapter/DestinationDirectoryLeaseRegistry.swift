@@ -132,6 +132,28 @@ actor DestinationDirectoryLeaseRegistry {
         )
     }
 
+    /// Returns existence only from the physical directory descriptor bound to `operationID`.
+    /// `nil` means the URL is outside that operation's staging/final authority.
+    func itemExists(at url: URL, operationID: UUID) -> Bool? {
+        let candidate = url.standardizedFileURL
+        let directory = candidate.deletingLastPathComponent().standardizedFileURL
+        let filename = candidate.lastPathComponent
+        guard Self.isSinglePathComponent(filename),
+              let binding = bindingByOperationID[operationID],
+              binding.directoryURL == directory,
+              binding.stagingFilename == filename || binding.finalFilename == filename,
+              let lease = leasesByBatchID[binding.batchID],
+              lease.operationIDs.contains(operationID)
+        else {
+            return nil
+        }
+
+        return Self.itemExists(
+            directoryDescriptor: lease.descriptor,
+            filename: filename
+        )
+    }
+
     func operationID(forStagingURL url: URL) -> UUID? {
         let candidate = url.standardizedFileURL
         let filename = candidate.lastPathComponent
@@ -147,10 +169,38 @@ actor DestinationDirectoryLeaseRegistry {
 
     /// Returns a caller-owned duplicate of the pinned directory descriptor. The caller must close it.
     func duplicateDescriptor(operationID: UUID) throws -> Int32 {
+        try duplicateDescriptor(
+            operationID: operationID,
+            expectedFinalFilename: nil
+        )
+    }
+
+    /// Returns a caller-owned duplicate only when the operation was bound to the requested final name.
+    /// The caller must close it.
+    func duplicateDescriptorForCommit(
+        operationID: UUID,
+        expectedFinalFilename: String
+    ) throws -> Int32 {
+        try duplicateDescriptor(
+            operationID: operationID,
+            expectedFinalFilename: expectedFinalFilename
+        )
+    }
+
+    private func duplicateDescriptor(
+        operationID: UUID,
+        expectedFinalFilename: String?
+    ) throws -> Int32 {
         guard let binding = bindingByOperationID[operationID],
               let lease = leasesByBatchID[binding.batchID],
               lease.operationIDs.contains(operationID)
         else {
+            throw DestinationDirectoryLeaseError.operationNotBound
+        }
+
+        if let expectedFinalFilename,
+           binding.finalFilename != expectedFinalFilename
+        {
             throw DestinationDirectoryLeaseError.operationNotBound
         }
 
@@ -346,6 +396,7 @@ actor DestinationDirectoryLeaseRegistry {
 
     private static func isSinglePathComponent(_ value: String) -> Bool {
         !value.isEmpty
+            && !value.utf8.contains(0)
             && value != "."
             && value != ".."
             && (value as NSString).lastPathComponent == value

@@ -17,6 +17,7 @@ enum PendingCopyRecoveryRecordValidator {
 
     private static func isSinglePathComponent(_ filename: String) -> Bool {
         guard !filename.isEmpty,
+              !filename.utf8.contains(0),
               filename != ".",
               filename != ".."
         else {

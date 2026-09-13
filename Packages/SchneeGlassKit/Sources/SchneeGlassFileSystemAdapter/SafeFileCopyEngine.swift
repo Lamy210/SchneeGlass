@@ -22,6 +22,7 @@ protocol CopyFileSystemAccessing: Sendable {
     func isWritableDirectory(at url: URL) async -> Bool
     func supportsCaseSensitiveNames(at url: URL) async -> Bool?
     func itemExists(at url: URL) async -> Bool
+    func itemExists(at url: URL, operationID: UUID) async -> Bool
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
     func regularFileSize(at url: URL) async throws -> Int64
     func resourceIdentifier(at url: URL) async -> String?
@@ -29,14 +30,9 @@ protocol CopyFileSystemAccessing: Sendable {
 
 actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
     private let fileManager: FileManager
-    private let sourceSemanticMetadataReader: any SourceSemanticMetadataReading
 
-    init(
-        fileManager: FileManager = .default,
-        sourceSemanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
-    ) {
+    init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        self.sourceSemanticMetadataReader = sourceSemanticMetadataReader
     }
 
     func sourceMetadata(at url: URL) throws -> CopySourceMetadata {
@@ -51,8 +47,7 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         do {
             return try Self.readRegularSourceMetadata(
                 at: sourceURL,
-                fileManager: fileManager,
-                sourceSemanticMetadataReader: sourceSemanticMetadataReader
+                fileManager: fileManager
             )
         } catch let error as CopyFileSystemError {
             throw error
@@ -104,7 +99,6 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         var coordinationError: NSError?
         var operationError: Error?
         let fileManager = self.fileManager
-        let sourceSemanticMetadataReader = self.sourceSemanticMetadataReader
 
         coordinator.coordinate(
             readingItemAt: source,
@@ -118,8 +112,7 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             do {
                 _ = try Self.readRegularSourceMetadata(
                     at: coordinatedSource,
-                    fileManager: fileManager,
-                    sourceSemanticMetadataReader: sourceSemanticMetadataReader
+                    fileManager: fileManager
                 )
                 try fileManager.copyItem(at: coordinatedSource, to: coordinatedStaging)
             } catch {
@@ -165,17 +158,17 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     private static func readRegularSourceMetadata(
         at url: URL,
-        fileManager: FileManager,
-        sourceSemanticMetadataReader: any SourceSemanticMetadataReading
+        fileManager: FileManager
     ) throws -> CopySourceMetadata {
         let attributes = try fileManager.attributesOfItem(atPath: url.path)
-        let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: url)
+        let resourceValues = try url.resourceValues(forKeys: [
+            .isAliasFileKey,
+            .isPackageKey,
+        ])
 
         guard attributes[.type] as? FileAttributeType == .typeRegular,
-              RegularSourceSemanticClassifier.isPlainFile(
-                  isAlias: semanticMetadata.isAlias,
-                  isPackage: semanticMetadata.isPackage
-              )
+              resourceValues.isAliasFile != true,
+              resourceValues.isPackage != true
         else {
             throw CopyFileSystemError.unsupportedItem
         }
@@ -417,8 +410,14 @@ actor SafeFileCopyEngine: FileCopying {
                 )
             }
 
-            let finalExists = await fileSystem.itemExists(at: finalURL)
-            let stagingExists = await fileSystem.itemExists(at: stagingURL)
+            let finalExists = await fileSystem.itemExists(
+                at: finalURL,
+                operationID: item.operationID
+            )
+            let stagingExists = await fileSystem.itemExists(
+                at: stagingURL,
+                operationID: item.operationID
+            )
             if finalExists || stagingExists {
                 return .failed(
                     index: index,
@@ -490,7 +489,10 @@ actor SafeFileCopyEngine: FileCopying {
             )
         }
 
-        if await fileSystem.itemExists(at: item.finalURL) {
+        if await fileSystem.itemExists(
+            at: item.finalURL,
+            operationID: item.plan.operationID
+        ) {
             return .failure(
                 CopyItemFailure(operationID: item.plan.operationID, reason: .collision)
             )
@@ -532,7 +534,10 @@ actor SafeFileCopyEngine: FileCopying {
         operationID: UUID,
         stagingURL: URL
     ) async {
-        guard !(await fileSystem.itemExists(at: stagingURL)) else {
+        guard !(await fileSystem.itemExists(
+            at: stagingURL,
+            operationID: operationID
+        )) else {
             return
         }
 

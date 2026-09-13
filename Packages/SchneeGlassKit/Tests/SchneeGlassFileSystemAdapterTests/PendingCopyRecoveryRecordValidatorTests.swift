@@ -30,3 +30,10 @@ func recoveryRecordValidatorRejectsParentDirectoryComponent() {
 
     #expect(PendingCopyRecoveryRecordValidator.isValid(record) == false)
 }
+
+@Test
+func recoveryRecordValidatorRejectsEmbeddedNULFinalFilename() {
+    let record = recoveryValidatorRecord(finalFilename: "payload\0shadow.txt")
+
+    #expect(PendingCopyRecoveryRecordValidator.isValid(record) == false)
+}

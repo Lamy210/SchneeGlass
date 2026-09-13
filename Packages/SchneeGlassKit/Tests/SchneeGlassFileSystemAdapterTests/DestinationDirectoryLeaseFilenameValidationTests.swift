@@ -74,3 +74,27 @@ func destinationLeaseRejectsReservedDotFilename(_ destinationFilename: String) a
 
     #expect(await leases.activeLeaseCount() == 0)
 }
+
+@Test
+func destinationLeaseRejectsEmbeddedNULFilename() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("schneeglass-destination-name-validation-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let request = try makeDestinationLeaseValidationRequest(
+        destination: root,
+        destinationFilename: "payload\0shadow.txt"
+    )
+    let leases = DestinationDirectoryLeaseRegistry()
+
+    do {
+        try await leases.bind(request)
+        await leases.release(batchID: request.plan.batchID)
+        Issue.record("Expected embedded NUL destination filename to be rejected before lease binding")
+    } catch let error as DestinationDirectoryLeaseError {
+        #expect(error == .destinationUnavailable)
+    }
+
+    #expect(await leases.activeLeaseCount() == 0)
+}

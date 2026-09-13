@@ -32,18 +32,15 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
     private let fileManager: FileManager
     private let sourceLeases: SourceFileLeaseRegistry?
     private let runtimeIdentityReader: any RuntimeDirectoryIdentityReading
-    private let sourceSemanticMetadataReader: any SourceSemanticMetadataReading
 
     init(
         fileManager: FileManager = .default,
         sourceLeases: SourceFileLeaseRegistry? = nil,
-        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader(),
-        sourceSemanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+        runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
     ) {
         self.fileManager = fileManager
         self.sourceLeases = sourceLeases
         self.runtimeIdentityReader = runtimeIdentityReader
-        self.sourceSemanticMetadataReader = sourceSemanticMetadataReader
     }
 
     func inspectSource(at url: URL) async -> DropSourceInspection {
@@ -58,46 +55,31 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
         var preparedToken: UUID?
         do {
             let attributes = try fileManager.attributesOfItem(atPath: source.path)
-            let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: source)
             let values = try source.resourceValues(forKeys: [
+                .isAliasFileKey,
+                .isPackageKey,
                 .isUbiquitousItemKey,
                 .ubiquitousItemDownloadingStatusKey,
             ])
 
-            let isRegularFile = attributes[.type] as? FileAttributeType == .typeRegular
-            let hasUnknownRegularSemantics = isRegularFile
-                && semanticMetadata.isAlias != true
-                && semanticMetadata.isPackage != true
-                && !RegularSourceSemanticClassifier.isPlainFile(
-                    isAlias: semanticMetadata.isAlias,
-                    isPackage: semanticMetadata.isPackage
-                )
-
             let kind: FileKind
             if attributes[.type] as? FileAttributeType == .typeSymbolicLink {
                 kind = .symbolicLink
-            } else if semanticMetadata.isAlias == true {
+            } else if values.isAliasFile == true {
                 kind = .alias
-            } else if semanticMetadata.isPackage == true {
+            } else if values.isPackage == true {
                 kind = .package
             } else if attributes[.type] as? FileAttributeType == .typeDirectory {
                 kind = .directory
-            } else if isRegularFile,
-                      RegularSourceSemanticClassifier.isPlainFile(
-                          isAlias: semanticMetadata.isAlias,
-                          isPackage: semanticMetadata.isPackage
-                      )
-            {
+            } else if attributes[.type] as? FileAttributeType == .typeRegular {
                 kind = .regular
             } else {
                 kind = .unsupported
             }
 
             let availability: DropCandidateAvailability
-            if hasUnknownRegularSemantics {
-                availability = .sourceUnavailable
-            } else if values.isUbiquitousItem == true,
-                      values.ubiquitousItemDownloadingStatus != .current
+            if values.isUbiquitousItem == true,
+               values.ubiquitousItemDownloadingStatus != .current
             {
                 availability = .cloudPlaceholderUnavailable
             } else {
@@ -124,8 +106,9 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
             // Re-read path-level flags while the original file descriptor is pinned, then verify
             // the path still names that same inode. Because the original descriptor remains open,
             // an unlinked inode cannot be immediately recycled underneath this comparison.
-            let pinnedSemanticMetadata = try sourceSemanticMetadataReader.metadata(at: source)
             let pinnedValues = try source.resourceValues(forKeys: [
+                .isAliasFileKey,
+                .isPackageKey,
                 .isUbiquitousItemKey,
                 .ubiquitousItemDownloadingStatusKey,
             ])
@@ -133,7 +116,7 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 throw SourceFileLeaseError.sourceChanged
             }
 
-            if pinnedSemanticMetadata.isAlias == true {
+            if pinnedValues.isAliasFile == true {
                 await sourceLeases.releasePrepared(tokens: [prepared.token])
                 preparedToken = nil
                 return DropSourceInspection(
@@ -141,23 +124,12 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                     availability: .available
                 )
             }
-            if pinnedSemanticMetadata.isPackage == true {
+            if pinnedValues.isPackage == true {
                 await sourceLeases.releasePrepared(tokens: [prepared.token])
                 preparedToken = nil
                 return DropSourceInspection(
                     candidate: DropCandidate(url: source, kind: .package),
                     availability: .available
-                )
-            }
-            guard RegularSourceSemanticClassifier.isPlainFile(
-                isAlias: pinnedSemanticMetadata.isAlias,
-                isPackage: pinnedSemanticMetadata.isPackage
-            ) else {
-                await sourceLeases.releasePrepared(tokens: [prepared.token])
-                preparedToken = nil
-                return DropSourceInspection(
-                    candidate: DropCandidate(url: source, kind: .unsupported),
-                    availability: .sourceUnavailable
                 )
             }
             if pinnedValues.isUbiquitousItem == true,
