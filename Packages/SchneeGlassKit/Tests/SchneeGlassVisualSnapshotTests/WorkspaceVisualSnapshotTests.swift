@@ -117,6 +117,7 @@ struct WorkspaceVisualSnapshotTests {
                 onRemove: { _ in },
                 onPlanDrop: { _, _ in false },
                 onCancelDrop: { _ in },
+                onCancelCopy: { _ in },
                 onPerformDrop: { _, _ in }
             )
         }
