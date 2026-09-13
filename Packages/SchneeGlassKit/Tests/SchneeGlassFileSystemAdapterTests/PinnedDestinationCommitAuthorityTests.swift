@@ -69,11 +69,6 @@ func pinnedCommitRejectsFinalFilenameOutsideBoundOperationAuthority() async thro
     )
     let leases = DestinationDirectoryLeaseRegistry()
     try await leases.bind(fixture.request)
-    defer {
-        Task {
-            await leases.release(batchID: fixture.request.plan.batchID)
-        }
-    }
 
     let stagingFilename = DestinationDirectoryLeaseRegistry.stagingFilename(
         operationID: fixture.item.operationID
@@ -86,6 +81,7 @@ func pinnedCommitRejectsFinalFilenameOutsideBoundOperationAuthority() async thro
         fileManager: .default
     ) else {
         Issue.record("Expected staging ownership token")
+        await leases.release(batchID: fixture.request.plan.batchID)
         return
     }
 
@@ -105,10 +101,15 @@ func pinnedCommitRejectsFinalFilenameOutsideBoundOperationAuthority() async thro
         )
     } catch let error as StagingCommitError {
         observedError = error
+    } catch {
+        Issue.record("Expected StagingCommitError, got \(error)")
     }
 
     #expect(observedError == .commitFailed)
     #expect(FileManager.default.fileExists(atPath: staging.path))
     #expect(!FileManager.default.fileExists(atPath: boundFinal.path))
     #expect(!FileManager.default.fileExists(atPath: unboundFinal.path))
+
+    await leases.release(batchID: fixture.request.plan.batchID)
+    #expect(await leases.activeLeaseCount() == 0)
 }
