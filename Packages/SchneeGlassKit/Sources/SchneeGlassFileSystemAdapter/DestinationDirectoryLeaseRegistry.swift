@@ -132,6 +132,28 @@ actor DestinationDirectoryLeaseRegistry {
         )
     }
 
+    /// Returns existence only from the physical directory descriptor bound to `operationID`.
+    /// `nil` means the URL is outside that operation's staging/final authority.
+    func itemExists(at url: URL, operationID: UUID) -> Bool? {
+        let candidate = url.standardizedFileURL
+        let directory = candidate.deletingLastPathComponent().standardizedFileURL
+        let filename = candidate.lastPathComponent
+        guard Self.isSinglePathComponent(filename),
+              let binding = bindingByOperationID[operationID],
+              binding.directoryURL == directory,
+              binding.stagingFilename == filename || binding.finalFilename == filename,
+              let lease = leasesByBatchID[binding.batchID],
+              lease.operationIDs.contains(operationID)
+        else {
+            return nil
+        }
+
+        return Self.itemExists(
+            directoryDescriptor: lease.descriptor,
+            filename: filename
+        )
+    }
+
     func operationID(forStagingURL url: URL) -> UUID? {
         let candidate = url.standardizedFileURL
         let filename = candidate.lastPathComponent
