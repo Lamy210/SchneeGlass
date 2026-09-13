@@ -11,26 +11,18 @@ private func makeItemAuthorityRequest(
     destinationFilename: String
 ) throws -> AuthorizedCopyBatchRequest {
     let values = try destination.resourceValues(forKeys: [
-        .volumeIdentifierKey,
-        .fileResourceIdentifierKey,
         .volumeSupportsCaseSensitiveNamesKey,
     ])
-    let volumeIdentifier = values.volumeIdentifier.map { String(describing: $0) }
-    let resourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
     let glassID = GlassID()
     let access = FolderAccessHandle(
         glassID: glassID,
         url: destination,
-        fingerprint: ResourceFingerprint(
-            volumeIdentifier: volumeIdentifier,
-            resourceIdentifier: resourceIdentifier
-        ),
         runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destination)
     )
     let descriptor = DestinationDescriptor(
         glassID: glassID,
         folderIdentity: FolderIdentity(
-            resourceIdentifier: resourceIdentifier,
+            resourceIdentifier: nil,
             standardizedURL: destination
         ),
         url: destination,
