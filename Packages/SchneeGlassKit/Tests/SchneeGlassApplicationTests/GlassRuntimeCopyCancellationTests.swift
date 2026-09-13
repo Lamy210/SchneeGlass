@@ -46,13 +46,22 @@ private actor RuntimeCopyCancellationSnapshotReader: FolderSnapshotReading {
 }
 
 private actor RuntimeCopyCancellationDropPlanner: DropPlanning {
+    private var plans: [CopyBatchPlan]
+
+    init(plans: [CopyBatchPlan]) {
+        self.plans = plans
+    }
+
     func plan(
         sourceURLs: [URL],
         destinationAccess: FolderAccessHandle
     ) async -> DropPlan {
         _ = sourceURLs
         _ = destinationAccess
-        return .noOperation
+        guard !plans.isEmpty else {
+            return .noOperation
+        }
+        return .copy(plans.removeFirst())
     }
 }
 
@@ -85,10 +94,36 @@ private actor CancellationObservingFileCopying: FileCopying {
     }
 }
 
-private func makeRuntimeCopyCancellationFixture() throws -> (
+private actor ImmediateSuccessFileCopying: FileCopying {
+    private var invocationCountValue = 0
+
+    func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+        invocationCountValue += 1
+        return CopyBatchResult(
+            batchID: request.plan.batchID,
+            succeeded: request.plan.items.map { item in
+                CopyItemSuccess(
+                    operationID: item.operationID,
+                    destinationURL: request.plan.destination.url
+                        .appendingPathComponent(item.destinationFilename, isDirectory: false)
+                )
+            },
+            failed: nil,
+            notAttempted: []
+        )
+    }
+
+    func invocationCount() -> Int {
+        invocationCountValue
+    }
+}
+
+private func makeRuntimeCopyCancellationFixture<C: FileCopying>(
+    copying: C,
+    planCount: Int
+) throws -> (
     session: GlassRuntimeSession,
-    plan: CopyBatchPlan,
-    copying: CancellationObservingFileCopying,
+    plans: [CopyBatchPlan],
     eventContinuation: AsyncStream<FileEvent>.Continuation
 ) {
     let root = URL(fileURLWithPath: "/tmp/SchneeGlassRuntimeCancellation", isDirectory: true)
@@ -107,34 +142,36 @@ private func makeRuntimeCopyCancellationFixture() throws -> (
         generation: 1
     )
     let eventPair = AsyncStream<FileEvent>.makeStream()
-    let copying = CancellationObservingFileCopying()
     let seed = CreatedGlassRuntimeSeed(
         configuration: configuration,
         access: access,
         snapshot: snapshot,
         eventSubscription: FileEventSubscription(events: eventPair.stream)
     )
-    let source = URL(fileURLWithPath: "/tmp/runtime-cancel.txt")
-    let plan = try CopyBatchPlan(
-        destination: DestinationDescriptor(
-            glassID: configuration.id,
-            folderIdentity: snapshot.folderIdentity,
-            url: root,
-            capabilities: StorageCapabilities(
-                locationKind: .localFixed,
-                isWritable: true,
-                supportsCaseSensitiveNames: false
-            )
-        ),
-        items: [
-            CopyItemPlan(
-                sourceURL: source,
-                originalFilename: source.lastPathComponent,
-                destinationFilename: source.lastPathComponent,
-                expectedSize: 1
-            )
-        ]
+    let destination = DestinationDescriptor(
+        glassID: configuration.id,
+        folderIdentity: snapshot.folderIdentity,
+        url: root,
+        capabilities: StorageCapabilities(
+            locationKind: .localFixed,
+            isWritable: true,
+            supportsCaseSensitiveNames: false
+        )
     )
+    let plans = try (0..<planCount).map { index in
+        let source = URL(fileURLWithPath: "/tmp/runtime-cancel-\(index).txt")
+        return try CopyBatchPlan(
+            destination: destination,
+            items: [
+                CopyItemPlan(
+                    sourceURL: source,
+                    originalFilename: source.lastPathComponent,
+                    destinationFilename: source.lastPathComponent,
+                    expectedSize: 1
+                )
+            ]
+        )
+    }
 
     return (
         session: GlassRuntimeSession(
@@ -142,11 +179,10 @@ private func makeRuntimeCopyCancellationFixture() throws -> (
             eventStreaming: RuntimeCopyCancellationEventStreaming(),
             snapshotReader: RuntimeCopyCancellationSnapshotReader(),
             accessController: RuntimeCopyCancellationAccessController(),
-            dropPlanning: RuntimeCopyCancellationDropPlanner(),
+            dropPlanning: RuntimeCopyCancellationDropPlanner(plans: plans),
             fileCopying: copying
         ),
-        plan: plan,
-        copying: copying,
+        plans: plans,
         eventContinuation: eventPair.continuation
     )
 }
@@ -163,22 +199,65 @@ private func waitForRuntimeCopyStart(_ copying: CancellationObservingFileCopying
 
 @Test
 func runtimeSessionCancelCopyCancelsTheActiveCopyTask() async throws {
-    let fixture = try makeRuntimeCopyCancellationFixture()
+    let copying = CancellationObservingFileCopying()
+    let fixture = try makeRuntimeCopyCancellationFixture(copying: copying, planCount: 1)
     let states = try await fixture.session.start()
     _ = states
     let session = fixture.session
-    let plan = fixture.plan
+
+    let planned = await session.planDrop(sourceURLs: fixture.plans[0].items.map(\.sourceURL))
+    guard case let .copy(plan) = planned else {
+        Issue.record("Expected authoritative copy plan")
+        return
+    }
 
     let execution = Task {
         try await session.executeCopy(plan)
     }
 
-    #expect(await waitForRuntimeCopyStart(fixture.copying))
-    await session.cancelCopy()
+    #expect(await waitForRuntimeCopyStart(copying))
+    await session.cancelCopy(batchID: plan.batchID)
 
     let result = try await execution.value
     #expect(result.failed?.reason == .cancelled)
-    #expect(await fixture.copying.didObserveCancellation())
+    #expect(await copying.didObserveCancellation())
+
+    fixture.eventContinuation.finish()
+    await session.stop()
+}
+
+@Test
+func runtimeSessionPreservesCancellationRequestedBeforeCopyTaskRegistration() async throws {
+    let copying = ImmediateSuccessFileCopying()
+    let fixture = try makeRuntimeCopyCancellationFixture(copying: copying, planCount: 2)
+    let states = try await fixture.session.start()
+    _ = states
+    let session = fixture.session
+
+    let firstPlanned = await session.planDrop(sourceURLs: fixture.plans[0].items.map(\.sourceURL))
+    guard case let .copy(firstPlan) = firstPlanned else {
+        Issue.record("Expected first authoritative copy plan")
+        return
+    }
+
+    await session.cancelCopy(batchID: firstPlan.batchID)
+    let cancelledResult = try await session.executeCopy(firstPlan)
+
+    #expect(cancelledResult.failed?.reason == .cancelled)
+    #expect(cancelledResult.succeeded.isEmpty)
+    #expect(await copying.invocationCount() == 0)
+
+    let secondPlanned = await session.planDrop(sourceURLs: fixture.plans[1].items.map(\.sourceURL))
+    guard case let .copy(secondPlan) = secondPlanned else {
+        Issue.record("Expected fresh authoritative copy plan")
+        return
+    }
+
+    let freshResult = try await session.executeCopy(secondPlan)
+
+    #expect(freshResult.failed == nil)
+    #expect(freshResult.succeeded.count == 1)
+    #expect(await copying.invocationCount() == 1)
 
     fixture.eventContinuation.finish()
     await session.stop()
