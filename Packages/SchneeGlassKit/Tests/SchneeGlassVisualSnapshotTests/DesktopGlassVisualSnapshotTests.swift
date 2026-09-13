@@ -159,6 +159,7 @@ struct DesktopGlassVisualSnapshotTests {
                 onRemove: {},
                 onPlanDrop: { _ in false },
                 onCancelDrop: {},
+                onCancelCopy: {},
                 onPerformDrop: { _ in }
             )
         }
