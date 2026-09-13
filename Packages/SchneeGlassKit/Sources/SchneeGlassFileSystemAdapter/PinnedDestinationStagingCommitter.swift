@@ -32,8 +32,9 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
 
         let directoryDescriptor: Int32
         do {
-            directoryDescriptor = try await destinationLeases.duplicateDescriptor(
-                operationID: operationID
+            directoryDescriptor = try await destinationLeases.duplicateDescriptorForCommit(
+                operationID: operationID,
+                expectedFinalFilename: final.lastPathComponent
             )
         } catch {
             throw StagingCommitError.commitFailed
