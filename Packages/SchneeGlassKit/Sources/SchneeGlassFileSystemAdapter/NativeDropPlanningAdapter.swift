@@ -231,13 +231,11 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 }
             }
 
-            let locationKind: StorageLocationKind
-            if values.volumeIsLocal == false {
-                locationKind = .network
-            } else if values.volumeIsRemovable == true {
-                locationKind = .localRemovable
-            } else {
-                locationKind = .localFixed
+            guard let locationKind = DestinationStorageLocationClassifier.locationKind(
+                isLocal: values.volumeIsLocal,
+                isRemovable: values.volumeIsRemovable
+            ) else {
+                return nil
             }
 
             let isWritable = values.volumeIsReadOnly != true
