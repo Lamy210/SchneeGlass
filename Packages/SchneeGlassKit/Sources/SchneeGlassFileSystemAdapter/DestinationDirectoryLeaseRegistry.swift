@@ -147,10 +147,38 @@ actor DestinationDirectoryLeaseRegistry {
 
     /// Returns a caller-owned duplicate of the pinned directory descriptor. The caller must close it.
     func duplicateDescriptor(operationID: UUID) throws -> Int32 {
+        try duplicateDescriptor(
+            operationID: operationID,
+            expectedFinalFilename: nil
+        )
+    }
+
+    /// Returns a caller-owned duplicate only when the operation was bound to the requested final name.
+    /// The caller must close it.
+    func duplicateDescriptorForCommit(
+        operationID: UUID,
+        expectedFinalFilename: String
+    ) throws -> Int32 {
+        try duplicateDescriptor(
+            operationID: operationID,
+            expectedFinalFilename: expectedFinalFilename
+        )
+    }
+
+    private func duplicateDescriptor(
+        operationID: UUID,
+        expectedFinalFilename: String?
+    ) throws -> Int32 {
         guard let binding = bindingByOperationID[operationID],
               let lease = leasesByBatchID[binding.batchID],
               lease.operationIDs.contains(operationID)
         else {
+            throw DestinationDirectoryLeaseError.operationNotBound
+        }
+
+        if let expectedFinalFilename,
+           binding.finalFilename != expectedFinalFilename
+        {
             throw DestinationDirectoryLeaseError.operationNotBound
         }
 
