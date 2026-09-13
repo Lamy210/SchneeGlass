@@ -30,9 +30,14 @@ protocol CopyFileSystemAccessing: Sendable {
 
 actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
     private let fileManager: FileManager
+    private let sourceSemanticMetadataReader: any SourceSemanticMetadataReading
 
-    init(fileManager: FileManager = .default) {
+    init(
+        fileManager: FileManager = .default,
+        sourceSemanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+    ) {
         self.fileManager = fileManager
+        self.sourceSemanticMetadataReader = sourceSemanticMetadataReader
     }
 
     func sourceMetadata(at url: URL) throws -> CopySourceMetadata {
@@ -47,7 +52,8 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         do {
             return try Self.readRegularSourceMetadata(
                 at: sourceURL,
-                fileManager: fileManager
+                fileManager: fileManager,
+                sourceSemanticMetadataReader: sourceSemanticMetadataReader
             )
         } catch let error as CopyFileSystemError {
             throw error
@@ -99,6 +105,7 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
         var coordinationError: NSError?
         var operationError: Error?
         let fileManager = self.fileManager
+        let sourceSemanticMetadataReader = self.sourceSemanticMetadataReader
 
         coordinator.coordinate(
             readingItemAt: source,
@@ -112,7 +119,8 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
             do {
                 _ = try Self.readRegularSourceMetadata(
                     at: coordinatedSource,
-                    fileManager: fileManager
+                    fileManager: fileManager,
+                    sourceSemanticMetadataReader: sourceSemanticMetadataReader
                 )
                 try fileManager.copyItem(at: coordinatedSource, to: coordinatedStaging)
             } catch {
@@ -158,17 +166,17 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     private static func readRegularSourceMetadata(
         at url: URL,
-        fileManager: FileManager
+        fileManager: FileManager,
+        sourceSemanticMetadataReader: any SourceSemanticMetadataReading
     ) throws -> CopySourceMetadata {
         let attributes = try fileManager.attributesOfItem(atPath: url.path)
-        let resourceValues = try url.resourceValues(forKeys: [
-            .isAliasFileKey,
-            .isPackageKey,
-        ])
+        let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: url)
 
         guard attributes[.type] as? FileAttributeType == .typeRegular,
-              resourceValues.isAliasFile != true,
-              resourceValues.isPackage != true
+              RegularSourceSemanticClassifier.isPlainFile(
+                  isAlias: semanticMetadata.isAlias,
+                  isPackage: semanticMetadata.isPackage
+              )
         else {
             throw CopyFileSystemError.unsupportedItem
         }
