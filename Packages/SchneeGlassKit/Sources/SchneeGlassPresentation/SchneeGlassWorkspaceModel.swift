@@ -477,6 +477,16 @@ public final class SchneeGlassWorkspaceModel {
         updateInteraction(.idle, for: glassID)
     }
 
+    public func cancelCopy(glassID: GlassID) async {
+        guard let entry = glasses.first(where: { $0.id == glassID }),
+              GlassInteractionPolicy.allowsCopyCancellation(during: entry.interactionState),
+              let session = sessions[glassID]
+        else {
+            return
+        }
+        await session.cancelCopy()
+    }
+
     public func open(_ item: GlassItem) {
         do {
             try fileActionUseCase.open(item)

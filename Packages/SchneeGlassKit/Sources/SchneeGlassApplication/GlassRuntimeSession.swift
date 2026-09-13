@@ -176,6 +176,10 @@ public actor GlassRuntimeSession {
         return result
     }
 
+    public func cancelCopy() {
+        activeCopyTask?.cancel()
+    }
+
     public func stop() async {
         switch lifecycle {
         case .stopped:
