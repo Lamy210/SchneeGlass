@@ -440,6 +440,17 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
         return exists
     }
 
+    func itemExists(at url: URL, operationID: UUID) async -> Bool {
+        guard let exists = await destinationLeases.itemExists(
+            at: url,
+            operationID: operationID
+        ) else {
+            // A URL outside this operation's exact staging/final binding never proves absence.
+            return true
+        }
+        return exists
+    }
+
     func copyItem(at sourceURL: URL, to stagingURL: URL) async throws {
         let staging = stagingURL.standardizedFileURL
         guard let operationID = await destinationLeases.operationID(forStagingURL: staging) else {
