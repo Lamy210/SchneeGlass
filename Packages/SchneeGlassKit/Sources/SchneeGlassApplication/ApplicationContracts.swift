@@ -129,6 +129,8 @@ public struct CopyProgress: Hashable, Sendable {
     }
 }
 
+public typealias CopyProgressHandler = @Sendable (CopyProgress) async -> Void
+
 public enum UnavailableReason: Hashable, Sendable {
     case permissionLost
     case sourceMissing
@@ -187,6 +189,19 @@ public protocol FolderAccessControlling: Sendable {
 
 public protocol FileCopying: Sendable {
     func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult
+    func copy(
+        _ request: AuthorizedCopyBatchRequest,
+        onProgress: @escaping CopyProgressHandler
+    ) async -> CopyBatchResult
+}
+
+public extension FileCopying {
+    func copy(
+        _ request: AuthorizedCopyBatchRequest,
+        onProgress: @escaping CopyProgressHandler
+    ) async -> CopyBatchResult {
+        await copy(request)
+    }
 }
 
 /// Releases any planning-time authority held for an authorized copy request that will not execute.

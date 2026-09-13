@@ -547,6 +547,13 @@ public actor PinnedSourceFileCopying: FileCopying {
     }
 
     public func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+        await copy(request, onProgress: { _ in })
+    }
+
+    public func copy(
+        _ request: AuthorizedCopyBatchRequest,
+        onProgress: @escaping CopyProgressHandler
+    ) async -> CopyBatchResult {
         let operationIDs = request.plan.items.map(\.operationID)
 
         do {
@@ -564,7 +571,7 @@ public actor PinnedSourceFileCopying: FileCopying {
 
         await sourceLeases.beginExecution(operationIDs: operationIDs)
 
-        let result = await delegate.copy(request)
+        let result = await delegate.copy(request, onProgress: onProgress)
         await destinationLeases.release(batchID: request.plan.batchID)
         await sourceLeases.releaseBound(operationIDs: operationIDs)
         return result
