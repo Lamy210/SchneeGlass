@@ -238,8 +238,10 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
                 return nil
             }
 
-            let isWritable = values.volumeIsReadOnly != true
-                && fileManager.isWritableFile(atPath: destination.path)
+            let isWritable = DestinationStorageWritabilityClassifier.isWritable(
+                volumeIsReadOnly: values.volumeIsReadOnly,
+                pathAppearsWritable: fileManager.isWritableFile(atPath: destination.path)
+            )
 
             let fallbackResourceIdentifier: String?
             if expectedRuntimeIdentity == nil,
