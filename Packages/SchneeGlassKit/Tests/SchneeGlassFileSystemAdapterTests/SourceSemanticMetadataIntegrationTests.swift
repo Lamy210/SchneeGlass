@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import SchneeGlassFileSystemAdapter
 
-private struct SequenceSourceSemanticMetadataReader: SourceSemanticMetadataReading {
+private final class SequenceSourceSemanticMetadataReader: SourceSemanticMetadataReading, Sendable {
     private let values: Mutex<[SourceSemanticMetadata]>
 
     init(_ values: [SourceSemanticMetadata]) {
