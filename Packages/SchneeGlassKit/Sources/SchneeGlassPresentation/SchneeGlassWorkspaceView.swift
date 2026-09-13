@@ -46,6 +46,11 @@ public struct SchneeGlassWorkspaceView: View {
             onCancelDrop: { glassID in
                 model.cancelDrop(glassID: glassID)
             },
+            onCancelCopy: { glassID in
+                Task {
+                    await model.cancelCopy(glassID: glassID)
+                }
+            },
             onPerformDrop: { glassID, urls in
                 _ = await model.performDrop(
                     glassID: glassID,
@@ -71,6 +76,7 @@ struct WorkspaceSurface: View {
     let onRemove: @MainActor (GlassID) -> Void
     let onPlanDrop: @MainActor (GlassID, [URL]) async -> Bool
     let onCancelDrop: @MainActor (GlassID) -> Void
+    let onCancelCopy: @MainActor (GlassID) -> Void
     let onPerformDrop: @MainActor (GlassID, [URL]) async -> Void
 
     var body: some View {
@@ -151,6 +157,9 @@ struct WorkspaceSurface: View {
                             },
                             onCancelDrop: {
                                 onCancelDrop(entry.id)
+                            },
+                            onCancelCopy: {
+                                onCancelCopy(entry.id)
                             },
                             onPerformDrop: { urls in
                                 await onPerformDrop(entry.id, urls)
@@ -251,6 +260,7 @@ private struct GlassPreviewSurface: View {
     let onRemove: () -> Void
     let onPlanDrop: @MainActor ([URL]) async -> Bool
     let onCancelDrop: @MainActor () -> Void
+    let onCancelCopy: @MainActor () -> Void
     let onPerformDrop: @MainActor ([URL]) async -> Void
 
     @State private var showsRemoveConfirmation = false
@@ -297,7 +307,11 @@ private struct GlassPreviewSurface: View {
         }
         .overlay {
             interactionOverlay
-                .allowsHitTesting(false)
+                .allowsHitTesting(
+                    GlassInteractionPolicy.allowsCopyCancellation(
+                        during: entry.interactionState
+                    )
+                )
         }
         .overlay {
             FileURLDropTarget(
@@ -411,6 +425,10 @@ private struct GlassPreviewSurface: View {
                         .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                 }
+                Button("Cancel Copy", role: .cancel, action: onCancelCopy)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Cancel Copy")
             }
         }
     }

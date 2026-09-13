@@ -40,6 +40,11 @@ public struct SchneeGlassDesktopGlassView: View {
                     onCancelDrop: {
                         model.cancelDrop(glassID: entry.id)
                     },
+                    onCancelCopy: {
+                        Task {
+                            await model.cancelCopy(glassID: entry.id)
+                        }
+                    },
                     onPerformDrop: { urls in
                         _ = await model.performDrop(
                             glassID: entry.id,
@@ -62,6 +67,7 @@ struct DesktopGlassSurface: View {
     let onRemove: () -> Void
     let onPlanDrop: @MainActor ([URL]) async -> Bool
     let onCancelDrop: @MainActor () -> Void
+    let onCancelCopy: @MainActor () -> Void
     let onPerformDrop: @MainActor ([URL]) async -> Void
 
     @State private var showsRemoveConfirmation = false
@@ -90,7 +96,11 @@ struct DesktopGlassSurface: View {
         }
         .overlay {
             interactionOverlay
-                .allowsHitTesting(false)
+                .allowsHitTesting(
+                    GlassInteractionPolicy.allowsCopyCancellation(
+                        during: entry.interactionState
+                    )
+                )
         }
         .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -279,7 +289,8 @@ struct DesktopGlassSurface: View {
                 icon: "doc.on.doc",
                 title: presentation.title,
                 detail: presentation.detail,
-                showsProgress: true
+                showsProgress: true,
+                onCancelCopy: onCancelCopy
             )
         }
     }
@@ -295,7 +306,8 @@ struct DesktopGlassSurface: View {
         icon: String,
         title: String,
         detail: String?,
-        showsProgress: Bool = false
+        showsProgress: Bool = false,
+        onCancelCopy: (() -> Void)? = nil
     ) -> some View {
         ZStack {
             Rectangle()
@@ -319,6 +331,13 @@ struct DesktopGlassSurface: View {
                         .font(SchneeGlassTypography.supporting)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                }
+
+                if let onCancelCopy {
+                    Button("Cancel Copy", role: .cancel, action: onCancelCopy)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityLabel("Cancel Copy")
                 }
             }
             .padding(SchneeGlassPadding.desktopOverlayContent)

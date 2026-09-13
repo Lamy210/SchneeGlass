@@ -259,6 +259,15 @@ actor SafeFileCopyEngine: FileCopying {
             succeeded.reserveCapacity(preparedItems.count)
 
             for (index, item) in preparedItems.enumerated() {
+                if Task.isCancelled {
+                    return Self.cancelledResult(
+                        request: request,
+                        preparedItems: preparedItems,
+                        cancelledIndex: index,
+                        succeeded: succeeded
+                    )
+                }
+
                 await onProgress(
                     CopyProgress(
                         currentIndex: index + 1,
@@ -266,6 +275,16 @@ actor SafeFileCopyEngine: FileCopying {
                         currentFilename: item.plan.destinationFilename
                     )
                 )
+
+                if Task.isCancelled {
+                    return Self.cancelledResult(
+                        request: request,
+                        preparedItems: preparedItems,
+                        cancelledIndex: index,
+                        succeeded: succeeded
+                    )
+                }
+
                 let result = await execute(item, request: request)
                 switch result {
                 case let .success(success):
@@ -288,6 +307,23 @@ actor SafeFileCopyEngine: FileCopying {
                 notAttempted: []
             )
         }
+    }
+
+    private static func cancelledResult(
+        request: AuthorizedCopyBatchRequest,
+        preparedItems: [PreparedItem],
+        cancelledIndex: Int,
+        succeeded: [CopyItemSuccess]
+    ) -> CopyBatchResult {
+        CopyBatchResult(
+            batchID: request.plan.batchID,
+            succeeded: succeeded,
+            failed: CopyItemFailure(
+                operationID: preparedItems[cancelledIndex].plan.operationID,
+                reason: .cancelled
+            ),
+            notAttempted: preparedItems.dropFirst(cancelledIndex + 1).map(\.plan)
+        )
     }
 
     private func preflight(_ request: AuthorizedCopyBatchRequest) async -> PreflightResult {
