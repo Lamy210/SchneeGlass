@@ -216,7 +216,7 @@ func runtimeSessionCancelCopyCancelsTheActiveCopyTask() async throws {
     }
 
     #expect(await waitForRuntimeCopyStart(copying))
-    await session.cancelCopy(batchID: plan.batchID)
+    await session.cancelCopy()
 
     let result = try await execution.value
     #expect(result.failed?.reason == .cancelled)
@@ -240,7 +240,7 @@ func runtimeSessionPreservesCancellationRequestedBeforeCopyTaskRegistration() as
         return
     }
 
-    await session.cancelCopy(batchID: firstPlan.batchID)
+    await session.cancelCopy()
     let cancelledResult = try await session.executeCopy(firstPlan)
 
     #expect(cancelledResult.failed?.reason == .cancelled)
