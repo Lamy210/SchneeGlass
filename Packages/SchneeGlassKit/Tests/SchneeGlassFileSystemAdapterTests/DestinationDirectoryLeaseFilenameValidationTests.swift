@@ -2,8 +2,17 @@ import FileDomain
 import Foundation
 import SchneeGlassApplication
 import SchneeGlassDomain
+import SchneeGlassPOSIXSupport
 import Testing
 @testable import SchneeGlassFileSystemAdapter
+
+private func destinationLeaseRuntimeIdentity(for url: URL) throws -> RuntimeDirectoryIdentity {
+    let identity = try #require(POSIXDirectoryIdentityReader.identity(at: url))
+    return RuntimeDirectoryIdentity(
+        deviceIdentifier: identity.device,
+        objectIdentifier: identity.inode
+    )
+}
 
 private func makeDestinationLeaseValidationRequest(
     destination: URL,
@@ -24,14 +33,21 @@ private func makeDestinationLeaseValidationRequest(
         )
     )
     let item = CopyItemPlan(
-        sourceURL: URL(fileURLWithPath: "/tmp/schneeglass-unused-source"),
+        sourceURL: destinationURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("schneeglass-unused-source-\(UUID().uuidString)"),
         originalFilename: "payload.txt",
         destinationFilename: destinationFilename,
         expectedSize: 1
     )
     return AuthorizedCopyBatchRequest(
         plan: try CopyBatchPlan(destination: descriptor, items: [item]),
-        destinationAccess: FolderAccessHandle(glassID: glassID, url: destinationURL)
+        destinationAccess: FolderAccessHandle(
+            glassID: glassID,
+            url: destinationURL,
+            fingerprint: nil,
+            runtimeDirectoryIdentity: try destinationLeaseRuntimeIdentity(for: destinationURL)
+        )
     )
 }
 
