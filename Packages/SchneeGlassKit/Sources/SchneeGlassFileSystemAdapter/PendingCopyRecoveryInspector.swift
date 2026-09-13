@@ -11,13 +11,19 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
     }
 
     private let fileManager: FileManager
+    private let semanticMetadataReader: any SourceSemanticMetadataReading
 
     public init() {
         self.fileManager = .default
+        self.semanticMetadataReader = FoundationSourceSemanticMetadataReader()
     }
 
-    init(fileManager: FileManager) {
+    init(
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+    ) {
         self.fileManager = fileManager
+        self.semanticMetadataReader = semanticMetadataReader
     }
 
     public func assess(
@@ -172,12 +178,9 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
             return Self.observationAfterEntryChanged(at: candidate)
         }
 
-        let values: URLResourceValues
+        let semanticMetadata: SourceSemanticMetadata
         do {
-            values = try candidate.resourceValues(forKeys: [
-                .isAliasFileKey,
-                .isPackageKey,
-            ])
+            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
         } catch {
             return Self.observationAfterEntryChanged(at: candidate)
         }
@@ -188,9 +191,10 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
         ) else {
             return Self.observationAfterEntryChanged(at: candidate)
         }
-        guard values.isAliasFile != true,
-              values.isPackage != true
-        else {
+        guard RegularSourceSemanticClassifier.isPlainFile(
+            isAlias: semanticMetadata.isAlias,
+            isPackage: semanticMetadata.isPackage
+        ) else {
             return .unexpectedType
         }
 

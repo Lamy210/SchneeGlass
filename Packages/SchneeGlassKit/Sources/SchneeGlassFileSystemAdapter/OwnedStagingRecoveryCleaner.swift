@@ -21,13 +21,19 @@ public enum OwnedStagingRecoveryCleanupError: Error, Hashable, Sendable {
 /// inside an `NSFileCoordinator` delete scope before calling `removeItem`.
 public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
     private let fileManager: FileManager
+    private let semanticMetadataReader: any SourceSemanticMetadataReading
 
     public init() {
         self.fileManager = .default
+        self.semanticMetadataReader = FoundationSourceSemanticMetadataReader()
     }
 
-    init(fileManager: FileManager) {
+    init(
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+    ) {
         self.fileManager = fileManager
+        self.semanticMetadataReader = semanticMetadataReader
     }
 
     public func removeOwnedStaging(
@@ -83,10 +89,12 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             expectedFilename: record.stagingFilename,
             recordedIdentity: recordedIdentity,
             stagingDescriptor: stagingDescriptor,
-            fileManager: fileManager
+            fileManager: fileManager,
+            semanticMetadataReader: semanticMetadataReader
         )
 
         let fileManager = self.fileManager
+        let semanticMetadataReader = self.semanticMetadataReader
         var coordinationError: NSError?
         var operationError: OwnedStagingRecoveryCleanupError?
 
@@ -103,7 +111,8 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
                     expectedFilename: record.stagingFilename,
                     recordedIdentity: recordedIdentity,
                     stagingDescriptor: stagingDescriptor,
-                    fileManager: fileManager
+                    fileManager: fileManager,
+                    semanticMetadataReader: semanticMetadataReader
                 )
 
                 // Keep the final check adjacent to the only permitted deletion call. A path that
@@ -160,7 +169,8 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
         expectedFilename: String,
         recordedIdentity: String,
         stagingDescriptor: Int32,
-        fileManager: FileManager
+        fileManager: FileManager,
+        semanticMetadataReader: any SourceSemanticMetadataReading
     ) throws {
         let candidate = url.standardizedFileURL
         guard candidate.deletingLastPathComponent() == expectedDestination,
@@ -197,19 +207,17 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
-        let values: URLResourceValues
+        let semanticMetadata: SourceSemanticMetadata
         do {
-            values = try candidate.resourceValues(forKeys: [
-                .isAliasFileKey,
-                .isPackageKey,
-            ])
+            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
         } catch {
             throw OwnedStagingRecoveryCleanupError.removalFailed
         }
 
-        guard values.isAliasFile != true,
-              values.isPackage != true
-        else {
+        guard RegularSourceSemanticClassifier.isPlainFile(
+            isAlias: semanticMetadata.isAlias,
+            isPackage: semanticMetadata.isPackage
+        ) else {
             throw OwnedStagingRecoveryCleanupError.unexpectedFileType
         }
 
