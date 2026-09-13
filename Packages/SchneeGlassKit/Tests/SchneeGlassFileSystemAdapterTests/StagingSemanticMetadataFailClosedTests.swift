@@ -27,12 +27,11 @@ private func makeStagingSemanticRoot() throws -> URL {
 }
 
 private func createStagingOwnershipToken(at url: URL) throws -> String {
-    try #require(
-        PendingCopyFileIdentity.createToken(
-            at: url,
-            fileManager: .default
-        )
+    let identity = try PendingCopyFileIdentity.createToken(
+        at: url,
+        fileManager: .default
     )
+    return try #require(identity)
 }
 
 private func makeStagingSemanticRecord(
@@ -121,7 +120,9 @@ func recoveryInspectorClassifiesUnknownStagingSemanticMetadataAsUnexpectedType()
         destinationAccess: FolderAccessHandle(glassID: glassID, url: root)
     )
 
-    #expect(assessment.disposition == .unexpectedFileType)
+    #expect(
+        assessment.disposition == PendingCopyRecoveryDisposition.unexpectedFileType
+    )
 }
 
 @Test
