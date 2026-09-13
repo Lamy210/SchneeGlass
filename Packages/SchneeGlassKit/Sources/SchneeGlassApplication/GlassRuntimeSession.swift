@@ -32,6 +32,7 @@ public actor GlassRuntimeSession {
     private var eventTask: Task<Void, Never>?
     private var activeCopyTask: Task<CopyBatchResult, Never>?
     private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
+    private var pendingCopyCancellationBatchIDs: Set<UUID> = []
     private var stopWaiters: [CheckedContinuation<Void, Never>] = []
     private var accessReleased = false
     private var subscriptionStopped = false
@@ -159,6 +160,14 @@ public actor GlassRuntimeSession {
             throw GlassCopyExecutionError.destinationMismatch
         }
 
+        if pendingCopyCancellationBatchIDs.contains(plan.batchID),
+           pendingAuthoritativePlans[plan.batchID] == plan
+        {
+            pendingCopyCancellationBatchIDs.remove(plan.batchID)
+            await abandonPendingPlanIfOwned(plan)
+            return Self.cancelledResult(for: plan)
+        }
+
         transferPendingPlanIfOwned(plan)
 
         let request = AuthorizedCopyBatchRequest(
@@ -177,7 +186,17 @@ public actor GlassRuntimeSession {
     }
 
     public func cancelCopy() {
-        activeCopyTask?.cancel()
+        if let activeCopyTask {
+            activeCopyTask.cancel()
+            return
+        }
+
+        guard pendingAuthoritativePlans.count == 1,
+              let batchID = pendingAuthoritativePlans.keys.first
+        else {
+            return
+        }
+        pendingCopyCancellationBatchIDs.insert(batchID)
     }
 
     public func stop() async {
@@ -301,6 +320,7 @@ public actor GlassRuntimeSession {
             return
         }
         pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
+        pendingCopyCancellationBatchIDs.remove(plan.batchID)
         await dropPlanning.abandon(
             AuthorizedCopyBatchRequest(
                 plan: plan,
@@ -311,11 +331,13 @@ public actor GlassRuntimeSession {
 
     private func abandonAllPendingPlans() async {
         guard !pendingAuthoritativePlans.isEmpty else {
+            pendingCopyCancellationBatchIDs.removeAll(keepingCapacity: false)
             return
         }
 
         let plans = Array(pendingAuthoritativePlans.values)
         pendingAuthoritativePlans.removeAll(keepingCapacity: false)
+        pendingCopyCancellationBatchIDs.removeAll(keepingCapacity: false)
         for plan in plans {
             await dropPlanning.abandon(
                 AuthorizedCopyBatchRequest(
@@ -347,6 +369,19 @@ public actor GlassRuntimeSession {
         }
         accessReleased = true
         await accessController.release(handleID: access.id)
+    }
+
+    private static func cancelledResult(for plan: CopyBatchPlan) -> CopyBatchResult {
+        let first = plan.items[0]
+        return CopyBatchResult(
+            batchID: plan.batchID,
+            succeeded: [],
+            failed: CopyItemFailure(
+                operationID: first.operationID,
+                reason: .cancelled
+            ),
+            notAttempted: Array(plan.items.dropFirst())
+        )
     }
 
     private static func contentState(for snapshot: FolderSnapshot) -> GlassContentState {
