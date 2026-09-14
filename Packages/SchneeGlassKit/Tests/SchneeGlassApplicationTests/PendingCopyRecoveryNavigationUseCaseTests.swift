@@ -55,6 +55,24 @@ private actor RecoveryNavigationInspector: PendingCopyRecoveryInspecting {
     }
 }
 
+private actor SequencedRecoveryNavigationInspector: PendingCopyRecoveryInspecting {
+    private let dispositions: [PendingCopyRecoveryDisposition]
+    private var nextIndex = 0
+
+    init(dispositions: [PendingCopyRecoveryDisposition]) {
+        self.dispositions = dispositions
+    }
+
+    func assess(
+        _ record: PendingCopyRecord,
+        destinationAccess: FolderAccessHandle
+    ) async -> PendingCopyRecoveryAssessment {
+        let index = min(nextIndex, dispositions.count - 1)
+        nextIndex += 1
+        return PendingCopyRecoveryAssessment(record: record, disposition: dispositions[index])
+    }
+}
+
 @MainActor
 private final class RecoveryNavigationFileActor: WorkspaceFileActing {
     private(set) var revealedURLs: [URL] = []
@@ -159,6 +177,43 @@ func recoveryNavigationRevealsFinalWithoutClaimingOwnership() async throws {
     #expect(fileActor.revealedURLs == [
         URL(fileURLWithPath: "/tmp/RecoveryNavigation/report.txt").standardizedFileURL,
     ])
+}
+
+@Test
+@MainActor
+func recoveryNavigationRechecksEligibilityImmediatelyBeforeReveal() async throws {
+    let glassID = GlassID()
+    let record = recoveryNavigationRecord(glassID: glassID)
+    let configuration = try recoveryNavigationConfiguration(glassID: glassID)
+    let verification = PendingCopyFileVerification(
+        size: .matchesExpectedSize,
+        resourceIdentity: .mismatchesRecordedIdentity
+    )
+    let access = RecoveryNavigationAccessController()
+    let fileActor = RecoveryNavigationFileActor()
+    let inspector = SequencedRecoveryNavigationInspector(
+        dispositions: [
+            .finalPresent(verification),
+            .metadataOnly,
+        ]
+    )
+    let useCase = PendingCopyRecoveryNavigationUseCase(
+        pendingCopyStore: RecoveryNavigationRecordStore(records: [record]),
+        configurationStore: RecoveryNavigationConfigurationStore(configurations: [configuration]),
+        accessController: access,
+        recoveryInspector: inspector,
+        fileActor: fileActor
+    )
+
+    do {
+        try await useCase.reveal(action: .revealFinal, operationID: record.operationID)
+        Issue.record("Expected actionNoLongerAvailable after reveal eligibility changed")
+    } catch let error as PendingCopyRecoveryNavigationError {
+        #expect(error == .actionNoLongerAvailable)
+    }
+
+    #expect(fileActor.revealedURLs.isEmpty)
+    #expect(await access.releaseCount() == 1)
 }
 
 @Test

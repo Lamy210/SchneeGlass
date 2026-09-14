@@ -98,6 +98,16 @@ public actor PendingCopyRecoveryNavigationUseCase {
                 throw PendingCopyRecoveryNavigationError.unsupportedAction
             }
 
+            let revealAssessment = await recoveryInspector.assess(
+                record,
+                destinationAccess: acquisition.handle
+            )
+            let revealActions = PendingCopyRecoveryActionPlanner.plan(for: revealAssessment).actions
+            guard revealActions.contains(action) else {
+                await accessController.release(handleID: acquisition.handle.id)
+                throw PendingCopyRecoveryNavigationError.actionNoLongerAvailable
+            }
+
             let url = acquisition.handle.url
                 .appendingPathComponent(filename, isDirectory: false)
                 .standardizedFileURL
