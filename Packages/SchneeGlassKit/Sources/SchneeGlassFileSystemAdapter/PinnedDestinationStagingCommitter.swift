@@ -1,6 +1,34 @@
 import Darwin
 import Foundation
 
+enum DestinationCommitErrorDisposition: Hashable, Sendable {
+    case collision
+    case stagingMissing
+    case destinationUnavailable
+    case permissionDenied
+    case insufficientSpace
+    case commitFailed
+}
+
+enum DestinationCommitErrnoClassifier {
+    static func classify(_ error: Int32) -> DestinationCommitErrorDisposition {
+        switch error {
+        case EEXIST:
+            return .collision
+        case ENOENT:
+            return .stagingMissing
+        case EROFS:
+            return .destinationUnavailable
+        case EACCES, EPERM:
+            return .permissionDenied
+        case ENOSPC, EDQUOT:
+            return .insufficientSpace
+        default:
+            return .commitFailed
+        }
+    }
+}
+
 /// Production staging committer for pinned-source Drop copies.
 ///
 /// Both the staging lookup and final rename are relative to the physical destination directory
@@ -79,12 +107,19 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
             }
         }
         guard renameResult == 0 else {
-            switch errno {
-            case EEXIST:
+            let observedErrno = errno
+            switch DestinationCommitErrnoClassifier.classify(observedErrno) {
+            case .collision:
                 throw StagingCommitError.collision
-            case ENOENT:
+            case .stagingMissing:
                 throw StagingCommitError.stagingMissing
-            default:
+            case .destinationUnavailable:
+                throw CopyFileSystemError.destinationUnavailable
+            case .permissionDenied:
+                throw CopyFileSystemError.permissionDenied
+            case .insufficientSpace:
+                throw CopyFileSystemError.insufficientSpace
+            case .commitFailed:
                 throw StagingCommitError.commitFailed
             }
         }
