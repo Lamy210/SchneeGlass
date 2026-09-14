@@ -1,3 +1,4 @@
+import Darwin
 import FileDomain
 import Foundation
 import SchneeGlassApplication
@@ -312,7 +313,30 @@ actor FoundationDropFileSystemInspector: DropFileSystemInspecting {
     }
 
     func itemExists(at url: URL) -> Bool {
-        fileManager.fileExists(atPath: url.standardizedFileURL.path)
+        let candidate = url.standardizedFileURL
+        let lookup = candidate.withUnsafeFileSystemRepresentation {
+            path -> (result: Int32, error: Int32) in
+            guard let path else {
+                return (-1, EINVAL)
+            }
+            var metadata = stat()
+            let result = lstat(path, &metadata)
+            return (result, result == 0 ? 0 : errno)
+        }
+
+        switch DestinationEntryLookupClassifier.classify(
+            result: lookup.result,
+            error: lookup.error
+        ) {
+        case .exists:
+            return true
+        case .absent:
+            return false
+        case .unknown:
+            // Preview/planning must not advertise a destination name as free when lookup could not
+            // prove absence. Execution repeats the same fail-closed rule against the pinned FD.
+            return true
+        }
     }
 
     private func isPhysicalDirectory(at url: URL) -> Bool {
