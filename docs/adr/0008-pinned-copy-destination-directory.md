@@ -67,6 +67,14 @@ advertising a safe copy:
 6. if no directory-specific proof is available, the folder remains observable but
    `supportsSafeDestinationCommit` is `false`.
 
+Destination locality is also fail-closed planning metadata. Foundation must explicitly report
+`volumeIsLocal` before the inspector creates a `DestinationDescriptor`; unknown (`nil`) locality is
+not inferred to mean local and makes the destination unavailable for preview/authoritative planning.
+An explicit non-local result is classified as `.network` and rejected by `DropPlanner`. Once locality
+is explicitly known to be local, unknown removability may still classify as `.localFixed`; that does
+not weaken mutation safety because `supportsSafeDestinationCommit` remains an independent explicit
+requirement.
+
 The physical-directory check intentionally matches the execution lease's `O_NOFOLLOW` policy so
 preview/planning does not advertise a symbolic-link destination that production execution must reject.
 The planning check is conservative rather than mutation authority. The execution lease repeats the
@@ -137,7 +145,9 @@ that reconnecting the same folder will fix it. A destination pathname that is no
 directory is instead unavailable for planning. The descriptor-bound execution checks remain
 authoritative and are repeated at mutation time rather than trusting preview state.
 
-Network destinations remain unsupported independently of this decision.
+Network destinations remain unsupported independently of this decision. If Foundation cannot establish
+whether a destination volume is local at all, planning also fails closed rather than treating missing
+locality metadata as evidence that the volume is local.
 
 ## Recovery semantics
 
@@ -173,6 +183,7 @@ Regression tests must cover:
 - descriptor-relative commit after destination pathname replacement,
 - source/destination lease cleanup on failure and success,
 - Drop preview/planning rejection when safe destination commit capability is false or unknown,
+- unknown destination locality rejection before a destination descriptor or executable plan is exposed,
 - preservation of the distinct destination-copy-safety rejection through native preview/planning.
 
 ## Consequences
@@ -197,6 +208,8 @@ Advantages:
 Costs:
 
 - production Drop execution is unavailable on volumes without exclusive rename support,
+- production Drop planning is unavailable when Foundation cannot establish whether the destination
+  volume is local,
 - production Drop execution is unavailable when a directory-specific runtime or fallback identity
   cannot be established,
 - symbolic-link destination paths are not accepted for copy execution even if they resolve to a
