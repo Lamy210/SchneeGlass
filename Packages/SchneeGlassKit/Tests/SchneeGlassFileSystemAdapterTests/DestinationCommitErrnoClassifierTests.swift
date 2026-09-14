@@ -4,52 +4,28 @@ import Testing
 
 @Test
 func destinationCommitErrnoClassifierPreservesCollisionAndMissingStaging() {
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EEXIST)
-            == StagingCommitError.collision
-    )
-    #expect(
-        DestinationCommitErrnoClassifier.classify(ENOENT)
-            == StagingCommitError.stagingMissing
-    )
+    #expect(DestinationCommitErrnoClassifier.classify(EEXIST) == .collision)
+    #expect(DestinationCommitErrnoClassifier.classify(ENOENT) == .stagingMissing)
 }
 
 @Test
 func destinationCommitErrnoClassifierTreatsReadOnlyFilesystemAsDestinationUnavailable() {
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EROFS)
-            == StagingCommitError.destinationUnavailable
-    )
+    #expect(DestinationCommitErrnoClassifier.classify(EROFS) == .destinationUnavailable)
 }
 
 @Test
 func destinationCommitErrnoClassifierPreservesPermissionErrors() {
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EACCES)
-            == StagingCommitError.permissionDenied
-    )
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EPERM)
-            == StagingCommitError.permissionDenied
-    )
+    #expect(DestinationCommitErrnoClassifier.classify(EACCES) == .permissionDenied)
+    #expect(DestinationCommitErrnoClassifier.classify(EPERM) == .permissionDenied)
 }
 
 @Test
 func destinationCommitErrnoClassifierPreservesCapacityErrors() {
-    #expect(
-        DestinationCommitErrnoClassifier.classify(ENOSPC)
-            == StagingCommitError.insufficientSpace
-    )
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EDQUOT)
-            == StagingCommitError.insufficientSpace
-    )
+    #expect(DestinationCommitErrnoClassifier.classify(ENOSPC) == .insufficientSpace)
+    #expect(DestinationCommitErrnoClassifier.classify(EDQUOT) == .insufficientSpace)
 }
 
 @Test
 func destinationCommitErrnoClassifierPreservesUnknownErrno() {
-    #expect(
-        DestinationCommitErrnoClassifier.classify(EIO)
-            == StagingCommitError.commitFailed
-    )
+    #expect(DestinationCommitErrnoClassifier.classify(EIO) == .commitFailed)
 }
