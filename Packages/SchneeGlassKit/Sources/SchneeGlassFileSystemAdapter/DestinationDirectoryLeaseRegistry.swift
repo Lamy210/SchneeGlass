@@ -12,6 +12,24 @@ enum DestinationDirectoryLeaseError: Error, Hashable, Sendable {
     case descriptorDuplicationFailed(Int32)
 }
 
+enum DestinationEntryLookupDisposition: Hashable, Sendable {
+    case exists
+    case absent
+    case unknown
+}
+
+enum DestinationEntryLookupClassifier {
+    static func classify(result: Int32, error: Int32) -> DestinationEntryLookupDisposition {
+        if result == 0 {
+            return .exists
+        }
+        if error == ENOENT {
+            return .absent
+        }
+        return .unknown
+    }
+}
+
 /// Pins the physical destination directory for one copy batch.
 ///
 /// A selected folder URL is not mutation authority by itself: another process can rename or replace
@@ -111,7 +129,7 @@ actor DestinationDirectoryLeaseRegistry {
     }
 
     /// Returns whether a known staging/final entry exists in the pinned directory. `nil` means the
-    /// URL is not part of any active destination lease and callers should not infer authority.
+    /// URL is not part of any active destination lease or the lookup could not prove existence.
     func itemExists(at url: URL) -> Bool? {
         let candidate = url.standardizedFileURL
         let directory = candidate.deletingLastPathComponent().standardizedFileURL
@@ -133,7 +151,7 @@ actor DestinationDirectoryLeaseRegistry {
     }
 
     /// Returns existence only from the physical directory descriptor bound to `operationID`.
-    /// `nil` means the URL is outside that operation's staging/final authority.
+    /// `nil` means the URL is outside that operation's staging/final authority or lookup is unknown.
     func itemExists(at url: URL, operationID: UUID) -> Bool? {
         let candidate = url.standardizedFileURL
         let directory = candidate.deletingLastPathComponent().standardizedFileURL
@@ -387,10 +405,28 @@ actor DestinationDirectoryLeaseRegistry {
     private static func itemExists(
         directoryDescriptor: Int32,
         filename: String
-    ) -> Bool {
-        filename.withCString { name in
+    ) -> Bool? {
+        let lookup = filename.withCString { name -> (result: Int32, error: Int32) in
             var metadata = stat()
-            return fstatat(directoryDescriptor, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0
+            let result = fstatat(
+                directoryDescriptor,
+                name,
+                &metadata,
+                AT_SYMLINK_NOFOLLOW
+            )
+            return (result, result == 0 ? 0 : errno)
+        }
+
+        switch DestinationEntryLookupClassifier.classify(
+            result: lookup.result,
+            error: lookup.error
+        ) {
+        case .exists:
+            return true
+        case .absent:
+            return false
+        case .unknown:
+            return nil
         }
     }
 
