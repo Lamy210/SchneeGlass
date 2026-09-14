@@ -32,6 +32,17 @@ jobs:
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
 
+      - name: Swift format lint
+        run: |
+          xcrun swift-format --version
+          xcrun swift-format lint \
+            --strict \
+            --parallel \
+            --recursive \
+            App \
+            Packages/SchneeGlassKit/Sources \
+            Packages/SchneeGlassKit/Tests
+
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
 
