@@ -45,7 +45,9 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
         }
 
         let destination = destinationAccess.url.standardizedFileURL
-        guard isReadableDirectory(destination) else {
+        guard RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(destinationAccess),
+              isReadableDirectory(destination)
+        else {
             return PendingCopyRecoveryAssessment(
                 record: record,
                 disposition: .destinationUnavailable
@@ -61,6 +63,16 @@ public actor PendingCopyRecoveryInspector: PendingCopyRecoveryInspecting {
 
         let staging = observeRegularFile(stagingURL)
         let final = observeRegularFile(finalURL)
+
+        // Bracket path-based observations with the directory identity acquired under the active
+        // security scope. A same-path directory replacement must not produce an actionable recovery
+        // assessment for a different physical destination.
+        guard RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(destinationAccess) else {
+            return PendingCopyRecoveryAssessment(
+                record: record,
+                disposition: .destinationUnavailable
+            )
+        }
 
         let disposition: PendingCopyRecoveryDisposition
         switch (staging, final) {

@@ -16,9 +16,10 @@ public enum OwnedStagingRecoveryCleanupError: Error, Hashable, Sendable {
 /// The only v0.1 recovery boundary allowed to delete a pending-copy staging file.
 ///
 /// The caller must have obtained explicit user intent, but that intent is not sufficient authority
-/// by itself. This adapter pins the current staging inode with `O_NOFOLLOW`, then revalidates the
-/// exact record shape, physical file type, path-to-FD identity, and persisted xattr ownership proof
-/// inside an `NSFileCoordinator` delete scope before calling `removeItem`.
+/// by itself. This adapter revalidates the acquired destination directory identity, pins the current
+/// staging inode with `O_NOFOLLOW`, then revalidates the exact record shape, physical file type,
+/// path-to-FD identity, and persisted xattr ownership proof inside an `NSFileCoordinator` delete
+/// scope before calling `removeItem`.
 public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
     private let fileManager: FileManager
     private let semanticMetadataReader: any SourceSemanticMetadataReading
@@ -51,6 +52,10 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
         }
 
         let destination = destinationAccess.url.standardizedFileURL
+        guard RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(destinationAccess) else {
+            throw OwnedStagingRecoveryCleanupError.destinationMismatch
+        }
+
         let stagingURL = destination
             .appendingPathComponent(record.stagingFilename, isDirectory: false)
             .standardizedFileURL
@@ -115,13 +120,19 @@ public actor OwnedStagingRecoveryCleaner: PendingCopyOwnedStagingCleaning {
                     semanticMetadataReader: semanticMetadataReader
                 )
 
-                // Keep the final check adjacent to the only permitted deletion call. A path that
-                // was unlinked/recreated after the descriptor was opened is rejected.
+                // Keep the final checks adjacent to the only permitted deletion call. Neither a
+                // replaced staging entry nor a same-path destination directory replacement may be
+                // treated as the originally authorized recovery target.
                 guard PendingCopyFileIdentity.descriptorMatchesPath(
                     stagingDescriptor,
                     pathURL: coordinatedURL
                 ) else {
                     throw OwnedStagingRecoveryCleanupError.resourceIdentityMismatch
+                }
+                guard RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(
+                    destinationAccess
+                ) else {
+                    throw OwnedStagingRecoveryCleanupError.destinationMismatch
                 }
 
                 try fileManager.removeItem(at: coordinatedURL)
