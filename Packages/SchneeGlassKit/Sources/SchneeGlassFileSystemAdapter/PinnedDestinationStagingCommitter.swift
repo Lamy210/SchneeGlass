@@ -10,6 +10,14 @@ enum DestinationCommitErrorDisposition: Hashable, Sendable {
     case commitFailed
 }
 
+enum DestinationCommitPreflightErrorDisposition: Hashable, Sendable {
+    case stagingMissing
+    case unexpectedFileType
+    case destinationAbsent
+    case permissionDenied
+    case commitFailed
+}
+
 enum DestinationCommitErrnoClassifier {
     static func classify(_ error: Int32) -> DestinationCommitErrorDisposition {
         switch error {
@@ -23,6 +31,30 @@ enum DestinationCommitErrnoClassifier {
             return .permissionDenied
         case ENOSPC, EDQUOT:
             return .insufficientSpace
+        default:
+            return .commitFailed
+        }
+    }
+
+    static func classifyStagingOpen(_ error: Int32) -> DestinationCommitPreflightErrorDisposition {
+        switch error {
+        case ENOENT:
+            return .stagingMissing
+        case ELOOP:
+            return .unexpectedFileType
+        case EACCES, EPERM:
+            return .permissionDenied
+        default:
+            return .commitFailed
+        }
+    }
+
+    static func classifyDestinationLookup(_ error: Int32) -> DestinationCommitPreflightErrorDisposition {
+        switch error {
+        case ENOENT:
+            return .destinationAbsent
+        case EACCES, EPERM:
+            return .permissionDenied
         default:
             return .commitFailed
         }
@@ -152,12 +184,15 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
             return (descriptor, descriptor >= 0 ? 0 : errno)
         }
         guard result.descriptor >= 0 else {
-            switch result.error {
-            case ENOENT:
+            switch DestinationCommitErrnoClassifier.classifyStagingOpen(result.error) {
+            case .stagingMissing:
                 throw StagingCommitError.stagingMissing
-            case ELOOP:
+            case .unexpectedFileType:
                 throw StagingCommitError.unexpectedFileType
-            default:
+            case .permissionDenied:
+                throw CopyFileSystemError.permissionDenied
+            case .destinationAbsent,
+                 .commitFailed:
                 throw StagingCommitError.commitFailed
             }
         }
@@ -213,7 +248,15 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
         if result.exists {
             throw StagingCommitError.collision
         }
-        guard result.error == ENOENT else {
+
+        switch DestinationCommitErrnoClassifier.classifyDestinationLookup(result.error) {
+        case .destinationAbsent:
+            return
+        case .permissionDenied:
+            throw CopyFileSystemError.permissionDenied
+        case .stagingMissing,
+             .unexpectedFileType,
+             .commitFailed:
             throw StagingCommitError.commitFailed
         }
     }
