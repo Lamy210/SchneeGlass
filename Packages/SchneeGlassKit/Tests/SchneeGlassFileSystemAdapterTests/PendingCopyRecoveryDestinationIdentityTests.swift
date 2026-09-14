@@ -74,9 +74,11 @@ func recoveryCleanerRejectsDestinationPathReplacementBeforeDeletion() async thro
     let stagingFilename = ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
     let stagingURL = roots.destination.appendingPathComponent(stagingFilename, isDirectory: false)
     try Data("staging".utf8).write(to: stagingURL)
-    let stagingIdentity = try #require(
-        PendingCopyFileIdentity.createToken(at: stagingURL, fileManager: .default)
+    let stagingIdentityValue = try PendingCopyFileIdentity.createToken(
+        at: stagingURL,
+        fileManager: .default
     )
+    let stagingIdentity = try #require(stagingIdentityValue)
     let handle = FolderAccessHandle(
         glassID: glassID,
         url: roots.destination,
