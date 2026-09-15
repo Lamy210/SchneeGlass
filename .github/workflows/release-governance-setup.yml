@@ -26,7 +26,8 @@ jobs:
 
       - name: Shell syntax
         run: |
+          bash -n Scripts/setup-release-governance.sh
           bash -n Scripts/test-setup-release-governance.sh
 
-      - name: Happy-path fixture
+      - name: Governance setup fixture
         run: bash Scripts/test-setup-release-governance.sh
