@@ -18,6 +18,9 @@ command -v gh >/dev/null 2>&1 || fail "gh CLI is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 gh auth status >/dev/null
 
+ENVIRONMENT_NAME='production-release'
+API_VERSION='2026-03-10'
+
 TMP="$(mktemp -d)"
 cleanup() {
   rm -rf "$TMP"
@@ -26,6 +29,11 @@ trap cleanup EXIT
 
 BRANCH_JSON="$TMP/main-branch.json"
 RULES_PAGES_JSON="$TMP/main-rules-pages.json"
+ENVIRONMENTS_PAGES_JSON="$TMP/environments-pages.json"
+ENVIRONMENT_JSON="$TMP/environment.json"
+POLICIES_PAGES_JSON="$TMP/deployment-branch-policies-pages.json"
+ENVIRONMENT_PAYLOAD="$TMP/environment-payload.json"
+POLICY_PAYLOAD="$TMP/policy-payload.json"
 
 gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
 jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
@@ -52,3 +60,69 @@ bash Scripts/verify-release-required-checks.sh \
   15368 \
   'Canonical / Xcode 26.6 / App Build / Safety Guards' \
   'Compatibility / macOS 15 / App Build'
+
+gh api --paginate --slurp \
+  "repos/$REPOSITORY/environments?per_page=100" \
+  > "$ENVIRONMENTS_PAGES_JSON"
+jq -e '
+  type == "array" and
+  all(.[]; type == "object" and (.environments | type == "array"))
+' "$ENVIRONMENTS_PAGES_JSON" >/dev/null \
+  || fail "environments response is malformed"
+
+ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select(.name == $name)] | length' "$ENVIRONMENTS_PAGES_JSON")"
+[[ "$ENVIRONMENT_COUNT" -le 1 ]] \
+  || fail "multiple environments named $ENVIRONMENT_NAME were returned"
+
+if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
+  jq -n '{
+    deployment_branch_policy: {
+      protected_branches: false,
+      custom_branch_policies: true
+    }
+  }' > "$ENVIRONMENT_PAYLOAD"
+
+  gh api \
+    --method PUT \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+    --input "$ENVIRONMENT_PAYLOAD" \
+    >/dev/null
+
+  jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
+
+  gh api \
+    --method POST \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
+    --input "$POLICY_PAYLOAD" \
+    >/dev/null
+fi
+
+gh api \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+  > "$ENVIRONMENT_JSON"
+jq -e --arg name "$ENVIRONMENT_NAME" '
+  .name == $name and
+  .deployment_branch_policy.protected_branches == false and
+  .deployment_branch_policy.custom_branch_policies == true
+' "$ENVIRONMENT_JSON" >/dev/null \
+  || fail "$ENVIRONMENT_NAME must use custom deployment branch policies"
+
+gh api --paginate --slurp \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
+  > "$POLICIES_PAGES_JSON"
+jq -e '
+  type == "array" and
+  all(.[]; type == "object" and (.branch_policies | type == "array"))
+' "$POLICIES_PAGES_JSON" >/dev/null \
+  || fail "deployment branch policies response is malformed"
+
+POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
+MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+[[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \
+  || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy named main"
+
+echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main policy"
