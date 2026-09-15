@@ -36,11 +36,31 @@ jobs:
 
       - name: Swift format lint
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          EVENT_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
 
           xcrun swift-format --version
+
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+              echo 'Unable to determine the pull request base branch for swift-format lint.' >&2
+              exit 1
+            fi
+
+            base_ref="refs/remotes/origin/${GITHUB_BASE_REF}"
+            if ! git show-ref --verify --quiet "${base_ref}"; then
+              echo "Base branch ${GITHUB_BASE_REF} is not available in the checkout." >&2
+              exit 1
+            fi
+
+            if ! BASE_SHA="$(git merge-base HEAD "${base_ref}")"; then
+              echo "Unable to determine the merge base with ${GITHUB_BASE_REF}." >&2
+              exit 1
+            fi
+          else
+            BASE_SHA="${EVENT_BEFORE_SHA:-}"
+          fi
 
           if [[ -z "${BASE_SHA:-}" ]]; then
             echo 'Unable to determine the base commit for swift-format lint.' >&2
