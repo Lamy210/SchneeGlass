@@ -25,12 +25,79 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Toolchain
         run: |
           xcodebuild -version
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Swift format lint
+        env:
+          EVENT_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          xcrun swift-format --version
+
+          if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
+            if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+              echo 'Unable to determine the pull request base branch for swift-format lint.' >&2
+              exit 1
+            fi
+
+            base_ref="refs/remotes/origin/${GITHUB_BASE_REF}"
+            if ! git show-ref --verify --quiet "${base_ref}"; then
+              echo "Base branch ${GITHUB_BASE_REF} is not available in the checkout." >&2
+              exit 1
+            fi
+
+            if ! BASE_SHA="$(git merge-base HEAD "${base_ref}")"; then
+              echo "Unable to determine the merge base with ${GITHUB_BASE_REF}." >&2
+              exit 1
+            fi
+          else
+            BASE_SHA="${EVENT_BEFORE_SHA:-}"
+          fi
+
+          if [[ -z "${BASE_SHA:-}" ]]; then
+            echo 'Unable to determine the base commit for swift-format lint.' >&2
+            exit 1
+          fi
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "Base commit ${BASE_SHA} is not available in the checkout." >&2
+            exit 1
+          fi
+
+          files=()
+          file_count=0
+          while IFS= read -r -d '' file; do
+            files+=("$file")
+            ((file_count += 1))
+          done < <(
+            git diff \
+              --name-only \
+              --diff-filter=ACMR \
+              -z \
+              "${BASE_SHA}...HEAD" \
+              -- '*.swift'
+          )
+
+          if (( file_count == 0 )); then
+            echo 'No added, copied, modified, or renamed Swift files to lint.'
+            exit 0
+          fi
+
+          printf 'Linting %d changed Swift file(s):\n' "$file_count"
+          printf '  %s\n' "${files[@]}"
+
+          xcrun swift-format lint \
+            --strict \
+            --parallel \
+            "${files[@]}"
 
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
