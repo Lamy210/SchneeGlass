@@ -41,6 +41,10 @@ if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" 
   fail "matching ruleset already exists: $RULESET_NAME"
 fi
 
+if [[ "$(jq 'length' "$RULESETS_JSON")" -ne 0 ]]; then
+  fail "repository already has rulesets; review existing policy before applying the canonical recipe"
+fi
+
 gh api \
   --method POST \
   "repos/$REPOSITORY/rulesets" \
