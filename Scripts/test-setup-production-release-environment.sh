@@ -80,7 +80,7 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
-# Safety gate: repository governance must be valid before any Environment mutation.
+# Safety gate 1: an unprotected main must stop before any Environment mutation.
 export GH_FIXTURE_MODE='unprotected'
 OUTPUT="$FIXTURE/unprotected.log"
 set +e
@@ -94,5 +94,20 @@ grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
+# Safety gate 2: protected=true alone is insufficient; required active rules must exist.
+: > "$LOG"
+export GH_FIXTURE_MODE='protected-missing-rules'
+OUTPUT="$FIXTURE/missing-rules.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release branch-rule verification failed: missing required active branch rule: deletion' "$OUTPUT"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
 rm -rf "$FIXTURE"
-echo 'Production release Environment governance gate fixture passed'
+echo 'Production release Environment governance gate fixtures passed'
