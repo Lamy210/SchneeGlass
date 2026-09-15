@@ -6,15 +6,15 @@ fail() {
   exit 1
 }
 
-[[ "$#" -eq 3 ]] \
-  || fail "usage: verify-release-decoded-credentials.sh <p12-path> <p12-password> <private-key-path>"
+[[ "$#" -eq 2 ]] \
+  || fail "usage: verify-release-decoded-credentials.sh <p12-path> <private-key-path>"
 
 P12_PATH="$1"
-P12_PASSWORD="$2"
-PRIVATE_KEY_PATH="$3"
+PRIVATE_KEY_PATH="$2"
+P12_PASSWORD="${DEVELOPER_ID_P12_PASSWORD:-}"
 
 [[ -s "$P12_PATH" ]] || fail "PKCS#12 file is missing or empty"
-[[ -n "$P12_PASSWORD" ]] || fail "PKCS#12 password is missing"
+[[ -n "$P12_PASSWORD" ]] || fail "DEVELOPER_ID_P12_PASSWORD is missing"
 [[ -s "$PRIVATE_KEY_PATH" ]] || fail "App Store Connect private key file is missing or empty"
 
 SCHNEEGLASS_P12_PASSWORD="$P12_PASSWORD" \
