@@ -17,4 +17,16 @@ PRIVATE_KEY_PATH="$3"
 [[ -n "$P12_PASSWORD" ]] || fail "PKCS#12 password is missing"
 [[ -s "$PRIVATE_KEY_PATH" ]] || fail "App Store Connect private key file is missing or empty"
 
-echo 'Decoded release credential files are present'
+SCHNEEGLASS_P12_PASSWORD="$P12_PASSWORD" \
+  openssl pkcs12 \
+    -in "$P12_PATH" \
+    -passin env:SCHNEEGLASS_P12_PASSWORD \
+    -noout >/dev/null 2>&1 \
+  || fail "PKCS#12 payload or password is invalid"
+
+openssl pkey \
+  -in "$PRIVATE_KEY_PATH" \
+  -noout >/dev/null 2>&1 \
+  || fail "App Store Connect private key payload is invalid"
+
+echo 'Decoded release credentials verified'
