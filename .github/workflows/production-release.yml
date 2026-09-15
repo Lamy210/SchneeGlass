@@ -17,6 +17,7 @@ on:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
+      - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-production-release-preflight.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
@@ -50,12 +51,81 @@ jobs:
         run: |
           bash -n Scripts/verify-release-metadata.sh
           bash -n Scripts/verify-production-release-preflight.sh
+          bash -n Scripts/verify-release-credential-inputs.sh
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/record-release-bundle-metadata.sh
           bash -n Scripts/verify-release-evidence.sh
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
+
+      - name: Credential input contract fixture
+        env:
+          RELEASE_VERSION: '0.1.0'
+          DEVELOPER_ID_P12_BASE64: 'QQ=='
+          DEVELOPER_ID_P12_PASSWORD: 'fixture-password'
+          APPLE_TEAM_ID: 'ABCDE12345'
+          APPSTORE_CONNECT_KEY_ID: 'FGHIJ67890'
+          APPSTORE_CONNECT_ISSUER_ID: '12345678-1234-1234-1234-1234567890ab'
+          APPSTORE_CONNECT_PRIVATE_KEY_BASE64: 'Qg=='
+        run: |
+          bash Scripts/verify-release-credential-inputs.sh
+
+          FAILURES=0
+          expect_rejected() {
+            local label="$1"
+            shift
+            if "$@"; then
+              echo "Credential validator unexpectedly accepted: $label" >&2
+              FAILURES=$((FAILURES + 1))
+            fi
+          }
+
+          expect_rejected 'release version with v prefix' \
+            env RELEASE_VERSION='v0.1.0' bash Scripts/verify-release-credential-inputs.sh
+          expect_rejected 'short Apple Team ID' \
+            env APPLE_TEAM_ID='ABCDE1234' bash Scripts/verify-release-credential-inputs.sh
+          expect_rejected 'short App Store Connect key ID' \
+            env APPSTORE_CONNECT_KEY_ID='FGHIJ6789' bash Scripts/verify-release-credential-inputs.sh
+          expect_rejected 'non-UUID App Store Connect issuer ID' \
+            env APPSTORE_CONNECT_ISSUER_ID='not-a-uuid' bash Scripts/verify-release-credential-inputs.sh
+          expect_rejected 'malformed Developer ID P12 base64' \
+            env DEVELOPER_ID_P12_BASE64='@@not-base64@@' bash Scripts/verify-release-credential-inputs.sh
+          expect_rejected 'malformed App Store Connect private key base64' \
+            env APPSTORE_CONNECT_PRIVATE_KEY_BASE64='@@not-base64@@' bash Scripts/verify-release-credential-inputs.sh
+
+          if [[ "$FAILURES" -ne 0 ]]; then
+            echo "$FAILURES invalid credential contract case(s) were accepted" >&2
+            exit 1
+          fi
+
+      - name: Build validates credential contract before side effects
+        env:
+          RELEASE_VERSION: '0.1.0'
+          DEVELOPER_ID_P12_BASE64: 'QQ=='
+          DEVELOPER_ID_P12_PASSWORD: 'fixture-password'
+          APPLE_TEAM_ID: 'ABCDE12345'
+          APPSTORE_CONNECT_KEY_ID: 'FGHIJ67890'
+          APPSTORE_CONNECT_ISSUER_ID: '12345678-1234-1234-1234-1234567890ab'
+          APPSTORE_CONNECT_PRIVATE_KEY_BASE64: 'Qg=='
+        run: |
+          rm -rf release-output
+          LOG="$RUNNER_TEMP/credential-contract-build-integration.log"
+
+          set +e
+          APPLE_TEAM_ID='BAD' bash Scripts/build-notarized-release.sh >"$LOG" 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            cat "$LOG"
+            echo 'Production release unexpectedly accepted malformed credential metadata.' >&2
+            exit 1
+          fi
+
+          grep -F 'Release credential input verification failed: APPLE_TEAM_ID must be a 10-character ASCII alphanumeric Team ID' "$LOG" >/dev/null
+          test ! -e release-output
+          rm -f "$LOG"
 
       - name: Credential-free signing fails closed
         run: |
