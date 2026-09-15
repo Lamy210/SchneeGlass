@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+fail() {
+  echo "Production release environment setup failed: $*" >&2
+  exit 1
+}
+
+[[ "$#" -ge 1 && "$#" -le 2 ]] \
+  || fail "usage: $0 <owner/repo> [--verify-credential-names]"
+REPOSITORY="$1"
+MODE="${2:-}"
+[[ -z "$MODE" || "$MODE" == '--verify-credential-names' ]] \
+  || fail "usage: $0 <owner/repo> [--verify-credential-names]"
+[[ "$REPOSITORY" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] \
+  || fail "repository must be owner/repo"
+
+command -v gh >/dev/null 2>&1 || fail "gh CLI is required"
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+gh auth status >/dev/null
+
+ENVIRONMENT_NAME='production-release'
+API_VERSION='2026-03-10'
+
+TMP="$(mktemp -d)"
+cleanup() {
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
+
+BRANCH_JSON="$TMP/main-branch.json"
+RULES_PAGES_JSON="$TMP/main-rules-pages.json"
+ENVIRONMENTS_PAGES_JSON="$TMP/environments-pages.json"
+ENVIRONMENT_JSON="$TMP/environment.json"
+POLICIES_PAGES_JSON="$TMP/deployment-branch-policies-pages.json"
+ENVIRONMENT_PAYLOAD="$TMP/environment-payload.json"
+POLICY_PAYLOAD="$TMP/policy-payload.json"
+SECRET_NAMES_JSON="$TMP/environment-secret-names.json"
+VARIABLE_NAMES_JSON="$TMP/environment-variable-names.json"
+
+gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
+jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
+  || fail "main branch response is malformed"
+
+MAIN_PROTECTED="$(jq -r '.protected' "$BRANCH_JSON")"
+bash Scripts/verify-release-branch-protection.sh main "$MAIN_PROTECTED"
+
+gh api --paginate --slurp \
+  "repos/$REPOSITORY/rules/branches/main?per_page=100" \
+  > "$RULES_PAGES_JSON"
+jq -e 'type == "array" and all(.[]; type == "array")' "$RULES_PAGES_JSON" >/dev/null \
+  || fail "active branch rules response is malformed"
+
+bash Scripts/verify-release-required-branch-rules.sh \
+  "$RULES_PAGES_JSON" \
+  deletion \
+  non_fast_forward \
+  pull_request
+
+bash Scripts/verify-release-required-checks.sh \
+  "$BRANCH_JSON" \
+  "$RULES_PAGES_JSON" \
+  15368 \
+  'Canonical / Xcode 26.6 / App Build / Safety Guards' \
+  'Compatibility / macOS 15 / App Build'
+
+gh api --paginate --slurp \
+  "repos/$REPOSITORY/environments?per_page=100" \
+  > "$ENVIRONMENTS_PAGES_JSON"
+jq -e '
+  type == "array" and
+  all(.[]; type == "object" and (.environments | type == "array"))
+' "$ENVIRONMENTS_PAGES_JSON" >/dev/null \
+  || fail "environments response is malformed"
+
+ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select(.name == $name)] | length' "$ENVIRONMENTS_PAGES_JSON")"
+[[ "$ENVIRONMENT_COUNT" -le 1 ]] \
+  || fail "multiple environments named $ENVIRONMENT_NAME were returned"
+
+if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
+  jq -n '{
+    deployment_branch_policy: {
+      protected_branches: false,
+      custom_branch_policies: true
+    }
+  }' > "$ENVIRONMENT_PAYLOAD"
+
+  gh api \
+    --method PUT \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+    --input "$ENVIRONMENT_PAYLOAD" \
+    >/dev/null
+
+  jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
+
+  gh api \
+    --method POST \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
+    --input "$POLICY_PAYLOAD" \
+    >/dev/null
+fi
+
+gh api \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+  > "$ENVIRONMENT_JSON"
+jq -e --arg name "$ENVIRONMENT_NAME" '
+  .name == $name and
+  .deployment_branch_policy.protected_branches == false and
+  .deployment_branch_policy.custom_branch_policies == true
+' "$ENVIRONMENT_JSON" >/dev/null \
+  || fail "$ENVIRONMENT_NAME must use custom deployment branch policies"
+
+gh api --paginate --slurp \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
+  > "$POLICIES_PAGES_JSON"
+jq -e '
+  type == "array" and
+  all(.[]; type == "object" and (.branch_policies | type == "array"))
+' "$POLICIES_PAGES_JSON" >/dev/null \
+  || fail "deployment branch policies response is malformed"
+
+POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
+MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+[[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \
+  || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy named main"
+
+echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main policy"
+
+if [[ "$MODE" == '--verify-credential-names' ]]; then
+  gh secret list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$SECRET_NAMES_JSON"
+  gh variable list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$VARIABLE_NAMES_JSON"
+
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$SECRET_NAMES_JSON" >/dev/null \
+    || fail "Environment secret-name response is malformed"
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$VARIABLE_NAMES_JSON" >/dev/null \
+    || fail "Environment variable-name response is malformed"
+
+  for required_secret in \
+    DEVELOPER_ID_P12_BASE64 \
+    DEVELOPER_ID_P12_PASSWORD \
+    APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+  do
+    jq -e --arg name "$required_secret" 'any(.[]; .name == $name)' "$SECRET_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment secret name: $required_secret"
+  done
+
+  for required_variable in \
+    APPLE_TEAM_ID \
+    APPSTORE_CONNECT_KEY_ID \
+    APPSTORE_CONNECT_ISSUER_ID
+  do
+    jq -e --arg name "$required_variable" 'any(.[]; .name == $name)' "$VARIABLE_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment variable name: $required_variable"
+  done
+
+  echo 'Production release credential names verified: 3 secrets + 3 variables configured'
+fi
