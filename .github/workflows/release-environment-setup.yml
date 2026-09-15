@@ -1,0 +1,30 @@
+name: Release Environment Setup Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-environment-setup.yml'
+      - 'Scripts/setup-production-release-environment.sh'
+      - 'Scripts/test-setup-production-release-environment.sh'
+      - 'Scripts/verify-release-branch-protection.sh'
+      - 'Scripts/verify-release-required-branch-rules.sh'
+      - 'Scripts/verify-release-required-checks.sh'
+      - 'docs/RELEASE_CREDENTIALS.md'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Release Environment Setup / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Shell syntax
+        run: bash -n Scripts/test-setup-production-release-environment.sh
+
+      - name: Governance gate fixture
+        run: bash Scripts/test-setup-production-release-environment.sh
