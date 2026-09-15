@@ -24,7 +24,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Shell syntax
-        run: bash -n Scripts/test-setup-production-release-environment.sh
+        run: |
+          bash -n Scripts/setup-production-release-environment.sh
+          bash -n Scripts/test-setup-production-release-environment.sh
 
       - name: Governance gate fixture
         run: bash Scripts/test-setup-production-release-environment.sh
