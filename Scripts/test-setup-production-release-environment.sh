@@ -175,13 +175,33 @@ grep -Fq 'Release required-check verification failed: missing required status ch
 : > "$LOG"
 export GH_FIXTURE_MODE='create-environment'
 OUTPUT="$FIXTURE/create-environment.log"
+set +e
 bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -ne 0 ]]; then
+  echo '=== setup output ===' >&2
+  cat "$OUTPUT" >&2 || true
+  echo '=== gh fixture log ===' >&2
+  cat "$LOG" >&2 || true
+  exit "$STATUS"
+fi
 
-grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG"
-grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release --input' "$LOG"
-grep -Fq 'api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies --input' "$LOG"
-grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release' "$LOG"
-grep -Fq 'api --paginate --slurp -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies\?per_page=100' "$LOG"
+assert_log() {
+  local needle="$1"
+  if ! grep -Fq -- "$needle" "$LOG"; then
+    echo "Missing expected gh call: $needle" >&2
+    echo '=== gh fixture log ===' >&2
+    cat "$LOG" >&2 || true
+    exit 1
+  fi
+}
+
+assert_log 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100'
+assert_log 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release --input'
+assert_log 'api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies --input'
+assert_log 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release'
+assert_log 'api --paginate --slurp -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies\?per_page=100'
 grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
 
 PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
