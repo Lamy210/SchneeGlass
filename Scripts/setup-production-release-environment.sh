@@ -74,30 +74,32 @@ ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | 
 [[ "$ENVIRONMENT_COUNT" -le 1 ]] \
   || fail "multiple environments named $ENVIRONMENT_NAME were returned"
 
-if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
-  jq -n '{
-    deployment_branch_policy: {
-      protected_branches: false,
-      custom_branch_policies: true
-    }
-  }' > "$ENVIRONMENT_PAYLOAD"
-
-  gh api \
-    --method PUT \
-    -H "X-GitHub-Api-Version: $API_VERSION" \
-    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
-    --input "$ENVIRONMENT_PAYLOAD" \
-    >/dev/null
-
-  jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
-
-  gh api \
-    --method POST \
-    -H "X-GitHub-Api-Version: $API_VERSION" \
-    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
-    --input "$POLICY_PAYLOAD" \
-    >/dev/null
+if [[ "$ENVIRONMENT_COUNT" -eq 1 ]]; then
+  fail "existing production-release Environment verification is not implemented yet"
 fi
+
+jq -n '{
+  deployment_branch_policy: {
+    protected_branches: false,
+    custom_branch_policies: true
+  }
+}' > "$ENVIRONMENT_PAYLOAD"
+
+gh api \
+  --method PUT \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+  --input "$ENVIRONMENT_PAYLOAD" \
+  >/dev/null
+
+jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
+
+gh api \
+  --method POST \
+  -H "X-GitHub-Api-Version: $API_VERSION" \
+  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
+  --input "$POLICY_PAYLOAD" \
+  >/dev/null
 
 gh api \
   -H "X-GitHub-Api-Version: $API_VERSION" \
