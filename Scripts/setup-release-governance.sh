@@ -19,6 +19,7 @@ command -v jq >/dev/null 2>&1 || fail "jq is required"
 gh auth status >/dev/null
 
 RULESET_RECIPE='.github/rulesets/main-release-governance.json'
+RULESET_NAME='SchneeGlass main release governance'
 [[ -f "$RULESET_RECIPE" ]] || fail "ruleset recipe is missing: $RULESET_RECIPE"
 
 TMP="$(mktemp -d)"
@@ -35,6 +36,10 @@ RULES_PAGES_JSON="$TMP/main-rules-pages.json"
 gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
 jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
   || fail "repository rulesets response must be a JSON array"
+
+if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
+  fail "matching ruleset already exists: $RULESET_NAME"
+fi
 
 gh api \
   --method POST \
