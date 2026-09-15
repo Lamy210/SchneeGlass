@@ -1,0 +1,33 @@
+name: Release Governance Setup Tests
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release-governance-setup.yml'
+      - '.github/rulesets/main-release-governance.json'
+      - 'Scripts/setup-release-governance.sh'
+      - 'Scripts/test-setup-release-governance.sh'
+      - 'Scripts/verify-release-branch-protection.sh'
+      - 'Scripts/verify-release-required-branch-rules.sh'
+      - 'Scripts/verify-release-required-checks.sh'
+      - 'docs/REPOSITORY_GOVERNANCE.md'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Release Governance Setup / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/setup-release-governance.sh
+          bash -n Scripts/test-setup-release-governance.sh
+
+      - name: Governance setup fixture
+        run: bash Scripts/test-setup-release-governance.sh

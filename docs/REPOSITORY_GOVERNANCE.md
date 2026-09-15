@@ -53,13 +53,49 @@ Expected GitHub Actions integration ID:
 
 A same-named check from another App, an unbound classic context, or a ruleset check without the expected `integration_id` is not release authority.
 
-## Applying the ruleset
+## Applying the ruleset and immutable releases
 
-Repository administration permission is required to create or update rulesets. The release workflow intentionally does not request that permission.
+Repository administration permission is required to create rulesets and enable release immutability. The release workflows intentionally do not request that permission.
 
-Preferred setup is to import the checked-in JSON from repository Settings > Rules > Rulesets so the live configuration starts from the reviewed recipe.
+### Preferred administrator helper
 
-For an authenticated repository administrator, the equivalent GitHub CLI create operation is:
+After this helper has been merged, run it only from a reviewed and up-to-date `main` checkout with an authenticated administrator account:
+
+```bash
+git switch main
+git pull --ff-only
+gh auth status
+bash Scripts/setup-release-governance.sh Lamy210/SchneeGlass
+```
+
+Prerequisites:
+
+```text
+gh
+jq
+GitHub repository Administration permission
+```
+
+The helper is intentionally fail-closed. It:
+
+1. reads the current repository ruleset list;
+2. creates `.github/rulesets/main-release-governance.json` only when the repository has zero rulesets;
+3. refuses to create a duplicate when `SchneeGlass main release governance` already exists;
+4. refuses automatic mutation when any differently named ruleset already exists, requiring manual policy review first;
+5. enables repository release immutability through the GitHub REST API;
+6. re-reads the immutable-release state and requires `enabled=true`;
+7. re-reads the live `main` branch and effective active branch rules;
+8. runs the same branch/rule/required-check validators used by production publication.
+
+The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
+
+The setup is not transactional across GitHub APIs. If a later operation fails after an earlier mutation succeeded, do **not** blindly rerun the script. Re-read the live repository settings first. A newly-created canonical ruleset intentionally causes subsequent runs to stop rather than create a duplicate.
+
+### Manual fallback
+
+If the helper cannot be used, import the checked-in JSON from repository Settings > Rules > Rulesets so the live configuration starts from the reviewed recipe.
+
+For an authenticated repository administrator, the equivalent ruleset create operation is:
 
 ```bash
 gh api \
@@ -70,7 +106,16 @@ gh api \
 
 Do not run the create command repeatedly; it creates another ruleset. If a matching ruleset already exists, review and update that ruleset instead of creating duplicate layered policy accidentally.
 
-After applying the rule, verify the effective branch state:
+Release immutability can be enabled with:
+
+```bash
+gh api \
+  --method PUT \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  repos/Lamy210/SchneeGlass/immutable-releases
+```
+
+After applying governance, verify the effective branch state:
 
 ```bash
 gh api repos/Lamy210/SchneeGlass/branches/main --jq '.protected'
@@ -137,14 +182,14 @@ Release immutability is separately attested before publication and then verified
 
 ## Change policy
 
-Treat `.github/rulesets/main-release-governance.json` as release-control-plane code.
+Treat `.github/rulesets/main-release-governance.json` and `Scripts/setup-release-governance.sh` as release-control-plane code.
 
-Changes must go through a pull request and must keep the credential-free publication preflight green. Do not weaken the live repository rule first and update the recipe afterward.
+Changes must go through a pull request and must keep Bootstrap CI plus `Release Governance Setup Tests` green. Do not weaken the live repository rule first and update the recipe afterward.
 
 If the desired governance policy changes:
 
 1. change the checked-in recipe and validators in a reviewable PR;
 2. pass Bootstrap CI and Publish Production Release preflight;
-3. apply the reviewed change in GitHub Settings;
+3. apply the reviewed change in GitHub Settings or with the administrator helper where its zero-ruleset safety contract applies;
 4. re-read the effective rules for `main`;
 5. keep Issue #33 open until the first signed/notarized immutable v0.1 release is successfully published.
