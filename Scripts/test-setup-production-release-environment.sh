@@ -67,7 +67,13 @@ case "$METHOD:$ENDPOINT" in
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[[]]\n'
+    if [[ "$MODE" == 'protected-missing-rules' ]]; then
+      printf '[[]]\n'
+    else
+      cat <<'JSON'
+[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}}]]
+JSON
+    fi
     ;;
   *)
     echo "unexpected gh api request: $METHOD $ENDPOINT" >&2
@@ -106,6 +112,20 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release branch-rule verification failed: missing required active branch rule: deletion' "$OUTPUT"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Safety gate 3: required branch rules without source-bound strict checks are still insufficient.
+: > "$LOG"
+export GH_FIXTURE_MODE='protected-rules-missing-checks'
+OUTPUT="$FIXTURE/missing-checks.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release required-check verification failed: missing required status check from app ID 15368: Canonical / Xcode 26.6 / App Build / Safety Guards' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
