@@ -6,6 +6,7 @@ on:
       - '.github/workflows/release-environment-setup.yml'
       - 'Scripts/setup-production-release-environment.sh'
       - 'Scripts/test-setup-production-release-environment.sh'
+      - 'Scripts/test-setup-production-release-environment-existing.sh'
       - 'Scripts/verify-release-branch-protection.sh'
       - 'Scripts/verify-release-required-branch-rules.sh'
       - 'Scripts/verify-release-required-checks.sh'
@@ -27,6 +28,10 @@ jobs:
         run: |
           bash -n Scripts/setup-production-release-environment.sh
           bash -n Scripts/test-setup-production-release-environment.sh
+          bash -n Scripts/test-setup-production-release-environment-existing.sh
 
-      - name: Governance gate fixture
-        run: bash -x Scripts/test-setup-production-release-environment.sh
+      - name: Governance and creation fixtures
+        run: bash Scripts/test-setup-production-release-environment.sh
+
+      - name: Existing Environment fixtures
+        run: bash Scripts/test-setup-production-release-environment-existing.sh
