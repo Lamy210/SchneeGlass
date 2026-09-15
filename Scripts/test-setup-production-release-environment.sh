@@ -32,6 +32,7 @@ shift
 METHOD='GET'
 PAGINATE=false
 SLURP=false
+INPUT=''
 ENDPOINT=''
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -46,6 +47,10 @@ while [[ "$#" -gt 0 ]]; do
     --slurp)
       SLURP=true
       shift
+      ;;
+    --input)
+      INPUT="$2"
+      shift 2
       ;;
     -H|--header)
       shift 2
@@ -67,13 +72,50 @@ case "$METHOD:$ENDPOINT" in
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    if [[ "$MODE" == 'protected-missing-rules' ]]; then
-      printf '[[]]\n'
-    else
-      cat <<'JSON'
+    case "$MODE" in
+      protected-missing-rules)
+        printf '[[]]\n'
+        ;;
+      protected-rules-missing-checks)
+        cat <<'JSON'
 [[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}}]]
 JSON
-    fi
+        ;;
+      *)
+        cat <<'JSON'
+[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]
+JSON
+        ;;
+    esac
+    ;;
+  GET:repos/example/SchneeGlass/environments?per_page=100)
+    [[ "$PAGINATE" == true && "$SLURP" == true ]]
+    [[ "$MODE" == 'create-environment' ]]
+    printf '[{"total_count":0,"environments":[]}]\n'
+    ;;
+  PUT:repos/example/SchneeGlass/environments/production-release)
+    [[ "$MODE" == 'create-environment' ]]
+    [[ -n "$INPUT" && -f "$INPUT" ]]
+    jq -e '
+      .deployment_branch_policy.protected_branches == false and
+      .deployment_branch_policy.custom_branch_policies == true
+    ' "$INPUT" >/dev/null
+    printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+    ;;
+  POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
+    [[ "$MODE" == 'create-environment' ]]
+    [[ -n "$INPUT" && -f "$INPUT" ]]
+    jq -e '.name == "main" and .type == "branch"' "$INPUT" >/dev/null
+    printf '{"id":101,"name":"main"}\n'
+    ;;
+  GET:repos/example/SchneeGlass/environments/production-release)
+    [[ "$MODE" == 'create-environment' ]]
+    printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+    ;;
+  GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
+    [[ "$MODE" == 'create-environment' ]]
+    [[ "$PAGINATE" == true && "$SLURP" == true ]]
+    printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
     ;;
   *)
     echo "unexpected gh api request: $METHOD $ENDPOINT" >&2
@@ -129,5 +171,23 @@ grep -Fq 'Release required-check verification failed: missing required status ch
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
+# Happy path: valid governance + missing Environment creates the Environment and exact main policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='create-environment'
+OUTPUT="$FIXTURE/create-environment.log"
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release --input' "$LOG"
+grep -Fq 'api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies --input' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release' "$LOG"
+grep -Fq 'api --paginate --slurp -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies\?per_page=100' "$LOG"
+grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+
+PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
+POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
+VERIFY_LINE="$(grep -n 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
+[[ "$PUT_LINE" -lt "$POST_LINE" && "$POST_LINE" -lt "$VERIFY_LINE" ]]
+
 rm -rf "$FIXTURE"
-echo 'Production release Environment governance gate fixtures passed'
+echo 'Production release Environment setup fixtures passed'
