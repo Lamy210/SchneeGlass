@@ -34,11 +34,13 @@ on:
   pull_request:
     paths:
       - '.github/workflows/publish-release.yml'
+      - '.github/rulesets/main-release-governance.json'
       - 'Scripts/publish-notarized-release.sh'
       - 'Scripts/verify-production-candidate-run.sh'
       - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-release-branch-protection.sh'
+      - 'Scripts/verify-release-required-branch-rules.sh'
       - 'Scripts/verify-release-required-checks.sh'
 
 permissions:
@@ -73,6 +75,7 @@ jobs:
           bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/verify-release-evidence.sh
           bash -n Scripts/verify-release-branch-protection.sh
+          bash -n Scripts/verify-release-required-branch-rules.sh
           bash -n Scripts/verify-release-required-checks.sh
 
       - name: Production candidate run policy fixture
@@ -200,6 +203,56 @@ jobs:
             echo 'Branch protection validator unexpectedly accepted an unknown protection state.' >&2
             exit 1
           fi
+
+      - name: Required branch rules policy fixture
+        run: |
+          FIXTURE="$RUNNER_TEMP/release-required-branch-rules-fixture"
+          rm -rf "$FIXTURE"
+          mkdir -p "$FIXTURE"
+
+          cat > "$FIXTURE/rules-pages.json" <<'EOF'
+          [
+            [
+              {"type": "deletion"},
+              {"type": "non_fast_forward"},
+              {"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
+              {"type": "required_status_checks", "parameters": {"required_status_checks": []}}
+            ]
+          ]
+          EOF
+
+          bash Scripts/verify-release-required-branch-rules.sh \
+            "$FIXTURE/rules-pages.json" \
+            deletion \
+            non_fast_forward \
+            pull_request
+
+          for missing_rule in deletion non_fast_forward pull_request; do
+            jq --arg missing_rule "$missing_rule" \
+              'map(map(select(.type != $missing_rule)))' \
+              "$FIXTURE/rules-pages.json" > "$FIXTURE/missing.json"
+
+            if bash Scripts/verify-release-required-branch-rules.sh \
+              "$FIXTURE/missing.json" \
+              deletion \
+              non_fast_forward \
+              pull_request; then
+              echo "Branch-rule validator unexpectedly accepted missing rule: $missing_rule" >&2
+              exit 1
+            fi
+          done
+
+          printf '{}\n' > "$FIXTURE/malformed.json"
+          if bash Scripts/verify-release-required-branch-rules.sh \
+            "$FIXTURE/malformed.json" \
+            deletion \
+            non_fast_forward \
+            pull_request; then
+            echo 'Branch-rule validator unexpectedly accepted malformed rule pages.' >&2
+            exit 1
+          fi
+
+          rm -rf "$FIXTURE"
 
       - name: Required Bootstrap CI policy fixture
         run: |
@@ -329,6 +382,46 @@ jobs:
 
           rm -rf "$FIXTURE"
 
+      - name: Repository ruleset recipe fixture
+        run: |
+          FIXTURE="$RUNNER_TEMP/release-ruleset-recipe-fixture"
+          rm -rf "$FIXTURE"
+          mkdir -p "$FIXTURE"
+
+          RECIPE='.github/rulesets/main-release-governance.json'
+          GITHUB_ACTIONS_APP_ID='15368'
+          CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
+          COMPATIBILITY='Compatibility / macOS 15 / App Build'
+
+          jq -e '
+            .name == "SchneeGlass main release governance" and
+            .target == "branch" and
+            .enforcement == "active" and
+            .bypass_actors == [] and
+            .conditions.ref_name.include == ["refs/heads/main"] and
+            .conditions.ref_name.exclude == [] and
+            any(.rules[]; .type == "pull_request" and .parameters.required_approving_review_count == 0) and
+            any(.rules[]; .type == "pull_request" and .parameters.required_review_thread_resolution == true)
+          ' "$RECIPE" >/dev/null
+
+          printf '{}\n' > "$FIXTURE/branch.json"
+          jq '[.rules]' "$RECIPE" > "$FIXTURE/rules-pages.json"
+
+          bash Scripts/verify-release-required-branch-rules.sh \
+            "$FIXTURE/rules-pages.json" \
+            deletion \
+            non_fast_forward \
+            pull_request
+
+          bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"
+
+          rm -rf "$FIXTURE"
+
       - name: Governance metadata API availability
         env:
           GH_TOKEN: ${{ github.token }}
@@ -396,6 +489,11 @@ jobs:
             "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"
+          bash Scripts/verify-release-required-branch-rules.sh \
+            "$RULES_PAGES_JSON" \
+            deletion \
+            non_fast_forward \
+            pull_request
 
       - name: Publish validated notarized candidate
         run: bash Scripts/publish-notarized-release.sh
