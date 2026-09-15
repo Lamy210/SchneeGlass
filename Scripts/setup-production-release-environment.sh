@@ -45,3 +45,10 @@ bash Scripts/verify-release-required-branch-rules.sh \
   deletion \
   non_fast_forward \
   pull_request
+
+bash Scripts/verify-release-required-checks.sh \
+  "$BRANCH_JSON" \
+  "$RULES_PAGES_JSON" \
+  15368 \
+  'Canonical / Xcode 26.6 / App Build / Safety Guards' \
+  'Compatibility / macOS 15 / App Build'
