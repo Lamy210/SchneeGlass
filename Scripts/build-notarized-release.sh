@@ -72,14 +72,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+printf '%s' "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$P12_PATH"
+printf '%s' "$APPSTORE_CONNECT_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$API_KEY_PATH"
+chmod 600 "$P12_PATH" "$API_KEY_PATH"
+
+bash Scripts/verify-release-decoded-credentials.sh \
+  "$P12_PATH" \
+  "$DEVELOPER_ID_P12_PASSWORD" \
+  "$API_KEY_PATH"
+
 [[ "$OUTPUT_DIR" == "$ROOT/release-output" ]] \
   || fail "refusing to clean unexpected release output path: $OUTPUT_DIR"
 rm -rf "$ARCHIVE_PATH" "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/evidence"
-
-printf '%s' "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$P12_PATH"
-printf '%s' "$APPSTORE_CONNECT_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$API_KEY_PATH"
-chmod 600 "$P12_PATH" "$API_KEY_PATH"
 
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
