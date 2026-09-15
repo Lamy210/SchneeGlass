@@ -68,11 +68,17 @@ done
 
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
-    if [[ "$MODE" == 'duplicate' ]]; then
-      printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
-    else
-      printf '[]\n'
-    fi
+    case "$MODE" in
+      duplicate)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+        ;;
+      unrelated)
+        printf '[{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
+        ;;
+      *)
+        printf '[]\n'
+        ;;
+    esac
     ;;
   POST:repos/example/SchneeGlass/rulesets)
     [[ -n "$INPUT" && -f "$INPUT" ]]
@@ -132,6 +138,20 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$DUPLICATE_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Layering safety: any pre-existing differently named ruleset requires manual review.
+: > "$LOG"
+export GH_FIXTURE_MODE='unrelated'
+UNRELATED_LOG="$FIXTURE/unrelated.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$UNRELATED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository already has rulesets; review existing policy before applying the canonical recipe' "$UNRELATED_LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 
