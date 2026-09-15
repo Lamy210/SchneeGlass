@@ -9,8 +9,12 @@ fail() {
   exit 1
 }
 
-[[ "$#" -eq 1 ]] || fail "usage: $0 <owner/repo>"
+[[ "$#" -ge 1 && "$#" -le 2 ]] \
+  || fail "usage: $0 <owner/repo> [--verify-credential-names]"
 REPOSITORY="$1"
+MODE="${2:-}"
+[[ -z "$MODE" || "$MODE" == '--verify-credential-names' ]] \
+  || fail "usage: $0 <owner/repo> [--verify-credential-names]"
 [[ "$REPOSITORY" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] \
   || fail "repository must be owner/repo"
 
@@ -34,6 +38,8 @@ ENVIRONMENT_JSON="$TMP/environment.json"
 POLICIES_PAGES_JSON="$TMP/deployment-branch-policies-pages.json"
 ENVIRONMENT_PAYLOAD="$TMP/environment-payload.json"
 POLICY_PAYLOAD="$TMP/policy-payload.json"
+SECRET_NAMES_JSON="$TMP/environment-secret-names.json"
+VARIABLE_NAMES_JSON="$TMP/environment-variable-names.json"
 
 gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
 jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
@@ -126,3 +132,43 @@ MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | l
   || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy named main"
 
 echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main policy"
+
+if [[ "$MODE" == '--verify-credential-names' ]]; then
+  gh secret list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$SECRET_NAMES_JSON"
+  gh variable list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$VARIABLE_NAMES_JSON"
+
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$SECRET_NAMES_JSON" >/dev/null \
+    || fail "Environment secret-name response is malformed"
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$VARIABLE_NAMES_JSON" >/dev/null \
+    || fail "Environment variable-name response is malformed"
+
+  for required_secret in \
+    DEVELOPER_ID_P12_BASE64 \
+    DEVELOPER_ID_P12_PASSWORD \
+    APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+  do
+    jq -e --arg name "$required_secret" 'any(.[]; .name == $name)' "$SECRET_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment secret name: $required_secret"
+  done
+
+  for required_variable in \
+    APPLE_TEAM_ID \
+    APPSTORE_CONNECT_KEY_ID \
+    APPSTORE_CONNECT_ISSUER_ID
+  do
+    jq -e --arg name "$required_variable" 'any(.[]; .name == $name)' "$VARIABLE_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment variable name: $required_variable"
+  done
+
+  echo 'Production release credential names verified: 3 secrets + 3 variables configured'
+fi
