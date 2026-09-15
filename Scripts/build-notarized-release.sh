@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+bash Scripts/verify-release-credential-inputs.sh
+
 fail() {
   echo "Production release failed: $*" >&2
   exit 1
