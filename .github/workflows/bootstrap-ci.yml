@@ -37,10 +37,14 @@ jobs:
       - name: Swift format lint
         env:
           EVENT_BEFORE_SHA: ${{ github.event.before }}
+          EVENT_CREATED: ${{ github.event.created }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
           xcrun swift-format --version
+
+          zero_sha='0000000000000000000000000000000000000000'
 
           if [[ "${GITHUB_EVENT_NAME}" == 'pull_request' ]]; then
             if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
@@ -56,6 +60,22 @@ jobs:
 
             if ! BASE_SHA="$(git merge-base HEAD "${base_ref}")"; then
               echo "Unable to determine the merge base with ${GITHUB_BASE_REF}." >&2
+              exit 1
+            fi
+          elif [[ "${EVENT_CREATED:-false}" == 'true' || "${EVENT_BEFORE_SHA:-}" == "${zero_sha}" ]]; then
+            if [[ -z "${DEFAULT_BRANCH:-}" ]]; then
+              echo 'Unable to determine the default branch for a newly created ref.' >&2
+              exit 1
+            fi
+
+            base_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
+            if ! git show-ref --verify --quiet "${base_ref}"; then
+              echo "Default branch ${DEFAULT_BRANCH} is not available in the checkout." >&2
+              exit 1
+            fi
+
+            if ! BASE_SHA="$(git merge-base HEAD "${base_ref}")"; then
+              echo "Unable to determine the merge base with ${DEFAULT_BRANCH}." >&2
               exit 1
             fi
           else

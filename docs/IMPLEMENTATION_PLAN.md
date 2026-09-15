@@ -274,6 +274,11 @@ Status: **DONE for v0.1 automated baseline**
 現在のCI:
 
 - macOS 26 / Xcode 26.6 toolchain verification
+- changed-Swift strict `swift-format` gate
+  - pull requestはcheckout時点のbase branchとのmerge-baseを基準にする
+  - 通常pushは`github.event.before`を基準にする
+  - newly-created refはdefault branchとのmerge-baseへfallbackする
+  - added / copied / modified / renamedされた`.swift`だけをlintし、既存repository全体のformat debtは同一PRへ持ち込まない
 - Swift Package tests
 - pull request時のAddressSanitizer package tests
 - scheduled/manual ThreadSanitizer package tests
@@ -302,12 +307,11 @@ Status: **DONE for v0.1 automated baseline**
 
 v0.1 Release blockerではない追加候補:
 
-- formatting / lint gate
 - Periphery
 - Main Thread Checker
 - Integration / UI automation
 
-追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にASan / TSan / CodeQL / Snapshot Performance Baselineは導入済みなので、古い計画を根拠に二重導入しないこと。
+追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にstrict `swift-format` / ASan / TSan / CodeQL / Snapshot Performance Baselineは導入済みなので、古い計画を根拠に二重導入しないこと。
 
 ### TASK-018 — Release Pipeline
 Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
