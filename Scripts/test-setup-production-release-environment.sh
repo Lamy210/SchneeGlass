@@ -128,9 +128,27 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
+CURRENT_OUTPUT=''
+diagnose_on_exit() {
+  local status=$?
+  trap - EXIT
+  if [[ "$status" -ne 0 ]]; then
+    echo "=== fixture mode: ${GH_FIXTURE_MODE:-unset} ===" >&2
+    echo '=== gh fixture log ===' >&2
+    cat "$LOG" >&2 || true
+    if [[ -n "$CURRENT_OUTPUT" && -f "$CURRENT_OUTPUT" ]]; then
+      echo "=== captured output: $CURRENT_OUTPUT ===" >&2
+      cat "$CURRENT_OUTPUT" >&2 || true
+    fi
+  fi
+  exit "$status"
+}
+trap diagnose_on_exit EXIT
+
 # Safety gate 1: an unprotected main must stop before any Environment mutation.
 export GH_FIXTURE_MODE='unprotected'
 OUTPUT="$FIXTURE/unprotected.log"
+CURRENT_OUTPUT="$OUTPUT"
 set +e
 bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
 STATUS=$?
@@ -146,6 +164,7 @@ grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 : > "$LOG"
 export GH_FIXTURE_MODE='protected-missing-rules'
 OUTPUT="$FIXTURE/missing-rules.log"
+CURRENT_OUTPUT="$OUTPUT"
 set +e
 bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
 STATUS=$?
@@ -161,6 +180,7 @@ grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?
 : > "$LOG"
 export GH_FIXTURE_MODE='protected-rules-missing-checks'
 OUTPUT="$FIXTURE/missing-checks.log"
+CURRENT_OUTPUT="$OUTPUT"
 set +e
 bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
 STATUS=$?
@@ -175,15 +195,12 @@ grep -Fq 'Release required-check verification failed: missing required status ch
 : > "$LOG"
 export GH_FIXTURE_MODE='create-environment'
 OUTPUT="$FIXTURE/create-environment.log"
+CURRENT_OUTPUT="$OUTPUT"
 set +e
 bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
 STATUS=$?
 set -e
 if [[ "$STATUS" -ne 0 ]]; then
-  echo '=== setup output ===' >&2
-  cat "$OUTPUT" >&2 || true
-  echo '=== gh fixture log ===' >&2
-  cat "$LOG" >&2 || true
   exit "$STATUS"
 fi
 
@@ -191,8 +208,6 @@ assert_log() {
   local needle="$1"
   if ! grep -Fq -- "$needle" "$LOG"; then
     echo "Missing expected gh call: $needle" >&2
-    echo '=== gh fixture log ===' >&2
-    cat "$LOG" >&2 || true
     exit 1
   fi
 }
@@ -209,5 +224,7 @@ POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
 VERIFY_LINE="$(grep -n 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
 [[ "$PUT_LINE" -lt "$POST_LINE" && "$POST_LINE" -lt "$VERIFY_LINE" ]]
 
+CURRENT_OUTPUT=''
+trap - EXIT
 rm -rf "$FIXTURE"
 echo 'Production release Environment setup fixtures passed'
