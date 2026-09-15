@@ -15,6 +15,7 @@ cat > "$FIXTURE/bin/gh" <<'SHIM'
 set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
+MODE="${GH_FIXTURE_MODE:-empty}"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
 
@@ -55,7 +56,6 @@ while [[ "$#" -gt 0 ]]; do
       shift 2
       ;;
     --jq)
-      # The setup script should consume raw JSON with repository validators.
       echo 'fixture does not support gh api --jq' >&2
       exit 91
       ;;
@@ -68,7 +68,11 @@ done
 
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
-    printf '[]\n'
+    if [[ "$MODE" == 'duplicate' ]]; then
+      printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+    else
+      printf '[]\n'
+    fi
     ;;
   POST:repos/example/SchneeGlass/rulesets)
     [[ -n "$INPUT" && -f "$INPUT" ]]
@@ -101,6 +105,8 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
+# Happy path: no rulesets exist, so create once, enable immutability, then verify live governance.
+export GH_FIXTURE_MODE='empty'
 bash Scripts/setup-release-governance.sh example/SchneeGlass
 
 grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
@@ -115,5 +121,19 @@ PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
 [[ "$POST_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
 
+# Duplicate safety: an existing canonical ruleset must stop before any mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+DUPLICATE_LOG="$FIXTURE/duplicate.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$DUPLICATE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$DUPLICATE_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
 rm -rf "$FIXTURE"
-echo 'Release governance setup happy-path fixture passed'
+echo 'Release governance setup fixtures passed'
