@@ -89,6 +89,7 @@ swift test \
 Bootstrap CIでは次を必須とします。
 
 ```text
+changed Swift files: xcrun swift-format lint --strict
 Scripts/verify-public-repo.sh
 Scripts/verify-architecture.sh
 Scripts/verify-file-safety.sh
@@ -96,6 +97,25 @@ Scripts/verify-release-metadata.sh
 Scripts/verify-production-release-preflight.sh
 swift test --package-path Packages/SchneeGlassKit
 ```
+
+### Swift Format Gate
+
+Canonical Bootstrap CIでは、既存repository全体を一括整形せず、今回の変更で追加・コピー・変更・renameされた`.swift`だけを`swift-format --strict`で検証します。
+
+Diff基準:
+
+```text
+pull_request:
+  checkout時点のbase branchとのmerge-base ... HEAD
+
+通常push:
+  github.event.before ... HEAD
+
+newly-created ref push:
+  default branchとのmerge-base ... HEAD
+```
+
+PR作成後にbase branchへ別変更が入っても、そのbase側SwiftファイルをPR変更として誤検出しないことをcontractとします。逆にbase commit / merge-base / default branchを解決できない場合はfail-openせずCIを失敗させます。
 
 ### Public Repository Guard
 
@@ -377,6 +397,7 @@ Visual snapshotでは`SnapshotTesting`を`SchneeGlassVisualSnapshotTests`だけ�
 
 ```text
 Xcode 26.6 toolchain guard
+Changed-Swift strict swift-format lint
 Public Repository Guard
 Architecture Guard
 File Safety Guard
@@ -553,7 +574,6 @@ mutable releaseを正式Releaseとして残してはいけません。
 以下はv0.1の現行Release blockerではありません。
 
 ```text
-formatting / lint
 Periphery
 Main Thread Checker
 Integration / UI automation
