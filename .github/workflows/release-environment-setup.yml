@@ -29,4 +29,4 @@ jobs:
           bash -n Scripts/test-setup-production-release-environment.sh
 
       - name: Governance gate fixture
-        run: bash Scripts/test-setup-production-release-environment.sh
+        run: bash -x Scripts/test-setup-production-release-environment.sh
