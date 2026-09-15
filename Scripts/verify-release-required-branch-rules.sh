@@ -42,6 +42,17 @@ for required_rule in "$@"; do
     fi
     fail "missing required active branch rule: $required_rule"
   fi
+
+  if [[ "$required_rule" == 'pull_request' ]]; then
+    jq -e '
+      any(
+        .[][];
+        .type == "pull_request" and
+        .parameters.required_review_thread_resolution == true
+      )
+    ' "$RULES_PAGES_JSON" >/dev/null \
+      || fail "active pull_request rule must require review-thread resolution"
+  fi
 done
 
 echo "Release branch rules verified: $*"

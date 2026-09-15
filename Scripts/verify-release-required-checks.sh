@@ -26,8 +26,9 @@ jq -e 'type == "array" and all(.[]; type == "array")' "$RULES_PAGES_JSON" >/dev/
   || fail "rules payload must be a slurped array of JSON-array pages"
 
 BOUND_OBSERVED="$(mktemp)"
+STRICT_BOUND_OBSERVED="$(mktemp)"
 OTHER_OBSERVED="$(mktemp)"
-trap 'rm -f "$BOUND_OBSERVED" "$OTHER_OBSERVED"' EXIT
+trap 'rm -f "$BOUND_OBSERVED" "$STRICT_BOUND_OBSERVED" "$OTHER_OBSERVED"' EXIT
 
 # A release gate must prove both the exact context and the expected producer. Classic
 # `contexts` are deliberately not authority here because they do not expose an explicit app
@@ -64,6 +65,19 @@ jq -r --argjson expected "$REQUIRED_APP_ID" '
   | .context
 ' "$RULES_PAGES_JSON" >> "$BOUND_OBSERVED"
 
+# For publication, every required check must also be present in an active ruleset that requires
+# the branch to be up to date before merge. A source-bound classic check alone is insufficient
+# because the branch summary does not prove strict status-check policy.
+jq -r --argjson expected "$REQUIRED_APP_ID" '
+  .[][]
+  | select(.type == "required_status_checks")
+  | select(.parameters.strict_required_status_checks_policy == true)
+  | (.parameters.required_status_checks // [])[]?
+  | select(.context | type == "string" and length > 0)
+  | select(.integration_id == $expected)
+  | .context
+' "$RULES_PAGES_JSON" >> "$STRICT_BOUND_OBSERVED"
+
 jq -r --argjson expected "$REQUIRED_APP_ID" '
   .[][]
   | select(.type == "required_status_checks")
@@ -74,6 +88,7 @@ jq -r --argjson expected "$REQUIRED_APP_ID" '
 ' "$RULES_PAGES_JSON" >> "$OTHER_OBSERVED"
 
 sort -u -o "$BOUND_OBSERVED" "$BOUND_OBSERVED"
+sort -u -o "$STRICT_BOUND_OBSERVED" "$STRICT_BOUND_OBSERVED"
 sort -u -o "$OTHER_OBSERVED" "$OTHER_OBSERVED"
 
 for required_check in "$@"; do
@@ -90,6 +105,16 @@ for required_check in "$@"; do
       sed 's/^/  - /' "$OTHER_OBSERVED" >&2
     fi
     fail "missing required status check from app ID $REQUIRED_APP_ID: $required_check"
+  fi
+
+  if ! grep -Fqx -- "$required_check" "$STRICT_BOUND_OBSERVED"; then
+    echo "Observed strict ruleset checks bound to app ID $REQUIRED_APP_ID:" >&2
+    if [[ -s "$STRICT_BOUND_OBSERVED" ]]; then
+      sed 's/^/  - /' "$STRICT_BOUND_OBSERVED" >&2
+    else
+      echo "  (none)" >&2
+    fi
+    fail "required status check is not enforced by a strict active ruleset: $required_check"
   fi
 done
 

@@ -215,7 +215,13 @@ jobs:
             [
               {"type": "deletion"},
               {"type": "non_fast_forward"},
-              {"type": "pull_request", "parameters": {"required_approving_review_count": 0}},
+              {
+                "type": "pull_request",
+                "parameters": {
+                  "required_approving_review_count": 0,
+                  "required_review_thread_resolution": true
+                }
+              },
               {"type": "required_status_checks", "parameters": {"required_status_checks": []}}
             ]
           ]
@@ -241,6 +247,40 @@ jobs:
               exit 1
             fi
           done
+
+          for invalid_review_resolution in false missing string; do
+            case "$invalid_review_resolution" in
+              false)
+                jq 'map(map(if .type == "pull_request" then .parameters.required_review_thread_resolution = false else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-review-resolution.json"
+                ;;
+              missing)
+                jq 'map(map(if .type == "pull_request" then del(.parameters.required_review_thread_resolution) else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-review-resolution.json"
+                ;;
+              string)
+                jq 'map(map(if .type == "pull_request" then .parameters.required_review_thread_resolution = "true" else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-review-resolution.json"
+                ;;
+            esac
+
+            if bash Scripts/verify-release-required-branch-rules.sh \
+              "$FIXTURE/invalid-review-resolution.json" \
+              deletion \
+              non_fast_forward \
+              pull_request; then
+              echo "Branch-rule validator unexpectedly accepted invalid review-thread resolution: $invalid_review_resolution" >&2
+              exit 1
+            fi
+          done
+
+          jq 'map(map(if .type == "pull_request" then .parameters.required_approving_review_count = 1 else . end))' \
+            "$FIXTURE/rules-pages.json" > "$FIXTURE/stronger-review-count.json"
+          bash Scripts/verify-release-required-branch-rules.sh \
+            "$FIXTURE/stronger-review-count.json" \
+            deletion \
+            non_fast_forward \
+            pull_request
 
           printf '{}\n' > "$FIXTURE/malformed.json"
           if bash Scripts/verify-release-required-branch-rules.sh \
@@ -285,6 +325,7 @@ jobs:
                 "type": "required_status_checks",
                 "parameters": {
                   "required_status_checks": [
+                    {"context": "$CANONICAL", "integration_id": $GITHUB_ACTIONS_APP_ID},
                     {"context": "$COMPATIBILITY", "integration_id": $GITHUB_ACTIONS_APP_ID}
                   ],
                   "strict_required_status_checks_policy": true
@@ -300,6 +341,33 @@ jobs:
             "$GITHUB_ACTIONS_APP_ID" \
             "$CANONICAL" \
             "$COMPATIBILITY"
+
+          for invalid_strict_policy in false missing string; do
+            case "$invalid_strict_policy" in
+              false)
+                jq 'map(map(if .type == "required_status_checks" then .parameters.strict_required_status_checks_policy = false else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-strict-policy.json"
+                ;;
+              missing)
+                jq 'map(map(if .type == "required_status_checks" then del(.parameters.strict_required_status_checks_policy) else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-strict-policy.json"
+                ;;
+              string)
+                jq 'map(map(if .type == "required_status_checks" then .parameters.strict_required_status_checks_policy = "true" else . end))' \
+                  "$FIXTURE/rules-pages.json" > "$FIXTURE/invalid-strict-policy.json"
+                ;;
+            esac
+
+            if bash Scripts/verify-release-required-checks.sh \
+              "$FIXTURE/branch.json" \
+              "$FIXTURE/invalid-strict-policy.json" \
+              "$GITHUB_ACTIONS_APP_ID" \
+              "$CANONICAL" \
+              "$COMPATIBILITY"; then
+              echo "Required-check validator unexpectedly accepted invalid strict policy: $invalid_strict_policy" >&2
+              exit 1
+            fi
+          done
 
           cat > "$FIXTURE/rules-pages.json" <<'EOF'
           [[]]
@@ -372,6 +440,32 @@ jobs:
               }
             }
           }
+          EOF
+          if bash Scripts/verify-release-required-checks.sh \
+            "$FIXTURE/branch.json" \
+            "$FIXTURE/rules-pages.json" \
+            "$GITHUB_ACTIONS_APP_ID" \
+            "$CANONICAL" \
+            "$COMPATIBILITY"; then
+            echo 'Required-check validator unexpectedly accepted strict-policy-unproven classic checks.' >&2
+            exit 1
+          fi
+
+          cat > "$FIXTURE/rules-pages.json" <<EOF
+          [
+            [
+              {
+                "type": "required_status_checks",
+                "parameters": {
+                  "required_status_checks": [
+                    {"context": "$CANONICAL", "integration_id": $GITHUB_ACTIONS_APP_ID},
+                    {"context": "$COMPATIBILITY", "integration_id": $GITHUB_ACTIONS_APP_ID}
+                  ],
+                  "strict_required_status_checks_policy": true
+                }
+              }
+            ]
+          ]
           EOF
           bash Scripts/verify-release-required-checks.sh \
             "$FIXTURE/branch.json" \
