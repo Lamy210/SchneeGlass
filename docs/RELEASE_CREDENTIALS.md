@@ -125,9 +125,13 @@ UUID: 8-4-4-4-12 hexadecimal
 
 Team keyではIssuer IDを使用する。Individual keyへ置き換えない。
 
-## Credential input validation
+## Credential validation layers
 
-`Scripts/verify-release-credential-inputs.sh`はcredential materialをkeychainへimportする前に次をfail-closed検証する。
+Production releaseはcredentialを3層で検証する。
+
+### 1. Encoded input contract
+
+`Scripts/verify-release-credential-inputs.sh`はcredential materialをdecodeする前に次をfail-closed検証する。
 
 ```text
 RELEASE_VERSION                         present + X.Y.Z
@@ -139,18 +143,48 @@ APPSTORE_CONNECT_ISSUER_ID             present + UUID
 APPSTORE_CONNECT_PRIVATE_KEY_BASE64    present + valid non-empty base64
 ```
 
-`Scripts/build-notarized-release.sh`はこのvalidatorを最初に実行する。credential metadataが壊れている場合は、temporary keychain作成、`release-output`生成、Apple notarization通信より前に停止する。
+この層は「文字列・identifier・base64 envelopeが正しい」ことだけを証明する。base64として正しくても、中身がPKCS#12やprivate keyでなければ次の層で拒否する。
 
-このvalidatorが証明するのは**input contract**までであり、次は実credentialed runでしか証明できない。
+### 2. Decoded credential structure
 
-- P12が実際にPKCS#12としてimport可能か
-- P12 passwordが正しいか
-- exactly one `Developer ID Application` identityが存在するか
-- certificateのTeam IDが`APPLE_TEAM_ID`と一致するか
-- `.p8` / Key ID / Issuer IDの組み合わせでAppleへ認証できるか
-- notarizationが`Accepted`になるか
+`Scripts/build-notarized-release.sh`はP12と`.p8`を`$RUNNER_TEMP`へdecodeし、permissionを絞った後、`Scripts/verify-release-decoded-credentials.sh`を実行する。
 
-PR preflightではsynthetic fixtureだけを使用し、Environment secretsの実値を読み取らない。
+validatorはOpenSSLを使って次を確認する。
+
+```text
+DeveloperID.p12
+  - file exists / non-empty
+  - supplied P12 passwordでPKCS#12としてparse可能
+
+AuthKey.p8
+  - file exists / non-empty
+  - private keyとしてparse可能
+```
+
+wrong P12 password、valid base64だがPKCS#12ではないpayload、valid base64だがprivate keyではないpayloadはfail-closedする。
+
+この検証は次より**前**に完了する。
+
+- `release-output`作成
+- temporary keychain作成
+- certificate/private key import
+- Apple notarization通信
+
+PR preflightではその場で生成したsynthetic EC key / self-signed certificate / PKCS#12だけを使用する。`production-release` Environment secretsの実値は読み取らず、Appleへ通信しない。
+
+### 3. Real Apple identity / authentication
+
+decoded credential validatorはcredentialの構造を証明するだけであり、次は実credentialed runでのみ証明できる。
+
+- P12内に実際の`Developer ID Application` certificate/private key identityがあること
+- temporary keychainへのimportが成功すること
+- `Developer ID Application` identityがexactly oneであること
+- certificateのTeam IDが`APPLE_TEAM_ID`と一致すること
+- `.p8` / Key ID / Issuer IDの組み合わせがApple側の実Team API keyと一致すること
+- Apple authenticationが成功すること
+- notarization statusが`Accepted`になること
+
+したがってsynthetic fixtureのGREENだけでIssue #33の実credential設定を完了扱いにしない。
 
 ## Ephemeral values
 
@@ -172,24 +206,28 @@ $RUNNER_TEMP/AuthKey.p8
 
 固定home directoryやrepository working treeへcredential materialを書き込まない。
 
-## Temporary keychain lifecycle
+## Temporary credential / keychain lifecycle
 
 Production jobは概ね次の順序を守る。
 
 ```text
-credential input contract validation
+encoded credential input contract validation
   ↓
-random keychain password生成
+release metadata / credential-free production preflight
+  ↓
+P12 / p8を$RUNNER_TEMPへdecode + chmod 600
+  ↓
+decoded PKCS#12 / private-key parse validation
+  ↓
+release-output初期化
   ↓
 temporary keychain作成
-  ↓
-Developer ID P12 decode
   ↓
 certificate/private key import
   ↓
 non-interactive codesign用partition list設定
   ↓
-Developer ID identityを検証
+Developer ID identity / Team IDを検証
   ↓
 archive/sign
   ↓
@@ -199,6 +237,8 @@ notarization / stapling / Gatekeeper
   ↓
 always cleanup
 ```
+
+validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。
 
 `security find-identity`で`Developer ID Application` identityが0件または複数で曖昧な場合はReleaseを停止する。
 
@@ -227,21 +267,22 @@ private keyの内容をcommand argumentやlogへ直接展開しない。
 - [ ] local base64中間ファイルをrepositoryへ置いていない
 - [ ] repository main governance / release immutabilityを別途確認した
 - [ ] `.github/workflows/production-release.yml`のcredential-free preflightがgreen
+- [ ] synthetic decoded credential fixtureがgreen
 
 実値の存在や正しさはGitHub integrationから読み取れないため、チェックボックスをコード変更だけで完了扱いにしない。
 
 ## Fail closed
 
-次のどれかが欠ける、形式不正、またはdecode不能の場合、production jobはunsigned artifactへfallbackしてはいけない。
+次のどれかが欠ける、形式不正、decode不能、またはdecode後のcredential structureが不正な場合、production jobはunsigned artifactへfallbackしてはいけない。
 
-- Developer ID certificate/private key
+- Developer ID certificate/private key payload
 - P12 password
 - Team ID
 - Team App Store Connect API private key
 - key ID
 - issuer ID
 
-Credential不足/不正時はReleaseを明示的に失敗させる。
+wrong P12 password、非PKCS#12 payload、非private-key payloadもReleaseを明示的に失敗させる。
 
 Unsigned Release Candidate workflowは別系統として維持し、production signing failureを回避するための代替公開経路にはしない。
 
