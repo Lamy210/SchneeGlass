@@ -132,6 +132,31 @@ jq -e '
 
 POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
 MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+
+if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
+  jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
+
+  gh api \
+    --method POST \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
+    --input "$POLICY_PAYLOAD" \
+    >/dev/null
+
+  gh api --paginate --slurp \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
+    > "$POLICIES_PAGES_JSON"
+  jq -e '
+    type == "array" and
+    all(.[]; type == "object" and (.branch_policies | type == "array"))
+  ' "$POLICIES_PAGES_JSON" >/dev/null \
+    || fail "deployment branch policies response is malformed after recovery"
+
+  POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
+  MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+fi
+
 [[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \
   || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy named main"
 
