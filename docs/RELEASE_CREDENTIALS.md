@@ -63,7 +63,7 @@ required status checks strict policy=true
 
 repository governanceが不足している場合、Environment APIへのPUT/POST前にfail-closedする。
 
-`production-release`が存在しない場合だけ、helperは次を作成する。
+`production-release`が存在しない場合、helperは次を一括作成する。
 
 ```text
 deployment_branch_policy.protected_branches=false
@@ -71,9 +71,9 @@ deployment_branch_policy.custom_branch_policies=true
 exact main deployment policy (type=branch)
 ```
 
-既存`production-release` Environmentがある場合はEnvironment自体をPUTしない。Required reviewers、wait timer、admin bypass等の既存protection設定を上書きせず、custom branch policy設定とdeployment policyをread-only検証する。deployment policyはexactly 1件、nameは`main`だけを要求する。余分なpolicyがある場合は自動削除せず停止する。
+既存`production-release` Environmentがある場合はEnvironment自体をPUTしない。Required reviewers、wait timer、admin bypass等の既存protection設定を上書きせず、custom branch policy設定をread-only検証する。deployment policyがexactly 1件でnameが`main`ならそのままread-only検証する。通常setup modeでpolicyが0件だけの場合は、途中でpolicy作成だけ失敗したpartial setupからの復旧としてexact `main` branch policy (`type=branch`)を1件だけPOSTし、policy listを再読してexactly 1件の`main`になったことを確認する。1件でも`main`以外、または2件以上ある場合は自動変更・削除せずfail-closedする。`--verify-credential-names` modeはpolicyが0件でも修復せず、常にread-onlyのままfail-closedする。
 
-GitHubのdeployment branch policy list/read responseはpolicyの`name`を返す一方、作成時に指定した`type=branch|tag`をread-backできない。したがって既存Environmentについてhelperが証明できるのは「policyが1件だけでnameが`main`」までであり、既存の同名tag policyをAPI read-backだけでbranch policyと識別できない。初回自動作成時はrequestで`type=branch`を明示する。既存Environmentを引き継ぐ場合はGitHub Settingsでも`main`がBranch ruleであることをhuman-attestする。
+GitHubのdeployment branch policy list/read responseはpolicyの`name`を返す一方、作成時に指定した`type=branch|tag`をread-backできない。したがって既存Environmentについてhelperが証明できるのは「policyが1件だけでnameが`main`」までであり、既存の同名tag policyをAPI read-backだけでbranch policyと識別できない。初回自動作成と0-policy recoveryではrequestで`type=branch`を明示する。既存Environmentを引き継ぐ場合はGitHub Settingsでも`main`がBranch ruleであることをhuman-attestする。
 
 Environment secrets / variablesを登録した後は次で**名前だけ**を確認できる。
 

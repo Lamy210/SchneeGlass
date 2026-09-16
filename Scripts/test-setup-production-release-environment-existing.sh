@@ -8,6 +8,7 @@ FIXTURE="${RUNNER_TEMP:-/tmp}/schneeglass-existing-production-environment-fixtur
 rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/gh.log"
+POLICY_CREATED="$FIXTURE/policy-created"
 : > "$LOG"
 
 cat > "$FIXTURE/bin/gh" <<'SHIM'
@@ -16,6 +17,7 @@ set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
 MODE="${GH_FIXTURE_MODE:-existing-valid}"
+POLICY_CREATED="${GH_FIXTURE_POLICY_CREATED:?}"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
 
@@ -77,9 +79,19 @@ JSON
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     if [[ "$MODE" == 'extra-policy' ]]; then
       printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main"},{"id":102,"name":"release/*"}]}]\n'
+    elif [[ "$MODE" == 'missing-policy' && ! -f "$POLICY_CREATED" ]]; then
+      printf '[{"total_count":0,"branch_policies":[]}]\n'
     else
       printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
     fi
+    ;;
+  POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
+    [[ "$MODE" == 'missing-policy' ]] || {
+      echo "unexpected deployment policy mutation: $METHOD $ENDPOINT" >&2
+      exit 93
+    }
+    touch "$POLICY_CREATED"
+    printf '{"id":101,"name":"main"}\n'
     ;;
   PUT:*|POST:*)
     echo "unexpected mutation for existing Environment: $METHOD $ENDPOINT" >&2
@@ -94,6 +106,7 @@ SHIM
 chmod +x "$FIXTURE/bin/gh"
 
 export GH_FIXTURE_LOG="$LOG"
+export GH_FIXTURE_POLICY_CREATED="$POLICY_CREATED"
 export PATH="$FIXTURE/bin:$PATH"
 
 # Existing valid Environment must be verified without overwriting wait timer/reviewer settings.
@@ -126,6 +139,28 @@ set -e
 grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy named main' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
+
+# A partial prior setup may leave the Environment valid but with no deployment policy.
+# Normal setup mode must recover by creating exact main once, then re-read and verify it.
+: > "$LOG"
+rm -f "$POLICY_CREATED"
+export GH_FIXTURE_MODE='missing-policy'
+OUTPUT="$FIXTURE/missing-policy.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  cat "$LOG" >&2
+  exit "$STATUS"
+fi
+grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+[[ "$(grep -Fc -- '--method POST' "$LOG")" -eq 1 ]]
+grep -Fq 'repos/example/SchneeGlass/environments/production-release/deployment-branch-policies' "$LOG"
+[[ "$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")" -eq 2 ]]
 
 rm -rf "$FIXTURE"
 echo 'Existing production release Environment fixtures passed'
