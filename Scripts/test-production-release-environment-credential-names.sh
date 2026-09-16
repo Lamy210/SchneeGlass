@@ -89,7 +89,11 @@ JSON
     ;;
   GET:repos/example/SchneeGlass/environments?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[{"total_count":1,"environments":[{"name":"production-release"}]}]\n'
+    if [[ "$MODE" == 'missing-environment' ]]; then
+      printf '[{"total_count":0,"environments":[]}]\n'
+    else
+      printf '[{"total_count":1,"environments":[{"name":"production-release"}]}]\n'
+    fi
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
     printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
@@ -113,7 +117,24 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
+# A verification command must never create the Environment it intends to inspect.
+export GH_FIXTURE_MODE='missing-environment'
+OUTPUT="$FIXTURE/missing-environment.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: credential-name verification requires existing Environment: production-release' "$OUTPUT"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'secret list ' "$LOG"
+! grep -Fq 'variable list ' "$LOG"
+
 # Missing secret name must fail without exposing or requesting values.
+: > "$LOG"
 export GH_FIXTURE_MODE='missing-secret'
 OUTPUT="$FIXTURE/missing-secret.log"
 set +e
