@@ -100,7 +100,11 @@ JSON
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+    if [[ "$MODE" == 'missing-policy' ]]; then
+      printf '[{"total_count":0,"branch_policies":[]}]\n'
+    else
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+    fi
     ;;
   PUT:*|POST:*)
     echo "unexpected mutation during credential-name verification: $METHOD $ENDPOINT" >&2
@@ -128,6 +132,22 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Production release environment setup failed: credential-name verification requires existing Environment: production-release' "$OUTPUT"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'secret list ' "$LOG"
+! grep -Fq 'variable list ' "$LOG"
+
+# Verification must not repair a missing deployment policy; setup mode owns recovery.
+: > "$LOG"
+export GH_FIXTURE_MODE='missing-policy'
+OUTPUT="$FIXTURE/missing-policy.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy named main' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'secret list ' "$LOG"
