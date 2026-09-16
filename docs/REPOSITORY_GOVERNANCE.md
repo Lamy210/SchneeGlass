@@ -80,16 +80,16 @@ The helper is intentionally fail-closed. It:
 
 1. reads the current repository ruleset list;
 2. creates `.github/rulesets/main-release-governance.json` only when the repository has zero rulesets;
-3. refuses to create a duplicate when `SchneeGlass main release governance` already exists;
-4. refuses automatic mutation when any differently named ruleset already exists, requiring manual policy review first;
-5. enables repository release immutability through the GitHub REST API;
+3. when exactly one ruleset exists and it is the active canonical `SchneeGlass main release governance` ruleset, resumes setup without creating another ruleset;
+4. rejects an inactive canonical ruleset, duplicate/layered canonical rulesets, and any differently named pre-existing ruleset before further mutation;
+5. enables or re-enables repository release immutability through the GitHub REST API;
 6. re-reads the immutable-release state and requires `enabled=true`;
 7. re-reads the live `main` branch and effective active branch rules;
 8. runs the same branch/rule/required-check validators used by production publication.
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
 
-The setup is not transactional across GitHub APIs. If a later operation fails after an earlier mutation succeeded, do **not** blindly rerun the setup path. Re-read the live repository settings first. A newly-created canonical ruleset intentionally causes the default setup mode to stop rather than create a duplicate.
+The setup is not transactional across GitHub APIs. If ruleset creation succeeds but the subsequent release-immutability operation fails, rerunning the normal setup mode is supported only when the live repository contains exactly one active canonical ruleset and no other repository rulesets. In that narrow recovery state the helper does not POST another ruleset; it retries release immutability and then revalidates the complete live governance state. Inactive, duplicate, layered, or differently named rulesets remain fail-closed and require manual review.
 
 ### Read-only revalidation
 
@@ -220,6 +220,6 @@ If the desired governance policy changes:
 
 1. change the checked-in recipe and validators in a reviewable PR;
 2. pass Bootstrap CI and Publish Production Release preflight;
-3. apply the reviewed change in GitHub Settings or with the administrator helper where its zero-ruleset safety contract applies;
+3. apply the reviewed change in GitHub Settings or with the administrator helper where its zero-ruleset or sole-active-canonical recovery contract applies;
 4. re-read the effective rules for `main` (prefer `--verify-only` once the canonical ruleset exists);
 5. keep Issue #33 open until the first signed/notarized immutable v0.1 release is successfully published.
