@@ -56,6 +56,7 @@ set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
 STATE="${GH_FIXTURE_STATE:?}"
+HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -101,12 +102,23 @@ case "$COMMAND" in
         esac
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
-        echo 'fixture: release history API unavailable' >&2
-        exit 42
+        case "$HISTORY_MODE" in
+          failure)
+            echo 'fixture: release history API unavailable' >&2
+            exit 42
+            ;;
+          empty)
+            exit 0
+            ;;
+          *)
+            echo "unexpected release history fixture mode: $HISTORY_MODE" >&2
+            exit 93
+            ;;
+        esac
         ;;
       *)
         echo "unexpected gh api endpoint: $ENDPOINT" >&2
-        exit 93
+        exit 94
         ;;
     esac
     ;;
@@ -128,7 +140,7 @@ case "$COMMAND" in
           ;;
         *)
           echo "unexpected gh run download argument: $1" >&2
-          exit 94
+          exit 95
           ;;
       esac
     done
@@ -177,7 +189,7 @@ EOF
               ;;
             *)
               echo "unexpected release view argument: $1" >&2
-              exit 95
+              exit 96
               ;;
           esac
         done
@@ -191,7 +203,7 @@ EOF
             printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
             ;;
           isImmutable) printf 'true\n' ;;
-          *) echo "unexpected release view json field: $JSON" >&2; exit 96 ;;
+          *) echo "unexpected release view json field: $JSON" >&2; exit 97 ;;
         esac
         ;;
       create)
@@ -205,22 +217,22 @@ EOF
         touch "$STATE/release-public"
         ;;
       download)
-        echo 'historical release download must not be reached when enumeration fails' >&2
-        exit 97
+        echo 'historical release download is not expected in this fixture' >&2
+        exit 98
         ;;
       delete)
         rm -f "$STATE/release-created" "$STATE/release-public"
         ;;
       *)
         echo "unexpected gh release subcommand: $SUBCOMMAND" >&2
-        exit 98
+        exit 99
         ;;
     esac
     ;;
 
   *)
     echo "unexpected gh command: $COMMAND $*" >&2
-    exit 99
+    exit 100
     ;;
 esac
 SHIM
@@ -239,7 +251,9 @@ export CONFIRM_PUBLISH='true'
 export RUNNER_TEMP="$FIXTURE/runner-temp"
 mkdir -p "$RUNNER_TEMP"
 
-OUTPUT="$FIXTURE/output.log"
+# Enumeration failure must stop publication before any release/tag creation.
+export GH_FIXTURE_HISTORY_MODE='failure'
+OUTPUT="$FIXTURE/output-failure.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT" 2>&1
 STATUS=$?
@@ -254,5 +268,17 @@ fi
 grep -Fq 'Release promotion failed: failed to enumerate public release history' "$OUTPUT"
 ! grep -Fq 'gh release create ' "$LOG"
 
+# A successful enumeration with zero public releases is still the valid first-release path.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+OUTPUT_EMPTY="$FIXTURE/output-empty.log"
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
+
+grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
+grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
+grep -Fq 'gh release create ' "$LOG"
+
 rm -rf "$FIXTURE"
-echo 'Release history enumeration failure fixture passed'
+echo 'Release history enumeration fixtures passed'
