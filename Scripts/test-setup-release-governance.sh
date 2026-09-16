@@ -133,19 +133,17 @@ PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
 [[ "$POST_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
 
-# Duplicate safety: an existing canonical ruleset must stop before any mutation.
+# Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
+# Normal setup must resume without duplicating the ruleset, enable immutability, and re-verify live governance.
 : > "$LOG"
 export GH_FIXTURE_MODE='duplicate'
-DUPLICATE_LOG="$FIXTURE/duplicate.log"
-set +e
-bash Scripts/setup-release-governance.sh example/SchneeGlass >"$DUPLICATE_LOG" 2>&1
-STATUS=$?
-set -e
+bash Scripts/setup-release-governance.sh example/SchneeGlass
 
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$DUPLICATE_LOG"
 ! grep -Fq -- '--method POST' "$LOG"
-! grep -Fq 'immutable-releases' "$LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 # Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
 : > "$LOG"
