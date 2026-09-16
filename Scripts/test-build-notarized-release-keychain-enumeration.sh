@@ -83,9 +83,30 @@ if [[ "$STATUS" -eq 0 ]]; then
   exit 1
 fi
 
-grep -Fq 'Production release failed: failed to enumerate original user keychains' "$OUTPUT"
-grep -Fq 'security list-keychains -d user ' "$LOG"
-! grep -Fq 'security create-keychain ' "$LOG"
-test ! -e release-output
+if ! grep -Fq 'Production release failed: failed to enumerate original user keychains' "$OUTPUT"; then
+  cat "$OUTPUT"
+  echo 'Production release did not fail at original keychain enumeration.' >&2
+  echo 'Observed security commands:' >&2
+  cat "$LOG" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'security list-keychains -d user ' "$LOG"; then
+  cat "$LOG" >&2
+  echo 'Fixture did not exercise original user keychain enumeration.' >&2
+  exit 1
+fi
+
+if grep -Fq 'security create-keychain ' "$LOG"; then
+  cat "$LOG" >&2
+  echo 'Production release attempted to create a keychain after enumeration failed.' >&2
+  exit 1
+fi
+
+if [[ -e release-output ]]; then
+  find release-output -maxdepth 2 -print >&2 || true
+  echo 'Production release created release-output after keychain enumeration failed.' >&2
+  exit 1
+fi
 
 echo 'Original keychain enumeration failure fixture passed'
