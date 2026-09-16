@@ -80,6 +80,10 @@ ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | 
 [[ "$ENVIRONMENT_COUNT" -le 1 ]] \
   || fail "multiple environments named $ENVIRONMENT_NAME were returned"
 
+if [[ "$MODE" == '--verify-credential-names' && "$ENVIRONMENT_COUNT" -eq 0 ]]; then
+  fail "credential-name verification requires existing Environment: $ENVIRONMENT_NAME"
+fi
+
 if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
   jq -n '{
     deployment_branch_policy: {
