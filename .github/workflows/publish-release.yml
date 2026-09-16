@@ -36,6 +36,7 @@ on:
       - '.github/workflows/publish-release.yml'
       - '.github/rulesets/main-release-governance.json'
       - 'Scripts/publish-notarized-release.sh'
+      - 'Scripts/test-publish-release-history-enumeration.sh'
       - 'Scripts/verify-production-candidate-run.sh'
       - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
@@ -71,6 +72,7 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/publish-notarized-release.sh
+          bash -n Scripts/test-publish-release-history-enumeration.sh
           bash -n Scripts/verify-production-candidate-run.sh
           bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/verify-release-evidence.sh
@@ -131,6 +133,9 @@ jobs:
           fi
 
           rm -rf "$FIXTURE"
+
+      - name: Publication release history enumeration failure fixture
+        run: bash Scripts/test-publish-release-history-enumeration.sh
 
       - name: Publication script fails closed without explicit inputs
         run: |
