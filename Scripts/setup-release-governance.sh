@@ -45,7 +45,10 @@ gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
 jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
   || fail "repository rulesets response must be a JSON array"
 
-if [[ "$VERIFY_ONLY" != true ]]; then
+if [[ "$VERIFY_ONLY" == true ]]; then
+  jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null \
+    || fail "verify-only requires canonical ruleset: $RULESET_NAME"
+else
   if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
     fail "matching ruleset already exists: $RULESET_NAME"
   fi
