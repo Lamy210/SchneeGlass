@@ -9,8 +9,16 @@ fail() {
   exit 1
 }
 
-[[ "$#" -eq 1 ]] || fail "usage: $0 <owner/repo>"
+[[ "$#" -ge 1 && "$#" -le 2 ]] || fail "usage: $0 <owner/repo> [--verify-only]"
 REPOSITORY="$1"
+MODE="${2:-}"
+[[ -z "$MODE" || "$MODE" == '--verify-only' ]] \
+  || fail "usage: $0 <owner/repo> [--verify-only]"
+VERIFY_ONLY=false
+if [[ "$MODE" == '--verify-only' ]]; then
+  VERIFY_ONLY=true
+fi
+
 [[ "$REPOSITORY" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] \
   || fail "repository must be owner/repo"
 
@@ -37,25 +45,34 @@ gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
 jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
   || fail "repository rulesets response must be a JSON array"
 
-if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
-  fail "matching ruleset already exists: $RULESET_NAME"
+if [[ "$VERIFY_ONLY" == true ]]; then
+  [[ "$(jq 'length' "$RULESETS_JSON")" -eq 1 ]] \
+    || fail "verify-only requires the canonical ruleset to be the only repository ruleset"
+  jq -e --arg name "$RULESET_NAME" \
+    '.[0].name == $name and .[0].enforcement == "active"' \
+    "$RULESETS_JSON" >/dev/null \
+    || fail "verify-only requires one active canonical ruleset: $RULESET_NAME"
+else
+  if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
+    fail "matching ruleset already exists: $RULESET_NAME"
+  fi
+
+  if [[ "$(jq 'length' "$RULESETS_JSON")" -ne 0 ]]; then
+    fail "repository already has rulesets; review existing policy before applying the canonical recipe"
+  fi
+
+  gh api \
+    --method POST \
+    "repos/$REPOSITORY/rulesets" \
+    --input "$RULESET_RECIPE" \
+    >/dev/null
+
+  gh api \
+    --method PUT \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    "repos/$REPOSITORY/immutable-releases" \
+    >/dev/null
 fi
-
-if [[ "$(jq 'length' "$RULESETS_JSON")" -ne 0 ]]; then
-  fail "repository already has rulesets; review existing policy before applying the canonical recipe"
-fi
-
-gh api \
-  --method POST \
-  "repos/$REPOSITORY/rulesets" \
-  --input "$RULESET_RECIPE" \
-  >/dev/null
-
-gh api \
-  --method PUT \
-  -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/$REPOSITORY/immutable-releases" \
-  >/dev/null
 
 gh api \
   -H 'X-GitHub-Api-Version: 2026-03-10' \
@@ -88,4 +105,8 @@ bash Scripts/verify-release-required-checks.sh \
   'Canonical / Xcode 26.6 / App Build / Safety Guards' \
   'Compatibility / macOS 15 / App Build'
 
-echo "Release governance setup verified for $REPOSITORY"
+if [[ "$VERIFY_ONLY" == true ]]; then
+  echo "Release governance verified read-only for $REPOSITORY"
+else
+  echo "Release governance setup verified for $REPOSITORY"
+fi
