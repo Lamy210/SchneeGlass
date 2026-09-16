@@ -89,7 +89,37 @@ The helper is intentionally fail-closed. It:
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
 
-The setup is not transactional across GitHub APIs. If a later operation fails after an earlier mutation succeeded, do **not** blindly rerun the script. Re-read the live repository settings first. A newly-created canonical ruleset intentionally causes subsequent runs to stop rather than create a duplicate.
+The setup is not transactional across GitHub APIs. If a later operation fails after an earlier mutation succeeded, do **not** blindly rerun the setup path. Re-read the live repository settings first. A newly-created canonical ruleset intentionally causes the default setup mode to stop rather than create a duplicate.
+
+### Read-only revalidation
+
+After governance has been applied, use the explicit read-only mode to revalidate the live state without attempting repository mutation:
+
+```bash
+bash Scripts/setup-release-governance.sh \
+  Lamy210/SchneeGlass \
+  --verify-only
+```
+
+`--verify-only` performs GET/read operations only. It requires all of the following before reporting success:
+
+```text
+exactly one repository ruleset exists
+ruleset name = SchneeGlass main release governance
+ruleset enforcement = active
+repository release immutability enabled = true
+main protected = true
+deletion rule active
+non_fast_forward rule active
+pull_request rule active
+Canonical Bootstrap CI required from GitHub Actions App 15368
+Compatibility Bootstrap CI required from GitHub Actions App 15368
+strict required-status-check policy = true
+```
+
+The mode fails closed before branch-governance certification when the canonical ruleset is missing, inactive, or layered with another repository ruleset. It never creates/updates a ruleset and never enables release immutability.
+
+This read-only check verifies the observable API state used by the production publication validators. It does **not** replace the human review of bypass actors or other repository-administration settings described below.
 
 ### Manual fallback
 
@@ -191,5 +221,5 @@ If the desired governance policy changes:
 1. change the checked-in recipe and validators in a reviewable PR;
 2. pass Bootstrap CI and Publish Production Release preflight;
 3. apply the reviewed change in GitHub Settings or with the administrator helper where its zero-ruleset safety contract applies;
-4. re-read the effective rules for `main`;
+4. re-read the effective rules for `main` (prefer `--verify-only` once the canonical ruleset exists);
 5. keep Issue #33 open until the first signed/notarized immutable v0.1 release is successfully published.
