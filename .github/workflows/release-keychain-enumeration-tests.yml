@@ -1,0 +1,38 @@
+name: Production Release Keychain Safety Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/release-keychain-enumeration-tests.yml'
+      - 'Scripts/build-notarized-release.sh'
+      - 'Scripts/test-build-notarized-release-keychain-enumeration.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  keychain-enumeration:
+    name: Original Keychain Enumeration Failure
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/build-notarized-release.sh
+          bash -n Scripts/test-build-notarized-release-keychain-enumeration.sh
+
+      - name: Keychain enumeration failure fixture
+        run: bash Scripts/test-build-notarized-release-keychain-enumeration.sh

@@ -46,12 +46,17 @@ SIGNED_ENTITLEMENTS="$RUNNER_TEMP/signed-entitlements.plist"
 CODESIGN_DETAILS="$RUNNER_TEMP/codesign-details.txt"
 KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
 
+ORIGINAL_KEYCHAINS_OUTPUT=''
+if ! ORIGINAL_KEYCHAINS_OUTPUT="$(security list-keychains -d user)"; then
+  fail "failed to enumerate original user keychains"
+fi
+
 ORIGINAL_KEYCHAINS=()
 while IFS= read -r keychain; do
   keychain="${keychain#\"}"
   keychain="${keychain%\"}"
   [[ -n "$keychain" ]] && ORIGINAL_KEYCHAINS+=("$keychain")
-done < <(security list-keychains -d user)
+done <<< "$ORIGINAL_KEYCHAINS_OUTPUT"
 
 cleanup() {
   set +e
