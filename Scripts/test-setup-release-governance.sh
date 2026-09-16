@@ -153,6 +153,20 @@ grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 
+# Verify-only must fail closed when the canonical ruleset is absent.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+VERIFY_MISSING_LOG="$FIXTURE/verify-missing.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
 # Layering safety: any pre-existing differently named ruleset requires manual review.
 : > "$LOG"
 export GH_FIXTURE_MODE='unrelated'
