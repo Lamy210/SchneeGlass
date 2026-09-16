@@ -72,6 +72,9 @@ case "$METHOD:$ENDPOINT" in
       duplicate)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
+      mixed)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
+        ;;
       unrelated)
         printf '[{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
         ;;
@@ -164,6 +167,20 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+VERIFY_LAYERED_LOG="$FIXTURE/verify-layered.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_LAYERED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_LAYERED_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
 
