@@ -72,6 +72,12 @@ case "$METHOD:$ENDPOINT" in
       duplicate)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
+      inactive)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"disabled"}]\n'
+        ;;
+      mixed)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
+        ;;
       unrelated)
         printf '[{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
         ;;
@@ -140,6 +146,60 @@ set -e
 grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$DUPLICATE_LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
+
+# Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
+
+grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset is absent.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+VERIFY_MISSING_LOG="$FIXTURE/verify-missing.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+VERIFY_LAYERED_LOG="$FIXTURE/verify-layered.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_LAYERED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_LAYERED_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject a present-but-inactive canonical ruleset before certifying live governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+VERIFY_INACTIVE_LOG="$FIXTURE/verify-inactive.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INACTIVE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset enforcement=active' "$VERIFY_INACTIVE_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
 
 # Layering safety: any pre-existing differently named ruleset requires manual review.
 : > "$LOG"
