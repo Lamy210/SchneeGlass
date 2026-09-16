@@ -124,6 +124,13 @@ grep -E "^[0-9a-fA-F]{64}  ${ARCHIVE_NAME}$" "$CHECKSUMS" >/dev/null \
 # Every public (non-draft) release is distribution history, including prereleases.
 # Download its release evidence and require the new build number to exceed the
 # maximum previously distributed build. Missing/malformed history fails closed.
+PUBLISHED_TAGS="$CANDIDATE_DIR/published-release-tags.txt"
+if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+  --jq '.[] | select(.draft == false) | .tag_name' \
+  > "$PUBLISHED_TAGS"; then
+  fail "failed to enumerate public release history"
+fi
+
 HISTORY_INDEX=0
 while IFS= read -r PUBLISHED_TAG; do
   [[ -n "$PUBLISHED_TAG" ]] || continue
@@ -139,10 +146,7 @@ while IFS= read -r PUBLISHED_TAG; do
 
   test -f "$RELEASE_HISTORY_DIR/RELEASE_EVIDENCE.txt" \
     || fail "public release $PUBLISHED_TAG did not yield RELEASE_EVIDENCE.txt"
-done < <(
-  gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-    --jq '.[] | select(.draft == false) | .tag_name'
-)
+done < "$PUBLISHED_TAGS"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$HISTORY_DIR"
 
