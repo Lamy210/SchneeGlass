@@ -53,19 +53,27 @@ if [[ "$VERIFY_ONLY" == true ]]; then
   jq -e '.[0].enforcement == "active"' "$RULESETS_JSON" >/dev/null \
     || fail "verify-only requires canonical ruleset enforcement=active"
 else
-  if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
-    fail "matching ruleset already exists: $RULESET_NAME"
-  fi
+  RULESET_COUNT="$(jq 'length' "$RULESETS_JSON")"
+  CANONICAL_RULESET_COUNT="$(jq --arg name "$RULESET_NAME" '[.[] | select(.name == $name)] | length' "$RULESETS_JSON")"
 
-  if [[ "$(jq 'length' "$RULESETS_JSON")" -ne 0 ]]; then
-    fail "repository already has rulesets; review existing policy before applying the canonical recipe"
-  fi
+  if [[ "$CANONICAL_RULESET_COUNT" -eq 1 && "$RULESET_COUNT" -eq 1 ]]; then
+    jq -e '.[0].enforcement == "active"' "$RULESETS_JSON" >/dev/null \
+      || fail "matching ruleset exists but enforcement is not active: $RULESET_NAME"
+  else
+    if [[ "$CANONICAL_RULESET_COUNT" -ne 0 ]]; then
+      fail "matching ruleset already exists: $RULESET_NAME"
+    fi
 
-  gh api \
-    --method POST \
-    "repos/$REPOSITORY/rulesets" \
-    --input "$RULESET_RECIPE" \
-    >/dev/null
+    if [[ "$RULESET_COUNT" -ne 0 ]]; then
+      fail "repository already has rulesets; review existing policy before applying the canonical recipe"
+    fi
+
+    gh api \
+      --method POST \
+      "repos/$REPOSITORY/rulesets" \
+      --input "$RULESET_RECIPE" \
+      >/dev/null
+  fi
 
   gh api \
     --method PUT \
