@@ -50,6 +50,8 @@ if [[ "$VERIFY_ONLY" == true ]]; then
     || fail "verify-only requires canonical ruleset: $RULESET_NAME"
   [[ "$(jq 'length' "$RULESETS_JSON")" -eq 1 ]] \
     || fail "verify-only requires canonical ruleset to be the only repository ruleset"
+  jq -e '.[0].enforcement == "active"' "$RULESETS_JSON" >/dev/null \
+    || fail "verify-only requires canonical ruleset enforcement=active"
 else
   if jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null; then
     fail "matching ruleset already exists: $RULESET_NAME"
