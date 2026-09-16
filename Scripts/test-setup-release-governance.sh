@@ -145,6 +145,36 @@ grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/imm
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
+# Recovery safety: an inactive canonical ruleset is not a resumable partial setup.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+INACTIVE_SETUP_LOG="$FIXTURE/inactive-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$INACTIVE_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset exists but enforcement is not active: SchneeGlass main release governance' "$INACTIVE_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Recovery safety: a layered ruleset stack remains ambiguous and must not be mutated.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+LAYERED_SETUP_LOG="$FIXTURE/layered-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$LAYERED_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$LAYERED_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
 # Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
 : > "$LOG"
 export GH_FIXTURE_MODE='duplicate'
