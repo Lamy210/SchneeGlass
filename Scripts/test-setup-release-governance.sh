@@ -141,6 +141,18 @@ grep -Fq 'Release governance setup failed: matching ruleset already exists: Schn
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 
+# Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
+
+grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
 # Layering safety: any pre-existing differently named ruleset requires manual review.
 : > "$LOG"
 export GH_FIXTURE_MODE='unrelated'
