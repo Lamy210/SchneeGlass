@@ -63,7 +63,7 @@ required status checks strict policy=true
 
 repository governanceが不足している場合、Environment APIへのPUT/POST前にfail-closedする。
 
-`production-release`が存在しない場合だけ、helperは次を作成する。
+`production-release`が存在しない場合、helperは次を一括作成する。
 
 ```text
 deployment_branch_policy.protected_branches=false
