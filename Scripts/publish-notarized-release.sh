@@ -286,6 +286,28 @@ fi
 release_asset_set_is_exact "$PUBLISHED_ASSET_NAMES" \
   || fail "published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation"
 
+if ! PUBLISHED_RELEASE_TARGET="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json targetCommitish \
+  --jq '.targetCommitish')"; then
+  fail "unable to verify published release target; publication state is ambiguous and requires manual reconciliation"
+fi
+[[ "$PUBLISHED_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
+  || fail "published release target does not match candidate source commit; publication state is ambiguous and requires manual reconciliation"
+
+if ! PUBLISHED_TAG_LINE="$(git ls-remote --exit-code --tags origin "refs/tags/$TAG")"; then
+  fail "unable to verify published release tag; publication state is ambiguous and requires manual reconciliation"
+fi
+[[ "$PUBLISHED_TAG_LINE" != *$'\n'* ]] \
+  || fail "published release tag returned an invalid remote ref set; publication state is ambiguous and requires manual reconciliation"
+PUBLISHED_TAG_SHA=''
+PUBLISHED_TAG_REF=''
+IFS=$'\t' read -r PUBLISHED_TAG_SHA PUBLISHED_TAG_REF <<< "$PUBLISHED_TAG_LINE"
+[[ "$PUBLISHED_TAG_SHA" =~ ^[0-9a-f]{40}$ && "$PUBLISHED_TAG_REF" == "refs/tags/$TAG" ]] \
+  || fail "published release tag returned an invalid remote ref; publication state is ambiguous and requires manual reconciliation"
+[[ "$PUBLISHED_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
+  || fail "published release tag does not resolve to candidate source commit; publication state is ambiguous and requires manual reconciliation"
+
 CREATED_RELEASE=false
 trap - EXIT
 rm -rf "$CANDIDATE_DIR"
