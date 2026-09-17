@@ -69,7 +69,7 @@ done
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
-      duplicate|bypass)
+      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
       inactive)
@@ -90,12 +90,27 @@ case "$METHOD:$ENDPOINT" in
     [[ -n "$INPUT" && -f "$INPUT" ]]
     printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
     ;;
+  GET:repos/example/SchneeGlass/rulesets/123)
+    printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+    ;;
   GET:repos/example/SchneeGlass/rulesets/55)
-    if [[ "$MODE" == 'bypass' ]]; then
-      printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
-    else
-      printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
-    fi
+    case "$MODE" in
+      bypass)
+        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+        ;;
+      missing-bypass)
+        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+        ;;
+      invalid-bypass)
+        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":{},"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+        ;;
+      wrong-target)
+        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/release"],"exclude":[]}}}\n'
+        ;;
+      *)
+        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+        ;;
+    esac
     ;;
   PUT:repos/example/SchneeGlass/immutable-releases)
     ;;
@@ -124,29 +139,34 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
-# Happy path: no rulesets exist, so create once, enable immutability, then verify live governance.
+# Happy path: no rulesets exist, so create once, verify the created canonical ruleset detail,
+# enable immutability, then verify live governance.
 export GH_FIXTURE_MODE='empty'
 bash Scripts/setup-release-governance.sh example/SchneeGlass
 
 grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
 grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/123' "$LOG"
 grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 POST_LINE="$(grep -n 'api --method POST repos/example/SchneeGlass/rulesets' "$LOG" | cut -d: -f1)"
+DETAIL_LINE="$(grep -n 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
-[[ "$POST_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
+[[ "$POST_LINE" -lt "$DETAIL_LINE" && "$DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
 
 # Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
-# Normal setup must resume without duplicating the ruleset, enable immutability, and re-verify live governance.
+# Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable
+# immutability, and re-verify live governance.
 : > "$LOG"
 export GH_FIXTURE_MODE='duplicate'
 bash Scripts/setup-release-governance.sh example/SchneeGlass
 
 ! grep -Fq -- '--method POST' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
 grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
@@ -188,6 +208,7 @@ export GH_FIXTURE_MODE='duplicate'
 bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
 
 grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
@@ -205,9 +226,51 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
-grep -Fq 'api repos/example/SchneeGlass/rulesets/55' "$LOG"
-! grep -Fq -- '--method POST' "$LOG"
-! grep -Fq -- '--method PUT' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Missing bypass_actors means the administrator helper could not observe the sensitive policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='missing-bypass'
+VERIFY_MISSING_BYPASS_LOG="$FIXTURE/verify-missing-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_MISSING_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# A malformed bypass_actors value must also fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='invalid-bypass'
+VERIFY_INVALID_BYPASS_LOG="$FIXTURE/verify-invalid-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INVALID_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_INVALID_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# The detailed canonical ruleset must still target exactly main.
+: > "$LOG"
+export GH_FIXTURE_MODE='wrong-target'
+VERIFY_WRONG_TARGET_LOG="$FIXTURE/verify-wrong-target.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_WRONG_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset detail does not match the release governance baseline' "$VERIFY_WRONG_TARGET_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
 
 # Verify-only must fail closed when the canonical ruleset is absent.
 : > "$LOG"
