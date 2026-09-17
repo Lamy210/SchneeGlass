@@ -57,6 +57,7 @@ set -euo pipefail
 LOG="${GH_FIXTURE_LOG:?}"
 STATE="${GH_FIXTURE_STATE:?}"
 HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
+RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -202,7 +203,13 @@ EOF
           assets)
             printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
             ;;
-          isImmutable) printf 'true\n' ;;
+          isImmutable)
+            if [[ "$RELEASE_VERIFY_MODE" == 'failure' && -f "$STATE/release-public" ]]; then
+              echo 'fixture: published release immutability read unavailable' >&2
+              exit 42
+            fi
+            printf 'true\n'
+            ;;
           *) echo "unexpected release view json field: $JSON" >&2; exit 97 ;;
         esac
         ;;
@@ -253,6 +260,7 @@ mkdir -p "$RUNNER_TEMP"
 
 # Enumeration failure must stop publication before any release/tag creation.
 export GH_FIXTURE_HISTORY_MODE='failure'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
 OUTPUT="$FIXTURE/output-failure.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT" 2>&1
@@ -273,6 +281,7 @@ grep -Fq 'Release promotion failed: failed to enumerate public release history' 
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
 OUTPUT_EMPTY="$FIXTURE/output-empty.log"
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 
@@ -280,5 +289,40 @@ grep -Fq 'Release build history OK: first public release, current build=1' "$OUT
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
 grep -Fq 'gh release create ' "$LOG"
 
+# Once publication succeeds, an unavailable immutability read is ambiguous. It must not
+# trigger destructive cleanup of a release/tag that may already be public and immutable.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='failure'
+OUTPUT_AMBIGUOUS="$FIXTURE/output-post-publication-verification-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_AMBIGUOUS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_AMBIGUOUS"
+  echo 'Release publication unexpectedly reported success when immutability could not be verified.' >&2
+  exit 1
+fi
+
+if grep -Fq 'gh release delete ' "$LOG"; then
+  cat "$OUTPUT_AMBIGUOUS"
+  cat "$LOG"
+  echo 'Post-publication verification failure triggered destructive release cleanup.' >&2
+  exit 1
+fi
+
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" ]]; then
+  cat "$OUTPUT_AMBIGUOUS"
+  cat "$LOG"
+  echo 'Published release state was removed after verification became unavailable.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+
 rm -rf "$FIXTURE"
-echo 'Release history enumeration fixtures passed'
+echo 'Release history and post-publication verification fixtures passed'
