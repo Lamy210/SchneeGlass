@@ -37,6 +37,8 @@ on:
       - '.github/rulesets/main-release-governance.json'
       - 'Scripts/publish-notarized-release.sh'
       - 'Scripts/test-publish-release-history-enumeration.sh'
+      - 'Scripts/test-publish-release-history-enumeration-base.sh'
+      - 'Scripts/test-publish-release-provenance.sh'
       - 'Scripts/verify-production-candidate-run.sh'
       - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/verify-release-evidence.sh'
