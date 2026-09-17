@@ -28,6 +28,11 @@ CURRENT_BUILD="$(read_single_value "$CURRENT_EVIDENCE" bundle_build)"
 [[ "$CURRENT_SCHEMA" == "1" ]] || fail "unsupported current evidence schema: $CURRENT_SCHEMA"
 [[ "$CURRENT_BUILD" =~ ^[1-9][0-9]*$ ]] || fail "current bundle_build is invalid: $CURRENT_BUILD"
 
+HISTORICAL_EVIDENCE=''
+if ! HISTORICAL_EVIDENCE="$(find "$HISTORY_DIR" -type f -name RELEASE_EVIDENCE.txt -print | sort)"; then
+  fail "failed to enumerate historical release evidence"
+fi
+
 MAX_PUBLISHED_BUILD=0
 PUBLISHED_COUNT=0
 
@@ -43,7 +48,7 @@ while IFS= read -r evidence; do
   if (( build > MAX_PUBLISHED_BUILD )); then
     MAX_PUBLISHED_BUILD="$build"
   fi
-done < <(find "$HISTORY_DIR" -type f -name RELEASE_EVIDENCE.txt -print | sort)
+done <<< "$HISTORICAL_EVIDENCE"
 
 if (( PUBLISHED_COUNT == 0 )); then
   echo "Release build history OK: first public release, current build=$CURRENT_BUILD"
