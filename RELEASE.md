@@ -263,8 +263,10 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 5. publish
 6. require `isImmutable=true`
 7. re-read the immutable public Release and require the same exact three-asset set
+8. re-read the public Release `targetCommitish` and require the exact candidate SHA
+9. resolve the final remote release tag and require it to point to the exact candidate SHA
 
-If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets. If final public asset enumeration is unavailable or the immutable asset set is not exact, the workflow fails without destructive cleanup and requires manual reconciliation.
+If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets. If final public asset or provenance verification is unavailable or inconsistent after publication, the workflow fails without destructive cleanup and requires manual reconciliation because the public state may already be immutable.
 
 The public Release must contain exactly these three assets and no others:
 
@@ -319,6 +321,7 @@ A production macOS release must not be published until all of the following are 
 - publication workflow revalidation PASS
 - final GitHub Release reports `isImmutable=true`
 - final immutable GitHub Release has exactly the expected three assets
+- final public Release target and remote tag both resolve to the exact candidate source commit
 
 Private keys, certificates, passwords, API keys, and notarization credentials must never be committed to this public repository.
 
@@ -377,4 +380,4 @@ The remaining work is operational, not missing release-pipeline code:
 6. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
 7. run `Publish Production Release` with all confirmations, including release governance
 8. verify exact candidate workflow provenance and build-history gate PASS
-9. verify the first immutable public v0.1 Release and record its run/tag/checksum/evidence
+9. verify the first immutable public v0.1 Release, including exact target/tag provenance, and record its run/tag/checksum/evidence
