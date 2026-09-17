@@ -96,7 +96,7 @@ jobs:
           expect_rejected 'short Apple Team ID' \
             env APPLE_TEAM_ID='ABCDE1234' bash Scripts/verify-release-credential-inputs.sh
           expect_rejected 'short App Store Connect key ID' \
-            env APPLE_TEAM_ID='ABCDE12345' APPSTORE_CONNECT_KEY_ID='FGHIJ6789' bash Scripts/verify-release-credential-inputs.sh
+            env APPSTORE_CONNECT_KEY_ID='FGHIJ6789' bash Scripts/verify-release-credential-inputs.sh
           expect_rejected 'non-UUID App Store Connect issuer ID' \
             env APPSTORE_CONNECT_ISSUER_ID='not-a-uuid' bash Scripts/verify-release-credential-inputs.sh
           expect_rejected 'malformed Developer ID P12 base64' \
