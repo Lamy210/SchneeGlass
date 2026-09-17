@@ -60,8 +60,8 @@ HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 printf 'gh ' >> "$LOG"
-printf '%q ' "$@" >> "$LOG"
-printf '\n' >> "$LOG"
+printf '%q ' "$@" >> "$GH_FIXTURE_LOG"
+printf '\n' >> "$GH_FIXTURE_LOG"
 
 COMMAND="${1:-}"
 shift || true
@@ -223,14 +223,16 @@ EOF
             ;;
           isImmutable)
             case "$RELEASE_VERIFY_MODE" in
-              success) printf 'true\n' ;;
+              success)
+                if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
               mutable) printf 'false\n' ;;
               failure)
                 if [[ -f "$STATE/release-public" ]]; then
                   echo 'fixture: published release immutability read unavailable' >&2
                   exit 42
                 fi
-                printf 'true\n'
+                printf 'false\n'
                 ;;
               *)
                 echo "unexpected release verification fixture mode: $RELEASE_VERIFY_MODE" >&2
