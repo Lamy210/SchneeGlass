@@ -17,6 +17,7 @@ on:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
+      - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
       - 'Scripts/verify-release-evidence.sh'
@@ -47,6 +48,14 @@ jobs:
           xcodebuild -version
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Production release path coverage
+        run: |
+          sed -n '/^  pull_request:/,/^permissions:/p' .github/workflows/production-release.yml \
+            | grep -Fq "      - 'Scripts/verify-release-metadata.sh'" || {
+              echo 'Production Release Candidate pull_request.paths is missing release validator: Scripts/verify-release-metadata.sh' >&2
+              exit 1
+            }
 
       - name: Shell syntax
         run: |
