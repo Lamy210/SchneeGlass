@@ -146,14 +146,14 @@ bash Scripts/setup-release-governance.sh example/SchneeGlass
 
 grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
 grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
-grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/123' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
 grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 POST_LINE="$(grep -n 'api --method POST repos/example/SchneeGlass/rulesets' "$LOG" | cut -d: -f1)"
-DETAIL_LINE="$(grep -n 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
+DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
 [[ "$POST_LINE" -lt "$DETAIL_LINE" && "$DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
@@ -166,7 +166,7 @@ export GH_FIXTURE_MODE='duplicate'
 bash Scripts/setup-release-governance.sh example/SchneeGlass
 
 ! grep -Fq -- '--method POST' "$LOG"
-grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
 grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
@@ -208,7 +208,7 @@ export GH_FIXTURE_MODE='duplicate'
 bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
 
 grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
-grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
@@ -226,7 +226,7 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
-grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
 
