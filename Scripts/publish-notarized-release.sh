@@ -53,12 +53,13 @@ RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 CANDIDATE_DIR="$RUNNER_TEMP/SchneeGlassReleasePromotion"
 HISTORY_DIR="$CANDIDATE_DIR/published-build-history"
 CREATED_RELEASE=false
+PUBLICATION_COMMAND_SUCCEEDED=false
 
 cleanup() {
   set +e
   rm -rf "$CANDIDATE_DIR"
 
-  if [[ "$CREATED_RELEASE" == 'true' ]]; then
+  if [[ "$CREATED_RELEASE" == 'true' && "$PUBLICATION_COMMAND_SUCCEEDED" != 'true' ]]; then
     if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
       IS_IMMUTABLE="$(gh release view "$TAG" \
         --repo "$GITHUB_REPOSITORY" \
@@ -208,18 +209,31 @@ gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
   --latest
+PUBLICATION_COMMAND_SUCCEEDED=true
 
-IS_DRAFT="$(gh release view "$TAG" \
+if ! IS_DRAFT="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json isDraft \
-  --jq '.isDraft')"
-[[ "$IS_DRAFT" == 'false' ]] || fail "release did not become public"
+  --jq '.isDraft')"; then
+  fail "unable to verify published release draft state; publication state is ambiguous and requires manual reconciliation"
+fi
 
-IS_IMMUTABLE="$(gh release view "$TAG" \
+if [[ "$IS_DRAFT" != 'false' ]]; then
+  if [[ "$IS_DRAFT" == 'true' ]]; then
+    PUBLICATION_COMMAND_SUCCEEDED=false
+    fail "release did not become public"
+  fi
+  fail "published release returned invalid draft state; publication state is ambiguous and requires manual reconciliation"
+fi
+
+if ! IS_IMMUTABLE="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json isImmutable \
-  --jq '.isImmutable')"
-if [[ "$IS_IMMUTABLE" != 'true' ]]; then
+  --jq '.isImmutable')"; then
+  fail "unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation"
+fi
+
+if [[ "$IS_IMMUTABLE" == 'false' ]]; then
   gh release delete "$TAG" \
     --repo "$GITHUB_REPOSITORY" \
     --cleanup-tag \
@@ -236,6 +250,9 @@ if [[ "$IS_IMMUTABLE" != 'true' ]]; then
   CREATED_RELEASE=false
   fail "published release was not immutable and was removed; enable repository release immutability before retrying"
 fi
+
+[[ "$IS_IMMUTABLE" == 'true' ]] \
+  || fail "published release returned invalid immutability state; publication state is ambiguous and requires manual reconciliation"
 
 CREATED_RELEASE=false
 trap - EXIT
