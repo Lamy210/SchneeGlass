@@ -55,6 +55,31 @@ HISTORY_DIR="$CANDIDATE_DIR/published-build-history"
 CREATED_RELEASE=false
 PUBLICATION_COMMAND_SUCCEEDED=false
 
+release_asset_set_is_exact() {
+  local asset_names="$1"
+  local asset_name=''
+  local total=0
+  local archive_count=0
+  local checksums_count=0
+  local evidence_count=0
+
+  while IFS= read -r asset_name; do
+    [[ -n "$asset_name" ]] || continue
+    total=$((total + 1))
+    case "$asset_name" in
+      "$ARCHIVE_NAME") archive_count=$((archive_count + 1)) ;;
+      SHA256SUMS) checksums_count=$((checksums_count + 1)) ;;
+      RELEASE_EVIDENCE.txt) evidence_count=$((evidence_count + 1)) ;;
+      *) return 1 ;;
+    esac
+  done <<< "$asset_names"
+
+  [[ "$total" -eq 3 \
+    && "$archive_count" -eq 1 \
+    && "$checksums_count" -eq 1 \
+    && "$evidence_count" -eq 1 ]]
+}
+
 cleanup() {
   set +e
   rm -rf "$CANDIDATE_DIR"
@@ -194,16 +219,14 @@ gh release upload "$TAG" \
   "$EVIDENCE" \
   --repo "$GITHUB_REPOSITORY"
 
-ASSET_NAMES="$(gh release view "$TAG" \
+if ! ASSET_NAMES="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json assets \
-  --jq '.assets[].name')"
-printf '%s\n' "$ASSET_NAMES" | grep -Fx "$ARCHIVE_NAME" >/dev/null \
-  || fail "draft release is missing the app archive"
-printf '%s\n' "$ASSET_NAMES" | grep -Fx 'SHA256SUMS' >/dev/null \
-  || fail "draft release is missing SHA256SUMS"
-printf '%s\n' "$ASSET_NAMES" | grep -Fx 'RELEASE_EVIDENCE.txt' >/dev/null \
-  || fail "draft release is missing RELEASE_EVIDENCE.txt"
+  --jq '.assets[].name')"; then
+  fail "unable to enumerate draft release assets"
+fi
+release_asset_set_is_exact "$ASSET_NAMES" \
+  || fail "draft release asset set does not exactly match expected public assets"
 
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -253,6 +276,15 @@ fi
 
 [[ "$IS_IMMUTABLE" == 'true' ]] \
   || fail "published release returned invalid immutability state; publication state is ambiguous and requires manual reconciliation"
+
+if ! PUBLISHED_ASSET_NAMES="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json assets \
+  --jq '.assets[].name')"; then
+  fail "unable to verify published release assets; publication state is ambiguous and requires manual reconciliation"
+fi
+release_asset_set_is_exact "$PUBLISHED_ASSET_NAMES" \
+  || fail "published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation"
 
 CREATED_RELEASE=false
 trap - EXIT
