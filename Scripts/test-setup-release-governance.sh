@@ -69,7 +69,7 @@ done
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
-      duplicate)
+      duplicate|bypass)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
       inactive)
@@ -88,7 +88,14 @@ case "$METHOD:$ENDPOINT" in
     ;;
   POST:repos/example/SchneeGlass/rulesets)
     [[ -n "$INPUT" && -f "$INPUT" ]]
-    printf '{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}\n'
+    printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+    ;;
+  GET:repos/example/SchneeGlass/rulesets/55)
+    if [[ "$MODE" == 'bypass' ]]; then
+      printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+    else
+      printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+    fi
     ;;
   PUT:repos/example/SchneeGlass/immutable-releases)
     ;;
@@ -184,6 +191,21 @@ grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset grants a bypass actor.
+: > "$LOG"
+export GH_FIXTURE_MODE='bypass'
+VERIFY_BYPASS_LOG="$FIXTURE/verify-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
+grep -Fq 'api repos/example/SchneeGlass/rulesets/55' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 
