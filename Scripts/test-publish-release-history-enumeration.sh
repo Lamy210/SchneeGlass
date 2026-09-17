@@ -60,8 +60,8 @@ HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 printf 'gh ' >> "$LOG"
-printf '%q ' "$@" >> "$GH_FIXTURE_LOG"
-printf '\n' >> "$GH_FIXTURE_LOG"
+printf '%q ' "$@" >> "$LOG"
+printf '\n' >> "$LOG"
 
 COMMAND="${1:-}"
 shift || true
