@@ -58,6 +58,7 @@ LOG="${GH_FIXTURE_LOG:?}"
 STATE="${GH_FIXTURE_STATE:?}"
 HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
+ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -201,7 +202,24 @@ EOF
             ;;
           targetCommitish) printf '%s\n' '0123456789abcdef0123456789abcdef01234567' ;;
           assets)
-            printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+            case "$ASSET_MODE" in
+              exact)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              extra-before)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
+                ;;
+              extra-after)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                if [[ -f "$STATE/release-public" ]]; then
+                  printf '%s\n' 'unexpected.txt'
+                fi
+                ;;
+              *)
+                echo "unexpected asset fixture mode: $ASSET_MODE" >&2
+                exit 102
+                ;;
+            esac
             ;;
           isImmutable)
             case "$RELEASE_VERIFY_MODE" in
@@ -271,6 +289,7 @@ mkdir -p "$RUNNER_TEMP"
 # Enumeration failure must stop publication before any release/tag creation.
 export GH_FIXTURE_HISTORY_MODE='failure'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT="$FIXTURE/output-failure.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT" 2>&1
@@ -292,12 +311,80 @@ rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EMPTY="$FIXTURE/output-empty.log"
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 
 grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
 grep -Fq 'gh release create ' "$LOG"
+
+# An unexpected Draft asset must stop publication and clean up the run-owned Draft.
+FAILURES=0
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='extra-before'
+OUTPUT_EXTRA_BEFORE="$FIXTURE/output-extra-before.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_EXTRA_BEFORE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_EXTRA_BEFORE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded with an extra Draft asset.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  grep -Fq 'Release promotion failed: draft release asset set does not exactly match expected public assets' "$OUTPUT_EXTRA_BEFORE"
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Draft asset mismatch reached the publication command.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if ! grep -Fq 'gh release delete ' "$LOG"; then
+    echo 'Run-owned Draft was not cleaned up after a pre-publication asset mismatch.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# A release that gains an extra asset only after publication is ambiguous. The run must
+# fail without destructively deleting a release/tag that may already be immutable.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='extra-after'
+OUTPUT_EXTRA_AFTER="$FIXTURE/output-extra-after.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_EXTRA_AFTER" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_EXTRA_AFTER"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the public asset set changed.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  grep -Fq 'Release promotion failed: published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_EXTRA_AFTER"
+  if grep -Fq 'gh release delete ' "$LOG"; then
+    echo 'Post-publication asset mismatch triggered destructive release cleanup.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" ]]; then
+    echo 'Published release state was removed after the public asset set became ambiguous.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+if [[ "$FAILURES" -ne 0 ]]; then
+  echo "$FAILURES exact release asset fixture case(s) failed." >&2
+  exit 1
+fi
 
 # Once publication succeeds, an unavailable immutability read is ambiguous. It must not
 # trigger destructive cleanup of a release/tag that may already be public and immutable.
@@ -306,6 +393,7 @@ rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='failure'
+export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_AMBIGUOUS="$FIXTURE/output-post-publication-verification-failure.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_AMBIGUOUS" 2>&1
@@ -340,6 +428,7 @@ rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_MUTABLE="$FIXTURE/output-mutable.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE" 2>&1
@@ -362,4 +451,4 @@ if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-pu
 fi
 
 rm -rf "$FIXTURE"
-echo 'Release history and post-publication verification fixtures passed'
+echo 'Release history, exact asset, and post-publication verification fixtures passed'
