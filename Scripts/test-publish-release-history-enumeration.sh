@@ -204,11 +204,21 @@ EOF
             printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
             ;;
           isImmutable)
-            if [[ "$RELEASE_VERIFY_MODE" == 'failure' && -f "$STATE/release-public" ]]; then
-              echo 'fixture: published release immutability read unavailable' >&2
-              exit 42
-            fi
-            printf 'true\n'
+            case "$RELEASE_VERIFY_MODE" in
+              success) printf 'true\n' ;;
+              mutable) printf 'false\n' ;;
+              failure)
+                if [[ -f "$STATE/release-public" ]]; then
+                  echo 'fixture: published release immutability read unavailable' >&2
+                  exit 42
+                fi
+                printf 'true\n'
+                ;;
+              *)
+                echo "unexpected release verification fixture mode: $RELEASE_VERIFY_MODE" >&2
+                exit 101
+                ;;
+            esac
             ;;
           *) echo "unexpected release view json field: $JSON" >&2; exit 97 ;;
         esac
@@ -323,6 +333,33 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
 fi
 
 grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+
+# An explicit mutable result remains safely auto-cleaned, preserving the existing fail-closed contract.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+OUTPUT_MUTABLE="$FIXTURE/output-mutable.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE"
+  echo 'Release publication unexpectedly reported success for an explicitly mutable release.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: published release was not immutable and was removed; enable repository release immutability before retrying' "$OUTPUT_MUTABLE"
+grep -Fq 'gh release delete ' "$LOG"
+if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" ]]; then
+  cat "$OUTPUT_MUTABLE"
+  cat "$LOG"
+  echo 'Explicitly mutable release was not removed.' >&2
+  exit 1
+fi
 
 rm -rf "$FIXTURE"
 echo 'Release history and post-publication verification fixtures passed'
