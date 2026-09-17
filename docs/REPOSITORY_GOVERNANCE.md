@@ -82,10 +82,12 @@ The helper is intentionally fail-closed. It:
 2. creates `.github/rulesets/main-release-governance.json` only when the repository has zero rulesets;
 3. when exactly one ruleset exists and it is the active canonical `SchneeGlass main release governance` ruleset, resumes setup without creating another ruleset;
 4. rejects an inactive canonical ruleset, duplicate/layered canonical rulesets, and any differently named pre-existing ruleset before further mutation;
-5. enables or re-enables repository release immutability through the GitHub REST API;
-6. re-reads the immutable-release state and requires `enabled=true`;
-7. re-reads the live `main` branch and effective active branch rules;
-8. runs the same branch/rule/required-check validators used by production publication.
+5. fetches the exact canonical ruleset detail by ID and requires an active branch ruleset targeting exactly `refs/heads/main` with no excluded refs;
+6. requires `bypass_actors` to be observable and exactly empty before certifying governance;
+7. enables or re-enables repository release immutability through the GitHub REST API;
+8. re-reads the immutable-release state and requires `enabled=true`;
+9. re-reads the live `main` branch and effective active branch rules;
+10. runs the same branch/rule/required-check validators used by production publication.
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
 
@@ -107,6 +109,10 @@ bash Scripts/setup-release-governance.sh \
 exactly one repository ruleset exists
 ruleset name = SchneeGlass main release governance
 ruleset enforcement = active
+ruleset target = branch
+ruleset include = refs/heads/main only
+ruleset exclude = empty
+ruleset bypass_actors = empty
 repository release immutability enabled = true
 main protected = true
 deletion rule active
@@ -117,9 +123,9 @@ Compatibility Bootstrap CI required from GitHub Actions App 15368
 strict required-status-check policy = true
 ```
 
-The mode fails closed before branch-governance certification when the canonical ruleset is missing, inactive, or layered with another repository ruleset. It never creates/updates a ruleset and never enables release immutability.
+The mode fails closed before branch-governance certification when the canonical ruleset is missing, inactive, layered with another repository ruleset, targets anything other than the exact `main` branch contract, or contains a bypass actor. It also fails closed when the ruleset detail does not expose `bypass_actors`; GitHub only returns that field to callers with ruleset write access, so this administrator-side verification must use sufficiently privileged authentication. It never creates/updates a ruleset and never enables release immutability.
 
-This read-only check verifies the observable API state used by the production publication validators. It does **not** replace the human review of bypass actors or other repository-administration settings described below.
+This administrator-side read-only check now proves the canonical ruleset has no bypass actors in addition to the effective branch rules used by production publication. The publication workflow itself intentionally keeps a lower-privilege token and therefore does not substitute for this pre-publication administrator verification or the remaining Environment/repository-setting review described below.
 
 ### Manual fallback
 
@@ -200,10 +206,17 @@ Before setting:
 confirm_release_governance = true
 ```
 
-also verify in GitHub Settings:
+first run the administrator-side read-only verification from an up-to-date `main` checkout:
 
-- the applied ruleset has no unintended bypass actors;
-- no overlapping ruleset introduces an unintended bypass policy;
+```bash
+bash Scripts/setup-release-governance.sh \
+  Lamy210/SchneeGlass \
+  --verify-only
+```
+
+This proves that the sole canonical repository ruleset has no bypass actors at the time of the check. Also verify in GitHub Settings:
+
+- no repository/organization policy outside the sole canonical repository ruleset introduces an unintended bypass path;
 - `production-release` environment approval/deployment protection is configured as intended;
 - repository release immutability is enabled;
 - direct-push behavior is actually blocked for the maintainer account in normal operation.
