@@ -48,6 +48,13 @@ jobs:
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
 
+      - name: Production release path coverage
+        run: |
+          grep -Fq "      - 'Scripts/verify-release-metadata.sh'" .github/workflows/production-release.yml || {
+            echo 'Production Release Candidate pull_request.paths is missing release validator: Scripts/verify-release-metadata.sh' >&2
+            exit 1
+          }
+
       - name: Shell syntax
         run: |
           bash -n Scripts/verify-release-metadata.sh
