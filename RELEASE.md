@@ -259,13 +259,14 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 1. create an asset-free Draft Release targeting the exact candidate SHA
 2. verify `targetCommitish` equals that candidate SHA
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
-4. verify Draft assets
+4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
 5. publish
 6. require `isImmutable=true`
+7. re-read the immutable public Release and require the same exact three-asset set
 
-If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
+If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets. If final public asset enumeration is unavailable or the immutable asset set is not exact, the workflow fails without destructive cleanup and requires manual reconciliation.
 
-Expected public assets:
+The public Release must contain exactly these three assets and no others:
 
 ```text
 SchneeGlass-X.Y.Z.zip
@@ -317,6 +318,7 @@ A production macOS release must not be published until all of the following are 
 - public build-number monotonicity validation PASS
 - publication workflow revalidation PASS
 - final GitHub Release reports `isImmutable=true`
+- final immutable GitHub Release has exactly the expected three assets
 
 Private keys, certificates, passwords, API keys, and notarization credentials must never be committed to this public repository.
 
