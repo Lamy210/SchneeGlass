@@ -13,6 +13,7 @@ LOG="$FIXTURE/commands.log"
 export GH_FIXTURE_ROOT="$ROOT"
 export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_STATE="$FIXTURE/state"
+export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -24,8 +25,18 @@ printf '\n' >> "$GH_FIXTURE_LOG"
 
 case "${1:-}" in
   rev-parse)
-    [[ "${2:-}" == '--show-toplevel' ]]
-    printf '%s\n' "${GH_FIXTURE_ROOT:?}"
+    case "${2:-}" in
+      --show-toplevel)
+        printf '%s\n' "${GH_FIXTURE_ROOT:?}"
+        ;;
+      origin/main)
+        printf '%s\n' "${GH_FIXTURE_CURRENT_MAIN_SHA:?}"
+        ;;
+      *)
+        echo "unexpected git rev-parse argument: ${2:-}" >&2
+        exit 89
+        ;;
+    esac
     ;;
   fetch)
     exit 0
@@ -329,6 +340,33 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
 grep -Fq 'gh release create ' "$LOG"
+
+# A candidate that is only an ancestor of current main is stale. Publication must stop
+# before creating a tag/Release even when the candidate run and artifact are otherwise valid.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_CURRENT_MAIN_SHA='89abcdef0123456789abcdef0123456789abcdef'
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
+OUTPUT_STALE="$FIXTURE/output-stale-candidate.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_STALE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_STALE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a stale candidate ancestor of current main.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: candidate source commit does not match current main' "$OUTPUT_STALE"
+! grep -Fq 'gh release create ' "$LOG"
+export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 
 # An unexpected Draft asset must stop publication and clean up the run-owned Draft.
 FAILURES=0
