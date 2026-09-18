@@ -122,6 +122,9 @@ jobs:
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
 
+      - name: GitHub Actions pin guard
+        run: bash Scripts/verify-github-actions-pins.sh
+
       - name: Architecture guard
         run: bash Scripts/verify-architecture.sh
 
