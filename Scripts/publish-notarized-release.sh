@@ -198,8 +198,12 @@ bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$HISTORY_DIR"
 git fetch origin main --tags --force
 git cat-file -e "$RUN_HEAD_SHA^{commit}" \
   || fail "candidate source commit is not available in repository history"
-git merge-base --is-ancestor "$RUN_HEAD_SHA" origin/main \
-  || fail "candidate source commit is not an ancestor of current main"
+CURRENT_MAIN_SHA="$(git rev-parse origin/main)" \
+  || fail "unable to resolve current main commit"
+[[ "$CURRENT_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] \
+  || fail "current main returned an invalid commit SHA: $CURRENT_MAIN_SHA"
+[[ "$RUN_HEAD_SHA" == "$CURRENT_MAIN_SHA" ]] \
+  || fail "candidate source commit does not match current main: candidate=$RUN_HEAD_SHA current=$CURRENT_MAIN_SHA"
 
 if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
   fail "release tag already exists: $TAG"
