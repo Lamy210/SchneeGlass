@@ -63,6 +63,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
+CLEANUP_RACE_MODE="${GH_FIXTURE_CLEANUP_RACE_MODE:-none}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -211,6 +212,9 @@ EOF
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
                 ;;
               extra-before)
+                if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                  touch "$STATE/release-public"
+                fi
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
                 ;;
               extra-after)
@@ -296,6 +300,7 @@ mkdir -p "$RUNNER_TEMP"
 export GH_FIXTURE_HISTORY_MODE='failure'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
 export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
 OUTPUT="$FIXTURE/output-failure.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT" 2>&1
@@ -356,6 +361,43 @@ else
   fi
 fi
 
+# If the run-owned Draft becomes public before a pre-publication failure and the
+# immutability read is unavailable, cleanup ownership is ambiguous. The trap must preserve
+# the Release/tag instead of deleting based on absence of an immutable=true proof.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='failure'
+export GH_FIXTURE_ASSET_MODE='extra-before'
+export GH_FIXTURE_CLEANUP_RACE_MODE='external-public-before-asset-mismatch'
+OUTPUT_CLEANUP_AMBIGUOUS="$FIXTURE/output-cleanup-ambiguous.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CLEANUP_AMBIGUOUS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_CLEANUP_AMBIGUOUS"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the pre-publication state changed.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: draft release asset set does not exactly match expected public assets' "$OUTPUT_CLEANUP_AMBIGUOUS"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  cat "$OUTPUT_CLEANUP_AMBIGUOUS"
+  cat "$LOG"
+  echo 'Ambiguous pre-publication cleanup state triggered destructive release cleanup.' >&2
+  exit 1
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" ]]; then
+  cat "$OUTPUT_CLEANUP_AMBIGUOUS"
+  cat "$LOG"
+  echo 'Ambiguous pre-publication release state was removed instead of preserved.' >&2
+  exit 1
+fi
+
 # A release that gains an extra asset only after publication is ambiguous. The run must
 # fail without destructively deleting a release/tag that may already be immutable.
 : > "$LOG"
@@ -364,6 +406,7 @@ mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
 export GH_FIXTURE_ASSET_MODE='extra-after'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
 OUTPUT_EXTRA_AFTER="$FIXTURE/output-extra-after.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_EXTRA_AFTER" 2>&1

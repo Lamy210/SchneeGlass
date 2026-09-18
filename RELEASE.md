@@ -266,7 +266,11 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 8. re-read the public Release `targetCommitish` and require the exact candidate SHA
 9. resolve the final remote release tag and require it to point to the exact candidate SHA
 
-If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets. If final public asset or provenance verification is unavailable or inconsistent after publication, the workflow fails without destructive cleanup and requires manual reconciliation because the public state may already be immutable.
+If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
+
+Before this run's own publication command succeeds, automatic EXIT cleanup is allowed only when the live object is positively revalidated as both `isDraft=true` and `isImmutable=false`. If either state read is unavailable/invalid, or the Release is already public/immutable, cleanup becomes non-destructive and requires manual reconciliation. Absence of proof is never treated as authority to delete a Release or tag.
+
+If final public asset or provenance verification is unavailable or inconsistent after publication, the workflow fails without destructive cleanup and requires manual reconciliation because the public state may already be immutable.
 
 The public Release must contain exactly these three assets and no others:
 
