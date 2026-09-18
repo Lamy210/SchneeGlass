@@ -540,7 +540,7 @@ bundle identifier / version / positive build
 notarization / codesign / stapler / Gatekeeper state
 evidence commit SHA == candidate workflow head SHA
 SHA256SUMS
-candidate commit is ancestor of current main
+candidate commit exactly matches freshly fetched current main
 public Release build-number history
 pre-existing tag / release absence
 draft target SHA / assets
