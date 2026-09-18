@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -122,6 +122,9 @@ jobs:
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
 
+      - name: GitHub Actions pin guard
+        run: bash Scripts/verify-github-actions-pins.sh
+
       - name: Architecture guard
         run: bash Scripts/verify-architecture.sh
 
@@ -165,7 +168,7 @@ jobs:
 
       - name: Upload visual snapshot failure diagnostics
         if: ${{ failure() && steps.visual_snapshots.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SchneeGlass-visual-snapshot-failure-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -237,7 +240,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP" SchneeGlass-unsigned-release.zip
 
       - name: Upload unsigned CI app artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SchneeGlass-unsigned-macos-ci
           path: SchneeGlass-unsigned-release.zip
@@ -251,7 +254,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Toolchain
         run: |
