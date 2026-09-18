@@ -32,8 +32,18 @@ printf '\n' >> "$LOG"
 
 case "${1:-}" in
   rev-parse)
-    [[ "${2:-}" == '--show-toplevel' ]]
-    printf '%s\n' "${GH_FIXTURE_ROOT:?}"
+    case "${2:-}" in
+      --show-toplevel)
+        printf '%s\n' "${GH_FIXTURE_ROOT:?}"
+        ;;
+      origin/main)
+        printf '%s\n' "$CANDIDATE_SHA"
+        ;;
+      *)
+        echo "unexpected git rev-parse argument: ${2:-}" >&2
+        exit 89
+        ;;
+    esac
     ;;
   fetch)
     exit 0
