@@ -235,7 +235,7 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] publication workflowがcandidate workflow nameを`Production Release Candidate`として再検証する
 - [ ] publication workflowがcandidate workflow pathを`.github/workflows/production-release.yml`として再検証する
 - [ ] candidate event=`workflow_dispatch` / branch=`main` / completed-successを再検証する
-- [ ] candidate commitがcurrent `main`のancestorである
+- [ ] candidate commitがpublication直前にfresh fetchしたcurrent `main`とexact matchする
 - [ ] schema v1 evidence再検証がPASSする
 - [ ] evidence commit SHAがcandidate workflow head SHAと一致する
 - [ ] evidence bundle identifier / version / buildの再検証がPASSする
