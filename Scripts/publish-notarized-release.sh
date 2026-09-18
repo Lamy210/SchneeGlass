@@ -85,21 +85,40 @@ cleanup() {
   rm -rf "$CANDIDATE_DIR"
 
   if [[ "$CREATED_RELEASE" == 'true' && "$PUBLICATION_COMMAND_SUCCEEDED" != 'true' ]]; then
-    if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-      IS_IMMUTABLE="$(gh release view "$TAG" \
-        --repo "$GITHUB_REPOSITORY" \
-        --json isImmutable \
-        --jq '.isImmutable' 2>/dev/null || true)"
+    CLEANUP_IS_DRAFT=''
+    CLEANUP_IS_IMMUTABLE=''
 
-      if [[ "$IS_IMMUTABLE" != 'true' ]]; then
-        gh release delete "$TAG" \
-          --repo "$GITHUB_REPOSITORY" \
-          --cleanup-tag \
-          --yes >/dev/null 2>&1 || true
-      fi
-    elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-      git push origin ":refs/tags/$TAG" >/dev/null 2>&1 || true
+    if ! CLEANUP_IS_DRAFT="$(gh release view "$TAG" \
+      --repo "$GITHUB_REPOSITORY" \
+      --json isDraft \
+      --jq '.isDraft' 2>/dev/null)"; then
+      echo "Release cleanup skipped for $TAG: draft state is unavailable; manual reconciliation required." >&2
+      return
     fi
+
+    if ! CLEANUP_IS_IMMUTABLE="$(gh release view "$TAG" \
+      --repo "$GITHUB_REPOSITORY" \
+      --json isImmutable \
+      --jq '.isImmutable' 2>/dev/null)"; then
+      echo "Release cleanup skipped for $TAG: immutability state is unavailable; manual reconciliation required." >&2
+      return
+    fi
+
+    if [[ "$CLEANUP_IS_DRAFT" == 'true' && "$CLEANUP_IS_IMMUTABLE" == 'false' ]]; then
+      gh release delete "$TAG" \
+        --repo "$GITHUB_REPOSITORY" \
+        --cleanup-tag \
+        --yes >/dev/null 2>&1 || true
+      return
+    fi
+
+    if [[ "$CLEANUP_IS_DRAFT" != 'false' && "$CLEANUP_IS_DRAFT" != 'true' ]] \
+      || [[ "$CLEANUP_IS_IMMUTABLE" != 'false' && "$CLEANUP_IS_IMMUTABLE" != 'true' ]]; then
+      echo "Release cleanup skipped for $TAG: release state is invalid; manual reconciliation required." >&2
+      return
+    fi
+
+    echo "Release cleanup skipped for $TAG: release is no longer a mutable Draft; manual reconciliation required." >&2
   fi
 }
 trap cleanup EXIT
