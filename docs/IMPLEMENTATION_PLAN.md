@@ -354,7 +354,7 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
   - valid 40-character lowercase SHA
 - Manual QA後のGitHub Release promotion workflow
 - candidate source SHA / evidence / checksum再検証
-- candidate commitがcurrent `main`のancestorであることを検証
+- candidate commitがfreshly fetched current `main`とexact matchすることを検証
 - public Release build history gate
   - first Releaseはhistory 0件でPASS
   - 2回目以降は`candidate bundle_build > max(public release bundle_build)`必須
