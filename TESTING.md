@@ -91,6 +91,7 @@ Bootstrap CIでは次を必須とします。
 ```text
 changed Swift files: xcrun swift-format lint --strict
 Scripts/verify-public-repo.sh
+Scripts/verify-github-actions-pins.sh
 Scripts/verify-architecture.sh
 Scripts/verify-file-safety.sh
 Scripts/verify-release-metadata.sh
@@ -116,6 +117,10 @@ newly-created ref push:
 ```
 
 PR作成後にbase branchへ別変更が入っても、そのbase側SwiftファイルをPR変更として誤検出しないことをcontractとします。逆にbase commit / merge-base / default branchを解決できない場合はfail-openせずCIを失敗させます。
+
+### GitHub Actions Pin Guard
+
+`Scripts/verify-github-actions-pins.sh`は、workflow内の`actions/checkout`と`actions/upload-artifact`がmoving tagではなくfull 40-character commit SHAへ固定されていることを検証します。versionは行末commentで可読性を維持し、依存更新時は公式Action repository由来のSHAを確認して明示更新します。
 
 ### Public Repository Guard
 
