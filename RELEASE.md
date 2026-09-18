@@ -250,7 +250,7 @@ Before creating a Release it revalidates:
 - SHA-256 self-check passes
 - all existing public Release build evidence is readable and valid
 - candidate `bundle_build` is greater than the maximum public Release build when history exists
-- candidate commit exists and is an ancestor of current `main`
+- candidate commit exists and exactly matches the freshly fetched current `main` commit
 - target tag does not already exist
 - target GitHub Release does not already exist
 
