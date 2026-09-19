@@ -252,7 +252,7 @@ Before creating a Release it revalidates:
 - candidate `bundle_build` is greater than the maximum public Release build when history exists
 - candidate commit exists and exactly matches the freshly fetched current `main` commit before Draft creation
 - target tag absence is positively established (`git ls-remote --exit-code` status 2); an unavailable/failed tag probe fails closed
-- target GitHub Release does not already exist
+- target GitHub Release absence is positively established by a fail-closed paginated API enumeration; an unavailable Release probe fails closed
 
 Publication establishes cleanup ownership only after Draft creation succeeds:
 
