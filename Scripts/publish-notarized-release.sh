@@ -251,6 +251,17 @@ fi
 release_asset_set_is_exact "$ASSET_NAMES" \
   || fail "draft release asset set does not exactly match expected public assets"
 
+# Draft preparation can take long enough for main to advance after the initial provenance
+# check. Re-fetch immediately before publication so an older candidate can never become
+# the immutable public Release merely because it was current when Draft creation started.
+git fetch origin main --force
+FINAL_MAIN_SHA="$(git rev-parse origin/main)" \
+  || fail "unable to resolve current main commit before publication"
+[[ "$FINAL_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] \
+  || fail "current main returned an invalid commit SHA before publication: $FINAL_MAIN_SHA"
+[[ "$RUN_HEAD_SHA" == "$FINAL_MAIN_SHA" ]] \
+  || fail "candidate source commit does not match current main before publication: candidate=$RUN_HEAD_SHA current=$FINAL_MAIN_SHA"
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
