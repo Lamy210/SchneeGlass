@@ -38,6 +38,27 @@ jobs:
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
 
+      - name: Release candidate concurrency policy
+        run: |
+          CONCURRENCY_BLOCK="$(sed -n '/^concurrency:$/,/^jobs:/p' .github/workflows/release-candidate.yml)"
+
+          printf '%s\n' "$CONCURRENCY_BLOCK" | grep -F "github.event_name == 'pull_request'" >/dev/null || {
+            echo 'Release Candidate concurrency must distinguish pull_request events.' >&2
+            exit 1
+          }
+          printf '%s\n' "$CONCURRENCY_BLOCK" | grep -F 'github.event.pull_request.number' >/dev/null || {
+            echo 'Release Candidate concurrency must group pull_request runs by PR number.' >&2
+            exit 1
+          }
+          printf '%s\n' "$CONCURRENCY_BLOCK" | grep -F 'github.run_id' >/dev/null || {
+            echo 'Release Candidate concurrency must keep non-PR runs independent by run id.' >&2
+            exit 1
+          }
+          printf '%s\n' "$CONCURRENCY_BLOCK" | grep -F 'cancel-in-progress:' | grep -F "github.event_name == 'pull_request'" >/dev/null || {
+            echo 'Release Candidate concurrency must cancel only pull_request runs.' >&2
+            exit 1
+          }
+
       - name: Validate release metadata
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
