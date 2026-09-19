@@ -134,6 +134,9 @@ jobs:
       - name: Architecture guard
         run: bash Scripts/verify-architecture.sh
 
+      - name: Architecture enumeration failure fixture
+        run: bash Scripts/test-architecture-enumeration.sh
+
       - name: File safety guard
         run: bash Scripts/verify-file-safety.sh
 
