@@ -21,7 +21,7 @@ Commitしてはいけません:
 
 `.gitignore`だけをSecurity Boundaryとして信用しません。
 
-`Scripts/verify-public-repo.sh`をCIで実行し、credential-like tracked fileと高確度Secret Patternを検出します。
+`Scripts/verify-public-repo.sh`をCIで実行し、credential-like tracked fileと高確度Secret Patternを検出します。Tracked-file列挙またはrepository content scanを完了できない場合はfail-closedし、列挙不能を「検出なし」と解釈しません。
 
 このGuardはGitHub側のSecret Scanning等を置き換えるものではなく、Repository内の追加防御です。
 
