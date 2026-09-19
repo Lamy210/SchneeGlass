@@ -547,7 +547,7 @@ evidence commit SHA == candidate workflow head SHA
 SHA256SUMS
 candidate commit exactly matches freshly fetched current main before Draft creation
 public Release build-number history
-pre-existing tag / release absence, with target-tag probe failures distinguished from confirmed no-match
+pre-existing tag / release absence, with both target-tag and GitHub Release probe failures distinguished from confirmed absence
 draft target SHA / assets
 candidate commit still exactly matches re-fetched current main after Draft asset validation
 published release isImmutable == true
