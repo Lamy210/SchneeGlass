@@ -99,6 +99,12 @@ Scripts/verify-production-release-preflight.sh
 swift test --package-path Packages/SchneeGlassKit
 ```
 
+### Public Repository Guard Enumeration
+
+`Scripts/verify-public-repo.sh` must distinguish legitimate no-match results from failures of `git ls-files` and `git grep`. Repository enumeration or secret scanning failure is a CI failure; it must never become a clean Public Repository Guard result.
+
+`Scripts/test-public-repo-enumeration.sh` executes the real guard with synthetic Git failures for both tracked-file enumeration and content scanning.
+
 ### File Safety Guard Enumeration
 
 `Scripts/verify-file-safety.sh` treats grep status `1` as the legitimate no-match result, but any other non-zero enumeration status fails closed. The guard must never convert an unavailable/failed source scan into "zero violations".
