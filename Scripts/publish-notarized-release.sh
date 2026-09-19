@@ -221,7 +221,13 @@ case "$TAG_PROBE_STATUS" in
     ;;
 esac
 
-if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+EXISTING_RELEASE_TAGS="$CANDIDATE_DIR/existing-release-tags.txt"
+if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+  --jq '.[] | .tag_name' \
+  > "$EXISTING_RELEASE_TAGS"; then
+  fail "unable to determine whether GitHub Release already exists: $TAG"
+fi
+if grep -Fxq "$TAG" "$EXISTING_RELEASE_TAGS"; then
   fail "GitHub Release already exists: $TAG"
 fi
 
