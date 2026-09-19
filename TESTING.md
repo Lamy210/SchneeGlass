@@ -130,6 +130,8 @@ newly-created ref push:
 
 PR作成後にbase branchへ別変更が入っても、そのbase側SwiftファイルをPR変更として誤検出しないことをcontractとします。逆にbase commit / merge-base / default branchを解決できない場合はfail-openせずCIを失敗させます。
 
+Changed-Swift enumerationは`Scripts/collect-changed-swift-files.sh`を通し、`git diff --name-only --diff-filter=ACMR -z`のstatusを明示検証します。成功時だけNUL-delimited outputをcommitし、partial output後のdiff failureを「Swift変更0件」へ変換しません。`Scripts/test-swift-format-enumeration.sh`でdiff failure、valid empty result、whitespaceを含むNUL-delimited pathを固定します。
+
 ### GitHub Actions Pin Guard
 
 `Scripts/verify-github-actions-pins.sh`は、workflow内の全remote `uses:` referenceがmoving tag/branchではなくfull 40-character commit SHAへ固定されていることを検証します。local action (`./...`) と `docker://...` はremote repository actionとして扱いません。recursive workflow scanはcomplete enumerationを必須とし、partial output後のgrep failureをpin検証成功へ変換しません。`Scripts/test-github-actions-pin-enumeration.sh`でこのfailure pathを固定します。versionは行末commentで可読性を維持し、依存更新時は公式Action repository由来のSHAを確認して明示更新します。
