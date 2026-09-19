@@ -61,7 +61,7 @@ fi
 secret_regex='-----BEGIN ([A-Z ]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
 
 set +e
-secret_hits="$(git grep -nEI "$secret_regex" -- ':!Package.resolved')"
+secret_hits="$(git grep -nEI -e "$secret_regex" -- ':!Package.resolved')"
 SECRET_SCAN_STATUS=$?
 set -e
 
