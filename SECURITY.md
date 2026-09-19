@@ -237,7 +237,7 @@ Updater等でNetworkを導入する場合、別ADRでNetwork Boundaryを定義�
 
 Runtime dependency追加には `DEPENDENCIES.md` 更新が必要です。
 
-GitHub Actionsのrelease/CI supply chainでは、remote action / reusable workflowをmoving tagやbranchで参照せず、review済みのfull commit SHAへ固定します。`Scripts/verify-github-actions-pins.sh`をBootstrap CIで実行し、remote `uses:` referenceがfull SHA以外へ戻った場合はfail-closedします。
+GitHub Actionsのrelease/CI supply chainでは、remote action / reusable workflowをmoving tagやbranchで参照せず、review済みのfull commit SHAへ固定します。`Scripts/verify-github-actions-pins.sh`をBootstrap CIで実行し、remote `uses:` referenceがfull SHA以外へ戻った場合はfail-closedします。Workflow referenceの列挙自体を完了できない場合もfail-closedし、partial scanを完全なpin証明として扱いません。
 
 確認項目:
 
