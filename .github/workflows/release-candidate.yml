@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# PR heads share a PR-number group so a newer commit cancels stale validation.
+# Tag and manual runs use their run ID so independent release validations never cancel each other.
+concurrency:
+  group: release-candidate-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate-release-candidate:
     name: Unsigned Release Candidate / Xcode 26.6
