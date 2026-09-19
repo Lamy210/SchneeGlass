@@ -205,11 +205,29 @@ CURRENT_MAIN_SHA="$(git rev-parse origin/main)" \
 [[ "$RUN_HEAD_SHA" == "$CURRENT_MAIN_SHA" ]] \
   || fail "candidate source commit does not match current main: candidate=$RUN_HEAD_SHA current=$CURRENT_MAIN_SHA"
 
-if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-  fail "release tag already exists: $TAG"
-fi
+set +e
+git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+TAG_PROBE_STATUS=$?
+set -e
 
-if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+case "$TAG_PROBE_STATUS" in
+  0)
+    fail "release tag already exists: $TAG"
+    ;;
+  2)
+    ;;
+  *)
+    fail "unable to determine whether release tag already exists: $TAG"
+    ;;
+esac
+
+EXISTING_RELEASE_TAGS="$CANDIDATE_DIR/existing-release-tags.txt"
+if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+  --jq '.[] | .tag_name' \
+  > "$EXISTING_RELEASE_TAGS"; then
+  fail "unable to determine whether GitHub Release already exists: $TAG"
+fi
+if grep -Fxq "$TAG" "$EXISTING_RELEASE_TAGS"; then
   fail "GitHub Release already exists: $TAG"
 fi
 
