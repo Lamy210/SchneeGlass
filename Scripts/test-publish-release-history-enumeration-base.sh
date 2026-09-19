@@ -387,9 +387,9 @@ if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-pu
   echo 'Run-owned mutable Draft was not cleaned up after final main freshness failure.' >&2
   exit 1
 fi
-if [[ "$(grep -Fc 'git fetch origin main --force ' "$LOG")" -ne 2 ]]; then
+if [[ "$(grep -Fc 'git fetch origin main ' "$LOG")" -ne 2 ]]; then
   cat "$LOG"
-  echo 'Publication did not re-fetch current main exactly once after the initial freshness check.' >&2
+  echo 'Publication did not fetch current main exactly twice across the initial and final freshness checks.' >&2
   exit 1
 fi
 ASSET_VIEW_LINE="$(grep -nF -- '--json assets ' "$LOG" | tail -n 1 | cut -d: -f1)"
