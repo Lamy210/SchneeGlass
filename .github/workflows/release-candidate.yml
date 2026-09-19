@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# Supersede only older runs for the same pull request. Tag and manual runs use the
+# unique run ID fallback, so independent release validations never share a group.
+concurrency:
+  group: release-candidate-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   validate-release-candidate:
     name: Unsigned Release Candidate / Xcode 26.6

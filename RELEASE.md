@@ -81,6 +81,8 @@ The workflow:
 
 The workflow has read-only repository permissions and does not create a GitHub Release.
 
+For pull requests, Release Candidate Validation uses PR-scoped concurrency and cancels superseded runs when a newer commit is pushed to the same PR. Tag-triggered and manual validations use a per-run concurrency key, so separate release validations remain independent.
+
 ## Production candidate workflow
 
 `.github/workflows/production-release.yml` is the Developer ID / notarization control plane.
