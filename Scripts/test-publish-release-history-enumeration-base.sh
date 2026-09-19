@@ -80,6 +80,13 @@ case "${1:-}" in
         fi
         exit 2
         ;;
+      exists-after-cleanup)
+        if [[ -f "${GH_FIXTURE_STATE:?}/cleanup-attempted" ]]; then
+          printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
+          exit 0
+        fi
+        exit 2
+        ;;
       *)
         echo "unexpected tag probe fixture mode: ${GH_FIXTURE_TAG_PROBE_MODE:-}" >&2
         exit 91
@@ -186,6 +193,12 @@ case "$COMMAND" in
                 if [[ -f "$STATE/cleanup-attempted" ]]; then
                   echo 'fixture: post-cleanup release-name probe unavailable' >&2
                   exit 42
+                fi
+                exit 0
+                ;;
+              exists-after-cleanup)
+                if [[ -f "$STATE/cleanup-attempted" ]]; then
+                  printf '%s\n' 'v0.1.0'
                 fi
                 exit 0
                 ;;
@@ -725,6 +738,55 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
 fi
 
 grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+
+# A cleanup command that returns success is not enough: if the Release still appears
+# in the authoritative enumeration, publication must fail explicitly.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='exists-after-cleanup'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_MUTABLE_RELEASE_REMAINS="$FIXTURE/output-mutable-release-remains.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_REMAINS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE_RELEASE_REMAINS"
+  echo 'Mutable cleanup unexpectedly succeeded while the Release still existed.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: mutable release still exists after cleanup' "$OUTPUT_MUTABLE_RELEASE_REMAINS"
+grep -Fq 'gh release delete ' "$LOG"
+
+# The same positive absence rule applies to the release tag.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_TAG_PROBE_MODE='exists-after-cleanup'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_MUTABLE_TAG_REMAINS="$FIXTURE/output-mutable-tag-remains.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_TAG_REMAINS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE_TAG_REMAINS"
+  echo 'Mutable cleanup unexpectedly succeeded while the release tag still existed.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: mutable release tag still exists after cleanup' "$OUTPUT_MUTABLE_TAG_REMAINS"
+grep -Fq 'gh release delete ' "$LOG"
 
 # If the mutable Release delete succeeds but Release absence cannot be re-enumerated,
 # cleanup verification is ambiguous. The run must not report successful cleanup.
