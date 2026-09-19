@@ -104,6 +104,27 @@ mkdir -p "$SYNTHETIC_REPO"
   rm -f secret.txt
   "$REAL_GIT" rm --cached -q secret.txt
 
+  printf 'LOCAL_ONLY=1\n' > .env
+  "$REAL_GIT" add .env
+
+  set +e
+  PATH="$ORIGINAL_PATH" bash "$ROOT/Scripts/verify-public-repo.sh" >"$FIXTURE/sensitive-path.log" 2>&1
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    cat "$FIXTURE/sensitive-path.log"
+    echo 'Public Repository Guard unexpectedly accepted a tracked .env file.' >&2
+    exit 1
+  fi
+
+  "$REAL_GREP" -Fq \
+    'Public repository violation: credential-like file is tracked.' \
+    "$FIXTURE/sensitive-path.log"
+
+  rm -f .env
+  "$REAL_GIT" rm --cached -q .env
+
   PATH="$ORIGINAL_PATH" bash "$ROOT/Scripts/verify-public-repo.sh" >"$FIXTURE/env-example.log" 2>&1
 )
 
