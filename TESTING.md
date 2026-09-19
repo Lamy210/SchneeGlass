@@ -155,6 +155,8 @@ PR作成後にbase branchへ別変更が入っても、そのbase側Swiftファ�
 - 無承認`@unchecked Sendable`
 - Swift source内のIssue番号なしTODO/FIXME
 
+各recursive scanはgrep status `0`（match）/ `1`（no-match）を区別し、それ以外をenumeration failureとしてfail-closedします。partial match出力後のscan failureもArchitecture違反判定の完了とは扱いません。`Scripts/test-architecture-enumeration.sh`でscan failure、no-match、forbidden import、invalid/valid TODOを固定します。
+
 ### File Safety Guard
 
 user-visible mutationの`removeItem` / `moveItem` / `replaceItem` / `renameatx_np`、source-copy authorityの`fcopyfile` / `O_CREAT`、owned metadata mutationの`mkdirat` / `renameat` / `unlinkat` / `O_CREAT`相当APIをallowlist方式で検査します。
