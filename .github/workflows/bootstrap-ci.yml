@@ -128,6 +128,9 @@ jobs:
       - name: GitHub Actions pin guard
         run: bash Scripts/verify-github-actions-pins.sh
 
+      - name: GitHub Actions pin enumeration failure fixture
+        run: bash Scripts/test-github-actions-pin-enumeration.sh
+
       - name: Architecture guard
         run: bash Scripts/verify-architecture.sh
 
