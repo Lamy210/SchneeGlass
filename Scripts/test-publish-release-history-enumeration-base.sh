@@ -16,6 +16,7 @@ export GH_FIXTURE_STATE="$FIXTURE/state"
 export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
 export GH_FIXTURE_MAIN_RACE_MODE='none'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -59,7 +60,23 @@ case "${1:-}" in
       printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
       exit 0
     fi
-    exit 2
+    case "${GH_FIXTURE_TAG_PROBE_MODE:-absent}" in
+      absent)
+        exit 2
+        ;;
+      exists)
+        printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
+        exit 0
+        ;;
+      failure)
+        echo 'fixture: remote tag probe unavailable' >&2
+        exit 42
+        ;;
+      *)
+        echo "unexpected tag probe fixture mode: ${GH_FIXTURE_TAG_PROBE_MODE:-}" >&2
+        exit 91
+        ;;
+    esac
     ;;
   push)
     exit 0
@@ -401,6 +418,55 @@ if [[ -z "$ASSET_VIEW_LINE" || -z "$FINAL_MAIN_FETCH_LINE" \
   exit 1
 fi
 export GH_FIXTURE_MAIN_RACE_MODE='none'
+
+# A transport/configuration failure while probing the target tag is not proof that the
+# tag is absent. Publication must fail closed before Draft creation.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_TAG_PROBE_MODE='failure'
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
+OUTPUT_TAG_PROBE_FAILURE="$FIXTURE/output-tag-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_TAG_PROBE_FAILURE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly continued when target-tag absence could not be proven.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: unable to determine whether release tag already exists: v0.1.0' "$OUTPUT_TAG_PROBE_FAILURE"
+! grep -Fq 'gh release create ' "$LOG"
+
+# A positively observed pre-existing tag remains an immediate blocker.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_TAG_PROBE_MODE='exists'
+export GH_FIXTURE_HISTORY_MODE='empty'
+OUTPUT_TAG_EXISTS="$FIXTURE/output-tag-exists.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_EXISTS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_TAG_EXISTS"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a pre-existing target tag.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: release tag already exists: v0.1.0' "$OUTPUT_TAG_EXISTS"
+! grep -Fq 'gh release create ' "$LOG"
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
 
 # A candidate that is only an ancestor of current main is stale. Publication must stop
 # before creating a tag/Release even when the candidate run and artifact are otherwise valid.
