@@ -519,6 +519,28 @@ fi
 
 grep -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_PROBE_FAILURE"
 ! grep -Fq 'gh release create ' "$LOG"
+
+# An existing Draft/public GitHub Release with the target tag remains an immediate blocker.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_RELEASE_PROBE_MODE='exists'
+export GH_FIXTURE_HISTORY_MODE='empty'
+OUTPUT_RELEASE_EXISTS="$FIXTURE/output-release-exists.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RELEASE_EXISTS" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RELEASE_EXISTS"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a pre-existing GitHub Release.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_EXISTS"
+! grep -Fq 'gh release create ' "$LOG"
 export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
 
 # A candidate that is only an ancestor of current main is stale. Publication must stop
