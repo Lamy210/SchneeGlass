@@ -122,6 +122,9 @@ jobs:
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
 
+      - name: Public repository enumeration failure fixture
+        run: bash Scripts/test-public-repo-enumeration.sh
+
       - name: GitHub Actions pin guard
         run: bash Scripts/verify-github-actions-pins.sh
 
