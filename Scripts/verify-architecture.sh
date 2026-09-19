@@ -21,6 +21,7 @@ scan_pattern() {
   local label="$1"
   local dir="$2"
   local pattern="$3"
+  local emit_matches="${4:-true}"
   local status
 
   : > "$SCAN_FILE"
@@ -31,7 +32,9 @@ scan_pattern() {
 
   case "$status" in
     0)
-      cat "$SCAN_FILE" || fail "unable to read architecture scan results: $label"
+      if [[ "$emit_matches" == 'true' ]]; then
+        cat "$SCAN_FILE" || fail "unable to read architecture scan results: $label"
+      fi
       return 0
       ;;
     1)
@@ -101,7 +104,7 @@ if scan_pattern \
   violations=1
 fi
 
-if scan_pattern 'TODO/FIXME policy markers' "$SRC" '\b(TODO|FIXME)\b'; then
+if scan_pattern 'TODO/FIXME policy markers' "$SRC" '\b(TODO|FIXME)\b' false; then
   while IFS= read -r match; do
     [[ -n "$match" ]] || continue
     if [[ ! "$match" =~ (TODO|FIXME)\(#[0-9]+\) ]]; then
