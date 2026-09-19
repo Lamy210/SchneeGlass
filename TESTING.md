@@ -99,6 +99,12 @@ Scripts/verify-production-release-preflight.sh
 swift test --package-path Packages/SchneeGlassKit
 ```
 
+### File Safety Guard Enumeration
+
+`Scripts/verify-file-safety.sh` treats grep status `1` as the legitimate no-match result, but any other non-zero enumeration status fails closed. The guard must never convert an unavailable/failed source scan into "zero violations".
+
+`Scripts/test-file-safety-enumeration.sh` executes the real guard with a synthetic grep failure and verifies that enumeration failure is rejected before the allowlist result can be trusted.
+
 ### Swift Format Gate
 
 Canonical Bootstrap CIでは、既存repository全体を一括整形せず、今回の変更で追加・コピー・変更・renameされた`.swift`だけを`swift-format --strict`で検証します。
