@@ -92,19 +92,15 @@ jobs:
             exit 1
           fi
 
+          CHANGED_SWIFT_FILES="$RUNNER_TEMP/changed-swift-files.bin"
+          bash Scripts/collect-changed-swift-files.sh "$BASE_SHA" "$CHANGED_SWIFT_FILES"
+
           files=()
           file_count=0
           while IFS= read -r -d '' file; do
             files+=("$file")
             ((file_count += 1))
-          done < <(
-            git diff \
-              --name-only \
-              --diff-filter=ACMR \
-              -z \
-              "${BASE_SHA}...HEAD" \
-              -- '*.swift'
-          )
+          done < "$CHANGED_SWIFT_FILES"
 
           if (( file_count == 0 )); then
             echo 'No added, copied, modified, or renamed Swift files to lint.'
@@ -118,6 +114,9 @@ jobs:
             --strict \
             --parallel \
             "${files[@]}"
+
+      - name: Swift format changed-file enumeration fixture
+        run: bash Scripts/test-swift-format-enumeration.sh
 
       - name: Public repository guard
         run: bash Scripts/verify-public-repo.sh
