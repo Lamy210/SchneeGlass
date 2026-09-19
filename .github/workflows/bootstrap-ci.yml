@@ -131,6 +131,9 @@ jobs:
       - name: File safety guard
         run: bash Scripts/verify-file-safety.sh
 
+      - name: File safety enumeration failure fixture
+        run: bash Scripts/test-file-safety-enumeration.sh
+
       - name: Release metadata guard
         run: bash Scripts/verify-release-metadata.sh
 

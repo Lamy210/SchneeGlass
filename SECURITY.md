@@ -86,7 +86,7 @@ Copy destinationへのmutationは `SchneeGlassFileSystemAdapter` 内に限定し
 
 Glass-owned staging fileのfinal commit Renameのみ、将来 `InternalStagingCommitter` へ限定して許可します。
 
-`Scripts/verify-file-safety.sh` がallowlist外のmutation APIをCIで検出します。
+`Scripts/verify-file-safety.sh` がallowlist外のmutation APIをCIで検出します。Source scanのno-matchとenumeration failureを区別し、grep status `1`以外の非0はfail-closedします。列挙不能を「違反なし」と解釈してはいけません。
 
 ### Source Copy Authority
 
