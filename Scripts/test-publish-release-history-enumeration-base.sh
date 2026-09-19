@@ -17,6 +17,7 @@ export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
 export GH_FIXTURE_MAIN_RACE_MODE='none'
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -96,6 +97,7 @@ set -euo pipefail
 LOG="${GH_FIXTURE_LOG:?}"
 STATE="${GH_FIXTURE_STATE:?}"
 HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
+RELEASE_PROBE_MODE="${GH_FIXTURE_RELEASE_PROBE_MODE:-absent}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 CLEANUP_RACE_MODE="${GH_FIXTURE_CLEANUP_RACE_MODE:-none}"
@@ -145,17 +147,43 @@ case "$COMMAND" in
         esac
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
-        case "$HISTORY_MODE" in
-          failure)
-            echo 'fixture: release history API unavailable' >&2
-            exit 42
+        case "$JQ" in
+          '.[] | select(.draft == false) | .tag_name')
+            case "$HISTORY_MODE" in
+              failure)
+                echo 'fixture: release history API unavailable' >&2
+                exit 42
+                ;;
+              empty)
+                exit 0
+                ;;
+              *)
+                echo "unexpected release history fixture mode: $HISTORY_MODE" >&2
+                exit 93
+                ;;
+            esac
             ;;
-          empty)
-            exit 0
+          '.[] | .tag_name')
+            case "$RELEASE_PROBE_MODE" in
+              absent)
+                exit 0
+                ;;
+              exists)
+                printf '%s\n' 'v0.1.0'
+                ;;
+              failure)
+                echo 'fixture: release-name probe unavailable' >&2
+                exit 42
+                ;;
+              *)
+                echo "unexpected release probe fixture mode: $RELEASE_PROBE_MODE" >&2
+                exit 104
+                ;;
+            esac
             ;;
           *)
-            echo "unexpected release history fixture mode: $HISTORY_MODE" >&2
-            exit 93
+            echo "unexpected releases jq: $JQ" >&2
+            exit 105
             ;;
         esac
         ;;
@@ -467,6 +495,31 @@ fi
 grep -Fq 'Release promotion failed: release tag already exists: v0.1.0' "$OUTPUT_TAG_EXISTS"
 ! grep -Fq 'gh release create ' "$LOG"
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
+
+# A failed GitHub Release-name probe is not proof that no Draft/public Release already
+# owns the target tag. Publication must fail before Draft creation.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_RELEASE_PROBE_MODE='failure'
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+OUTPUT_RELEASE_PROBE_FAILURE="$FIXTURE/output-release-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RELEASE_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RELEASE_PROBE_FAILURE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly continued when GitHub Release absence could not be proven.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_PROBE_FAILURE"
+! grep -Fq 'gh release create ' "$LOG"
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
 
 # A candidate that is only an ancestor of current main is stale. Publication must stop
 # before creating a tag/Release even when the candidate run and artifact are otherwise valid.
