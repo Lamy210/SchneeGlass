@@ -12,8 +12,31 @@ fail() {
 WORKFLOW_DIR='.github/workflows'
 [[ -d "$WORKFLOW_DIR" ]] || fail "workflow directory is missing: $WORKFLOW_DIR"
 
-MATCHES="$(grep -RInE 'uses:[[:space:]]+' "$WORKFLOW_DIR" --include='*.yml' --include='*.yaml' || true)"
-[[ -n "$MATCHES" ]] || fail "no workflow action references were found"
+TMP_BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+MATCHES_FILE="$(mktemp "$TMP_BASE/schneeglass-action-pin-matches.XXXXXX")"
+cleanup() {
+  rm -f "$MATCHES_FILE"
+}
+trap cleanup EXIT
+
+set +e
+grep -RInE 'uses:[[:space:]]+' "$WORKFLOW_DIR" \
+  --include='*.yml' \
+  --include='*.yaml' \
+  > "$MATCHES_FILE"
+ENUMERATION_STATUS=$?
+set -e
+
+case "$ENUMERATION_STATUS" in
+  0)
+    ;;
+  1)
+    fail "no workflow action references were found"
+    ;;
+  *)
+    fail "unable to enumerate workflow action references (grep status $ENUMERATION_STATUS)"
+    ;;
+esac
 
 REMOTE_COUNT=0
 FAILURES=0
@@ -46,7 +69,7 @@ while IFS= read -r match; do
     echo "Mutable or invalid remote action reference: $match" >&2
     FAILURES=$((FAILURES + 1))
   fi
-done <<< "$MATCHES"
+done < "$MATCHES_FILE"
 
 [[ "$REMOTE_COUNT" -gt 0 ]] || fail "no remote workflow action references were found"
 [[ "$FAILURES" -eq 0 ]] \
