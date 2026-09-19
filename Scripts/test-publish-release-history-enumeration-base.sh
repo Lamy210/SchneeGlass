@@ -73,6 +73,13 @@ case "${1:-}" in
         echo 'fixture: remote tag probe unavailable' >&2
         exit 42
         ;;
+      failure-after-cleanup)
+        if [[ -f "${GH_FIXTURE_STATE:?}/cleanup-attempted" ]]; then
+          echo 'fixture: post-cleanup remote tag probe unavailable' >&2
+          exit 42
+        fi
+        exit 2
+        ;;
       *)
         echo "unexpected tag probe fixture mode: ${GH_FIXTURE_TAG_PROBE_MODE:-}" >&2
         exit 91
@@ -174,6 +181,13 @@ case "$COMMAND" in
               failure)
                 echo 'fixture: release-name probe unavailable' >&2
                 exit 42
+                ;;
+              failure-after-cleanup)
+                if [[ -f "$STATE/cleanup-attempted" ]]; then
+                  echo 'fixture: post-cleanup release-name probe unavailable' >&2
+                  exit 42
+                fi
+                exit 0
                 ;;
               *)
                 echo "unexpected release probe fixture mode: $RELEASE_PROBE_MODE" >&2
@@ -333,6 +347,7 @@ EOF
         exit 98
         ;;
       delete)
+        touch "$STATE/cleanup-attempted"
         rm -f "$STATE/release-created" "$STATE/release-public"
         ;;
       *)
@@ -711,12 +726,74 @@ fi
 
 grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
 
+# If the mutable Release delete succeeds but Release absence cannot be re-enumerated,
+# cleanup verification is ambiguous. The run must not report successful cleanup.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='failure-after-cleanup'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE="$FIXTURE/output-mutable-release-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
+  echo 'Mutable cleanup unexpectedly reported success when Release absence could not be verified.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
+if grep -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"; then
+  cat "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
+  echo 'Ambiguous Release cleanup was incorrectly reported as confirmed removal.' >&2
+  exit 1
+fi
+grep -Fq 'gh release delete ' "$LOG"
+
+# The remote tag probe has a distinct confirmed-absent status. Any other post-cleanup
+# probe failure must also remain ambiguous instead of being treated as absence.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_TAG_PROBE_MODE='failure-after-cleanup'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_MUTABLE_TAG_PROBE_FAILURE="$FIXTURE/output-mutable-tag-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_TAG_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
+  echo 'Mutable cleanup unexpectedly reported success when tag absence could not be verified.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: unable to verify mutable release tag cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
+if grep -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"; then
+  cat "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
+  echo 'Ambiguous tag cleanup was incorrectly reported as confirmed removal.' >&2
+  exit 1
+fi
+grep -Fq 'gh release delete ' "$LOG"
+
 # An explicit mutable result remains safely auto-cleaned, preserving the existing fail-closed contract.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
 export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_MUTABLE="$FIXTURE/output-mutable.log"
 set +e
