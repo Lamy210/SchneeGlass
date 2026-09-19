@@ -269,7 +269,7 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 9. re-read the public Release `targetCommitish` and require the exact candidate SHA
 10. resolve the final remote release tag and require it to point to the exact candidate SHA
 
-If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
+If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. Cleanup is considered confirmed only after a fail-closed GitHub Releases enumeration proves the Release name is absent and `git ls-remote --exit-code` returns status 2 for the tag. If either post-delete absence check is unavailable, invalid, or still reports the object, publication fails as ambiguous and requires manual reconciliation instead of claiming successful removal. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
 
 Before this run's own publication command succeeds, automatic EXIT cleanup is allowed only when the live object is positively revalidated as both `isDraft=true` and `isImmutable=false`. If either state read is unavailable/invalid, or the Release is already public/immutable, cleanup becomes non-destructive and requires manual reconciliation. Absence of proof is never treated as authority to delete a Release or tag.
 
