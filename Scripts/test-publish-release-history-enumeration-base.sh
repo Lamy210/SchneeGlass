@@ -14,6 +14,8 @@ export GH_FIXTURE_ROOT="$ROOT"
 export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_STATE="$FIXTURE/state"
 export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
+export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
+export GH_FIXTURE_MAIN_RACE_MODE='none'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -30,7 +32,12 @@ case "${1:-}" in
         printf '%s\n' "${GH_FIXTURE_ROOT:?}"
         ;;
       origin/main)
-        printf '%s\n' "${GH_FIXTURE_CURRENT_MAIN_SHA:?}"
+        if [[ "${GH_FIXTURE_MAIN_RACE_MODE:-none}" == 'advance-after-upload' \
+          && -f "${GH_FIXTURE_STATE:?}/main-advanced" ]]; then
+          printf '%s\n' "${GH_FIXTURE_OTHER_SHA:?}"
+        else
+          printf '%s\n' "${GH_FIXTURE_CURRENT_MAIN_SHA:?}"
+        fi
         ;;
       *)
         echo "unexpected git rev-parse argument: ${2:-}" >&2
@@ -75,6 +82,7 @@ HISTORY_MODE="${GH_FIXTURE_HISTORY_MODE:-failure}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 CLEANUP_RACE_MODE="${GH_FIXTURE_CLEANUP_RACE_MODE:-none}"
+MAIN_RACE_MODE="${GH_FIXTURE_MAIN_RACE_MODE:-none}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -267,6 +275,9 @@ EOF
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
+        if [[ "$MAIN_RACE_MODE" == 'advance-after-upload' ]]; then
+          touch "$STATE/main-advanced"
+        fi
         ;;
       edit)
         [[ -f "$STATE/release-created" ]]
@@ -340,6 +351,56 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
 grep -Fq 'gh release create ' "$LOG"
+
+# If main advances after the initial freshness check while the Draft is prepared, the
+# candidate is stale at publication time. A final pre-publication check must stop before
+# gh release edit and clean up the run-owned mutable Draft.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
+export GH_FIXTURE_MAIN_RACE_MODE='advance-after-upload'
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
+OUTPUT_MAIN_ADVANCED="$FIXTURE/output-main-advanced-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MAIN_ADVANCED" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MAIN_ADVANCED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a candidate after main advanced during Draft preparation.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release promotion failed: candidate source commit does not match current main before publication' "$OUTPUT_MAIN_ADVANCED"
+if grep -Fq 'gh release edit ' "$LOG"; then
+  echo 'Stale candidate reached the publication command after main advanced during Draft preparation.' >&2
+  exit 1
+fi
+grep -Fq 'gh release delete ' "$LOG"
+if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" ]]; then
+  echo 'Run-owned mutable Draft was not cleaned up after final main freshness failure.' >&2
+  exit 1
+fi
+if [[ "$(grep -Fc 'git fetch origin main ' "$LOG")" -ne 2 ]]; then
+  cat "$LOG"
+  echo 'Publication did not fetch current main exactly twice across the initial and final freshness checks.' >&2
+  exit 1
+fi
+ASSET_VIEW_LINE="$(grep -nF -- '--json assets ' "$LOG" | tail -n 1 | cut -d: -f1)"
+FINAL_MAIN_FETCH_LINE="$(grep -nF 'git fetch origin main --force ' "$LOG" | tail -n 1 | cut -d: -f1)"
+if [[ -z "$ASSET_VIEW_LINE" || -z "$FINAL_MAIN_FETCH_LINE" \
+  || "$FINAL_MAIN_FETCH_LINE" -le "$ASSET_VIEW_LINE" ]]; then
+  cat "$LOG"
+  echo 'Final main re-fetch did not occur after Draft asset validation.' >&2
+  exit 1
+fi
+export GH_FIXTURE_MAIN_RACE_MODE='none'
 
 # A candidate that is only an ancestor of current main is stale. Publication must stop
 # before creating a tag/Release even when the candidate run and artifact are otherwise valid.

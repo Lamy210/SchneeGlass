@@ -250,7 +250,7 @@ Before creating a Release it revalidates:
 - SHA-256 self-check passes
 - all existing public Release build evidence is readable and valid
 - candidate `bundle_build` is greater than the maximum public Release build when history exists
-- candidate commit exists and exactly matches the freshly fetched current `main` commit
+- candidate commit exists and exactly matches the freshly fetched current `main` commit before Draft creation
 - target tag does not already exist
 - target GitHub Release does not already exist
 
@@ -260,11 +260,12 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 2. verify `targetCommitish` equals that candidate SHA
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
-5. publish
-6. require `isImmutable=true`
-7. re-read the immutable public Release and require the same exact three-asset set
-8. re-read the public Release `targetCommitish` and require the exact candidate SHA
-9. resolve the final remote release tag and require it to point to the exact candidate SHA
+5. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
+6. publish
+7. require `isImmutable=true`
+8. re-read the immutable public Release and require the same exact three-asset set
+9. re-read the public Release `targetCommitish` and require the exact candidate SHA
+10. resolve the final remote release tag and require it to point to the exact candidate SHA
 
 If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
 
@@ -322,7 +323,7 @@ A production macOS release must not be published until all of the following are 
 - repository release immutability enabled
 - release governance explicitly reviewed
 - public build-number monotonicity validation PASS
-- publication workflow revalidation PASS
+- publication workflow revalidation PASS, including the final post-Draft current-`main` freshness check
 - final GitHub Release reports `isImmutable=true`
 - final immutable GitHub Release has exactly the expected three assets
 - final public Release target and remote tag both resolve to the exact candidate source commit
