@@ -315,12 +315,31 @@ if [[ "$IS_IMMUTABLE" == 'false' ]]; then
     --yes \
     || fail "published release is mutable and automatic cleanup failed"
 
-  if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+  MUTABLE_CLEANUP_RELEASE_TAGS="$CANDIDATE_DIR/mutable-cleanup-release-tags.txt"
+  if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+    --jq '.[] | .tag_name' \
+    > "$MUTABLE_CLEANUP_RELEASE_TAGS"; then
+    fail "unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation"
+  fi
+  if grep -Fxq "$TAG" "$MUTABLE_CLEANUP_RELEASE_TAGS"; then
     fail "mutable release still exists after cleanup"
   fi
-  if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-    fail "mutable release tag still exists after cleanup"
-  fi
+
+  set +e
+  git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+  MUTABLE_TAG_PROBE_STATUS=$?
+  set -e
+
+  case "$MUTABLE_TAG_PROBE_STATUS" in
+    0)
+      fail "mutable release tag still exists after cleanup"
+      ;;
+    2)
+      ;;
+    *)
+      fail "unable to verify mutable release tag cleanup; publication state is ambiguous and requires manual reconciliation"
+      ;;
+  esac
 
   CREATED_RELEASE=false
   fail "published release was not immutable and was removed; enable repository release immutability before retrying"
