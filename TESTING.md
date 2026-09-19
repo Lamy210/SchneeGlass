@@ -120,7 +120,7 @@ PR作成後にbase branchへ別変更が入っても、そのbase側Swiftファ�
 
 ### GitHub Actions Pin Guard
 
-`Scripts/verify-github-actions-pins.sh`は、workflow内の`actions/checkout`と`actions/upload-artifact`がmoving tagではなくfull 40-character commit SHAへ固定されていることを検証します。versionは行末commentで可読性を維持し、依存更新時は公式Action repository由来のSHAを確認して明示更新します。
+`Scripts/verify-github-actions-pins.sh`は、workflow内の全remote `uses:` referenceがmoving tag/branchではなくfull 40-character commit SHAへ固定されていることを検証します。local action (`./...`) と `docker://...` はremote repository actionとして扱いません。versionは行末commentで可読性を維持し、依存更新時は公式Action repository由来のSHAを確認して明示更新します。
 
 ### Public Repository Guard
 
