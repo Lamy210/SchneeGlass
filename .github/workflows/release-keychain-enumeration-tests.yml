@@ -7,6 +7,7 @@ on:
       - '.github/workflows/release-keychain-enumeration-tests.yml'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/test-build-notarized-release-keychain-enumeration.sh'
+      - 'Scripts/test-build-notarized-release-identity-enumeration.sh'
 
 permissions:
   contents: read
@@ -33,6 +34,10 @@ jobs:
         run: |
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/test-build-notarized-release-keychain-enumeration.sh
+          bash -n Scripts/test-build-notarized-release-identity-enumeration.sh
 
       - name: Keychain enumeration failure fixture
         run: bash Scripts/test-build-notarized-release-keychain-enumeration.sh
+
+      - name: Developer ID identity enumeration failure fixture
+        run: bash Scripts/test-build-notarized-release-identity-enumeration.sh
