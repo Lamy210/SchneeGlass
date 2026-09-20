@@ -12,10 +12,21 @@ fail() {
 EVIDENCE="${1:-$ROOT/release-output/RELEASE_EVIDENCE.txt}"
 [[ -f "$EVIDENCE" ]] || fail "release evidence is missing: $EVIDENCE"
 
-# Mechanically extracted from the production workflow for TDD.
-# The RED fixture demonstrates that this does not distinguish a failed probe
-# from confirmed absence and does not reliably reject a duplicate schema key.
-! grep -q '^schema_version=' "$EVIDENCE"
+set +e
+grep -q '^schema_version=' "$EVIDENCE"
+probe_status=$?
+set -e
+
+case "$probe_status" in
+  0)
+    fail "release evidence already contains schema_version"
+    ;;
+  1)
+    ;;
+  *)
+    fail "unable to probe schema_version (grep status $probe_status)"
+    ;;
+esac
 
 TEMP="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/SchneeGlass-RELEASE_EVIDENCE.$$"
 cleanup() {
