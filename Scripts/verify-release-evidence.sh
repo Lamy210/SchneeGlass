@@ -35,7 +35,24 @@ REQUIRED_KEYS=(
 )
 
 for key in "${REQUIRED_KEYS[@]}"; do
-  count="$(grep -c "^${key}=" "$EVIDENCE" || true)"
+  set +e
+  count="$(grep -c "^${key}=" "$EVIDENCE")"
+  grep_status=$?
+  set -e
+
+  case "$grep_status" in
+    0)
+      ;;
+    1)
+      count='0'
+      ;;
+    *)
+      fail "unable to enumerate evidence key: $key (grep status $grep_status)"
+      ;;
+  esac
+
+  [[ "$count" =~ ^[0-9]+$ ]] \
+    || fail "evidence key count is not numeric for $key: $count"
   [[ "$count" == "1" ]] || fail "evidence must contain exactly one $key"
 done
 
