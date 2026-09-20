@@ -167,6 +167,8 @@ bundle_build
 commit_sha
 ```
 
+Required-key occurrence enumeration is fail-closed. A legitimate grep no-match is normalized to zero and rejected by the exactly-once rule; an enumeration error or malformed/non-numeric count is not treated as a trustworthy key count.
+
 Validation rules include:
 
 - `schema_version=1`
