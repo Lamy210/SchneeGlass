@@ -376,6 +376,8 @@ swift test \
   --filter DesktopGlassVisualSnapshotTests
 ```
 
+Canonical runnerは3つのvisual suiteをそれぞれ独立したstatus-preserving pipelineで実行し、各`swift test`のexit statusをmarker/reference contractとは別に検証します。全markerを出力した後にtest processがnon-zeroで終了した場合もfail-closedし、`tee`成功でtest failureを隠しません。combined logはfailure diagnostics用に維持します。
+
 Referenceが存在しない場合もpixel diffがある場合もfailします。CIが差分を新しい正解として自動承認してはいけません。
 
 Filter mismatch等で0 testのままgreenになることを防ぐため、visual testは次のmarkerをCI logへ出力します。
