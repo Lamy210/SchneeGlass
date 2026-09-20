@@ -520,6 +520,7 @@ signing/evidence helper shell syntax
 credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない
 schema v1 evidence fixture
+required evidence key enumeration failure / malformed count rejection
 unknown evidence key rejection
 PRでは実signing jobをskip
 ```
