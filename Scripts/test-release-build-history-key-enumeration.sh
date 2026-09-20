@@ -10,7 +10,6 @@ mkdir -p "$FIXTURE/bin" "$FIXTURE/history/one"
 
 CURRENT="$FIXTURE/current.txt"
 HISTORICAL="$FIXTURE/history/one/RELEASE_EVIDENCE.txt"
-OUTPUT="$FIXTURE/output.log"
 REAL_GREP="$(command -v grep)"
 
 cat > "$CURRENT" <<'EOF'
@@ -30,34 +29,84 @@ cat > "$FIXTURE/bin/grep" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${1:-}" == '-c' ]]; then
-  printf '1\n'
-  echo 'fixture: release build-history key enumeration unavailable after partial count' >&2
-  exit 42
-fi
+[[ "${1:-}" == '-c' ]] || {
+  echo "fixture: unexpected grep invocation: $*" >&2
+  exit 91
+}
 
-echo "fixture: unexpected grep invocation: $*" >&2
-exit 91
+target="${@: -1}"
+
+case "${BUILD_HISTORY_GREP_FIXTURE_MODE:?}" in
+  current-failure)
+    printf '1\n'
+    echo 'fixture: current release evidence key enumeration unavailable after partial count' >&2
+    exit 42
+    ;;
+  historical-failure)
+    if [[ "$target" == */history/* ]]; then
+      printf '1\n'
+      echo 'fixture: historical release evidence key enumeration unavailable after partial count' >&2
+      exit 42
+    fi
+    exec "$REAL_GREP" "$@"
+    ;;
+  malformed)
+    printf 'not-a-count\n'
+    exit 0
+    ;;
+  *)
+    echo "fixture: unexpected grep mode: ${BUILD_HISTORY_GREP_FIXTURE_MODE:-}" >&2
+    exit 92
+    ;;
+esac
 SHIM
 chmod +x "$FIXTURE/bin/grep"
 
-set +e
-PATH="$FIXTURE/bin:$PATH" \
-  bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" \
-  >"$OUTPUT" 2>&1
-STATUS=$?
-set -e
+run_failure_case() {
+  local mode="$1"
+  local output="$2"
+  local expected_fragment="$3"
 
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT"
-  echo 'Release build-history validator unexpectedly accepted partial key-count output after grep failure.' >&2
-  exit 1
-fi
+  set +e
+  BUILD_HISTORY_GREP_FIXTURE_MODE="$mode" \
+    REAL_GREP="$REAL_GREP" \
+    PATH="$FIXTURE/bin:$PATH" \
+    bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" \
+    >"$output" 2>&1
+  local status=$?
+  set -e
 
-"$REAL_GREP" -Fq \
-  'Release build history validation failed: unable to enumerate schema_version in release evidence' \
-  "$OUTPUT"
-"$REAL_GREP" -Fq '(grep status 42)' "$OUTPUT"
+  if [[ "$status" -eq 0 ]]; then
+    cat "$output"
+    echo "Release build-history validator unexpectedly accepted fixture mode: $mode" >&2
+    exit 1
+  fi
+
+  "$REAL_GREP" -Fq "$expected_fragment" "$output"
+}
+
+CURRENT_FAILURE_OUTPUT="$FIXTURE/current-failure.log"
+run_failure_case \
+  'current-failure' \
+  "$CURRENT_FAILURE_OUTPUT" \
+  'Release build history validation failed: unable to enumerate schema_version in release evidence'
+"$REAL_GREP" -Fq '(grep status 42)' "$CURRENT_FAILURE_OUTPUT"
+"$REAL_GREP" -Fq "$CURRENT" "$CURRENT_FAILURE_OUTPUT"
+
+HISTORICAL_FAILURE_OUTPUT="$FIXTURE/historical-failure.log"
+run_failure_case \
+  'historical-failure' \
+  "$HISTORICAL_FAILURE_OUTPUT" \
+  'Release build history validation failed: unable to enumerate schema_version in release evidence'
+"$REAL_GREP" -Fq '(grep status 42)' "$HISTORICAL_FAILURE_OUTPUT"
+"$REAL_GREP" -Fq "$HISTORICAL" "$HISTORICAL_FAILURE_OUTPUT"
+
+MALFORMED_OUTPUT="$FIXTURE/malformed.log"
+run_failure_case \
+  'malformed' \
+  "$MALFORMED_OUTPUT" \
+  'Release build history validation failed: release evidence key count is not numeric for schema_version'
+"$REAL_GREP" -Fq 'not-a-count' "$MALFORMED_OUTPUT"
 
 rm -rf "$FIXTURE"
-echo 'Release build-history key-enumeration failure fixture passed'
+echo 'Release build-history key-enumeration failure fixtures passed'
