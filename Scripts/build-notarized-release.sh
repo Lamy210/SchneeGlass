@@ -107,16 +107,31 @@ security set-key-partition-list \
 
 security list-keychains -d user -s "$KEYCHAIN_PATH" "${ORIGINAL_KEYCHAINS[@]}"
 
-IDENTITY_LINES="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
-  | grep '"Developer ID Application:' || true)"
-IDENTITY_COUNT="$(printf '%s\n' "$IDENTITY_LINES" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+IDENTITY_OUTPUT=''
+set +e
+IDENTITY_OUTPUT="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH")"
+IDENTITY_STATUS=$?
+set -e
 
+[[ "$IDENTITY_STATUS" -eq 0 ]] \
+  || fail "failed to enumerate Developer ID identities (security status $IDENTITY_STATUS)"
+
+IDENTITY_LINES=()
+while IFS= read -r identity_line; do
+  if [[ "$identity_line" == *'"Developer ID Application:'* ]]; then
+    IDENTITY_LINES+=("$identity_line")
+  fi
+done <<< "$IDENTITY_OUTPUT"
+
+IDENTITY_COUNT="${#IDENTITY_LINES[@]}"
 [[ "$IDENTITY_COUNT" == "1" ]] \
   || fail "expected exactly one Developer ID Application identity in temporary keychain; found $IDENTITY_COUNT"
-printf '%s\n' "$IDENTITY_LINES" | grep -F "($APPLE_TEAM_ID)" >/dev/null \
+
+IDENTITY_LINE="${IDENTITY_LINES[0]}"
+[[ "$IDENTITY_LINE" == *"($APPLE_TEAM_ID)"* ]] \
   || fail "Developer ID identity does not match APPLE_TEAM_ID"
 
-IDENTITY_HASH="$(printf '%s\n' "$IDENTITY_LINES" | awk '{print $2}')"
+read -r _ IDENTITY_HASH _ <<< "$IDENTITY_LINE"
 [[ -n "$IDENTITY_HASH" ]] || fail "unable to resolve Developer ID identity hash"
 
 xcodebuild archive \
