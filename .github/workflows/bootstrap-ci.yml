@@ -160,22 +160,10 @@ jobs:
           SCHNEEGLASS_VISUAL_SNAPSHOTS: '1'
           SNAPSHOT_TESTING_RECORD: never
           SNAPSHOT_ARTIFACTS: ${{ runner.temp }}/visual-snapshot-artifacts
-        run: |
-          log="$RUNNER_TEMP/visual-snapshots.log"
-          {
-            swift test \
-              --package-path Packages/SchneeGlassKit \
-              --filter DesktopGlassVisualSnapshotTests
-            swift test \
-              --package-path Packages/SchneeGlassKit \
-              --filter DesignSystemComponentVisualSnapshotTests
-            swift test \
-              --package-path Packages/SchneeGlassKit \
-              --filter WorkspaceVisualSnapshotTests
-          } 2>&1 | tee "$log"
-          bash Scripts/verify-visual-snapshots.sh DesktopGlassVisualSnapshotTests "$log"
-          bash Scripts/verify-visual-snapshots.sh DesignSystemComponentVisualSnapshotTests "$log"
-          bash Scripts/verify-visual-snapshots.sh WorkspaceVisualSnapshotTests "$log"
+        run: bash Scripts/run-visual-snapshot-regression.sh "$RUNNER_TEMP/visual-snapshots.log"
+
+      - name: Visual snapshot process-exit fixture
+        run: bash Scripts/test-visual-snapshot-exit-status.sh
 
       - name: Upload visual snapshot failure diagnostics
         if: ${{ failure() && steps.visual_snapshots.outcome == 'failure' }}
