@@ -56,9 +56,21 @@ BUNDLE_BUILD="$(plutil -extract CFBundleVersion raw -o - "$INFO_PLIST")"
   || fail "signed bundle build must be a positive integer: $BUNDLE_BUILD"
 
 for key in bundle_identifier bundle_version bundle_build; do
-  if grep -q "^${key}=" "$EVIDENCE"; then
-    fail "release evidence already contains $key"
-  fi
+  set +e
+  grep -q "^${key}=" "$EVIDENCE"
+  probe_status=$?
+  set -e
+
+  case "$probe_status" in
+    0)
+      fail "release evidence already contains $key"
+      ;;
+    1)
+      ;;
+    *)
+      fail "unable to probe release evidence key: $key (grep status $probe_status)"
+      ;;
+  esac
 done
 
 cat >> "$EVIDENCE" <<EOF
