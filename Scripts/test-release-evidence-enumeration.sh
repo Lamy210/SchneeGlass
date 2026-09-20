@@ -34,19 +34,32 @@ cat > "$FIXTURE/bin/grep" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${1:-}" == '-c' ]]; then
-  printf '1\n'
-  echo 'fixture: evidence key enumeration unavailable after partial count' >&2
-  exit 42
-fi
+[[ "${1:-}" == '-c' ]] || {
+  echo "fixture: unexpected grep invocation: $*" >&2
+  exit 91
+}
 
-echo "fixture: unexpected grep invocation: $*" >&2
-exit 91
+case "${EVIDENCE_GREP_FIXTURE_MODE:?}" in
+  failure)
+    printf '1\n'
+    echo 'fixture: evidence key enumeration unavailable after partial count' >&2
+    exit 42
+    ;;
+  malformed)
+    printf 'not-a-count\n'
+    exit 0
+    ;;
+  *)
+    echo "fixture: unexpected grep mode: ${EVIDENCE_GREP_FIXTURE_MODE:-}" >&2
+    exit 92
+    ;;
+esac
 SHIM
 chmod +x "$FIXTURE/bin/grep"
 
 set +e
-PATH="$FIXTURE/bin:$PATH" \
+EVIDENCE_GREP_FIXTURE_MODE='failure' \
+  PATH="$FIXTURE/bin:$PATH" \
   bash Scripts/verify-release-evidence.sh "$EVIDENCE" 0.1.0 "$EXPECTED_COMMIT" \
   >"$OUTPUT" 2>&1
 STATUS=$?
@@ -62,5 +75,24 @@ fi
   'Release evidence validation failed: unable to enumerate evidence key: schema_version (grep status 42)' \
   "$OUTPUT"
 
+MALFORMED_OUTPUT="$FIXTURE/malformed-output.log"
+set +e
+EVIDENCE_GREP_FIXTURE_MODE='malformed' \
+  PATH="$FIXTURE/bin:$PATH" \
+  bash Scripts/verify-release-evidence.sh "$EVIDENCE" 0.1.0 "$EXPECTED_COMMIT" \
+  >"$MALFORMED_OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$MALFORMED_OUTPUT"
+  echo 'Release evidence validator unexpectedly accepted a non-numeric key count.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq \
+  'Release evidence validation failed: evidence key count is not numeric for schema_version: not-a-count' \
+  "$MALFORMED_OUTPUT"
+
 rm -rf "$FIXTURE"
-echo 'Release evidence key-enumeration failure fixture passed'
+echo 'Release evidence key-enumeration failure fixtures passed'
