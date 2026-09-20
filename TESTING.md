@@ -584,7 +584,7 @@ public Release 1件以上:
   candidate bundle_build > max(all public release bundle_build)
 ```
 
-過去public Releaseの`RELEASE_EVIDENCE.txt`が取得不能・malformed・unsupported schemaの場合は公開せずfail-closedします。prereleaseもnon-draftならdistribution historyとして扱います。
+過去public Releaseの`RELEASE_EVIDENCE.txt`が取得不能・malformed・unsupported schemaの場合は公開せずfail-closedします。`schema_version` / `bundle_build` のkey-count enumeration failureやnon-numeric countもtrusted historyとして扱いません。prereleaseもnon-draftならdistribution historyとして扱います。
 
 公開Releaseには少なくとも次を添付します。
 

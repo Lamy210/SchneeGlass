@@ -252,7 +252,7 @@ Before creating a Release it revalidates:
 - evidence commit SHA equals candidate workflow head SHA
 - expected archive is present in `SHA256SUMS`
 - SHA-256 self-check passes
-- all existing public Release build evidence is readable and valid
+- all existing public Release build evidence is readable and valid; schema/build key enumeration failures or malformed counts fail closed
 - candidate `bundle_build` is greater than the maximum public Release build when history exists
 - candidate commit exists and exactly matches the freshly fetched current `main` commit before Draft creation
 - target tag absence is positively established (`git ls-remote --exit-code` status 2); an unavailable/failed tag probe fails closed

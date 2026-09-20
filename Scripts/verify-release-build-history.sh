@@ -18,7 +18,26 @@ read_single_value() {
   local file="$1"
   local key="$2"
   local count
-  count="$(grep -c "^${key}=" "$file" || true)"
+  local grep_status
+
+  set +e
+  count="$(grep -c "^${key}=" "$file")"
+  grep_status=$?
+  set -e
+
+  case "$grep_status" in
+    0)
+      ;;
+    1)
+      count='0'
+      ;;
+    *)
+      fail "unable to enumerate $key in release evidence: $file (grep status $grep_status)"
+      ;;
+  esac
+
+  [[ "$count" =~ ^[0-9]+$ ]] \
+    || fail "release evidence key count is not numeric for $key in $file: $count"
   [[ "$count" == "1" ]] || fail "$file must contain exactly one $key"
   sed -n "s/^${key}=//p" "$file"
 }
