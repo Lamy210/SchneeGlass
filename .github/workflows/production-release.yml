@@ -18,6 +18,8 @@ on:
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
       - 'Scripts/test-release-bundle-metadata-key-probe.sh'
+      - 'Scripts/initialize-release-evidence-schema.sh'
+      - 'Scripts/test-release-evidence-schema-probe.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
@@ -54,7 +56,9 @@ jobs:
         run: |
           for required_path in \
             'Scripts/verify-release-metadata.sh' \
-            'Scripts/test-release-bundle-metadata-key-probe.sh'; do
+            'Scripts/test-release-bundle-metadata-key-probe.sh' \
+            'Scripts/initialize-release-evidence-schema.sh' \
+            'Scripts/test-release-evidence-schema-probe.sh'; do
             sed -n '/^  pull_request:/,/^permissions:/p' .github/workflows/production-release.yml \
               | grep -Fq "      - '$required_path'" || {
                 echo "Production Release Candidate pull_request.paths is missing required path: $required_path" >&2
@@ -71,6 +75,8 @@ jobs:
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/record-release-bundle-metadata.sh
           bash -n Scripts/test-release-bundle-metadata-key-probe.sh
+          bash -n Scripts/initialize-release-evidence-schema.sh
+          bash -n Scripts/test-release-evidence-schema-probe.sh
           bash -n Scripts/verify-release-evidence.sh
 
       - name: Production release baseline
@@ -273,6 +279,9 @@ jobs:
       - name: Release bundle metadata key-probe failure fixture
         run: bash Scripts/test-release-bundle-metadata-key-probe.sh
 
+      - name: Release evidence schema-probe failure fixture
+        run: bash Scripts/test-release-evidence-schema-probe.sh
+
       - name: Release evidence schema fixture
         run: |
           FIXTURE="$RUNNER_TEMP/release-evidence-fixture"
@@ -368,16 +377,7 @@ jobs:
         run: bash Scripts/build-notarized-release.sh
 
       - name: Initialize release evidence schema
-        run: |
-          EVIDENCE='release-output/RELEASE_EVIDENCE.txt'
-          test -f "$EVIDENCE"
-          ! grep -q '^schema_version=' "$EVIDENCE"
-          TEMP="$RUNNER_TEMP/RELEASE_EVIDENCE.txt"
-          {
-            echo 'schema_version=1'
-            cat "$EVIDENCE"
-          } > "$TEMP"
-          mv "$TEMP" "$EVIDENCE"
+        run: bash Scripts/initialize-release-evidence-schema.sh
 
       - name: Record and verify signed bundle metadata
         run: bash Scripts/record-release-bundle-metadata.sh "$RELEASE_VERSION"
