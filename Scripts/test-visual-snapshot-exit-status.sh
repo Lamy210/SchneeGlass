@@ -50,8 +50,8 @@ awk -v prefix="$FILTER." -v marker="$MARKER" '
   }
 ' Scripts/visual-snapshot-contract.txt
 
-if [[ "$FILTER" == 'DesktopGlassVisualSnapshotTests' ]]; then
-  echo 'fixture: Desktop visual snapshot suite failed after emitting complete markers' >&2
+if [[ "$FILTER" == 'WorkspaceVisualSnapshotTests' ]]; then
+  echo 'fixture: Workspace visual snapshot suite failed after emitting complete markers' >&2
   exit 42
 fi
 SHIM
@@ -69,7 +69,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 "$REAL_GREP" -Fq \
-  'Visual snapshot suite failed: DesktopGlassVisualSnapshotTests' \
+  'Visual snapshot suite failed: WorkspaceVisualSnapshotTests' \
   "$OUTPUT"
 
 rm -rf "$FIXTURE"
