@@ -147,6 +147,8 @@ bundle_version=X.Y.Z
 bundle_build=<positive integer>
 ```
 
+Before those bundle metadata keys are appended, the recorder must positively prove each key is absent from the existing evidence. A grep/probe failure is not equivalent to absence and must fail closed before mutating `RELEASE_EVIDENCE.txt`.
+
 ### RELEASE_EVIDENCE schema v1
 
 `RELEASE_EVIDENCE.txt` is a strict contract, not a free-form log.

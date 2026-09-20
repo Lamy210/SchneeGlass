@@ -17,6 +17,7 @@ on:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
+      - 'Scripts/test-release-bundle-metadata-key-probe.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
@@ -51,11 +52,15 @@ jobs:
 
       - name: Production release path coverage
         run: |
-          sed -n '/^  pull_request:/,/^permissions:/p' .github/workflows/production-release.yml \
-            | grep -Fq "      - 'Scripts/verify-release-metadata.sh'" || {
-              echo 'Production Release Candidate pull_request.paths is missing release validator: Scripts/verify-release-metadata.sh' >&2
-              exit 1
-            }
+          for required_path in \
+            'Scripts/verify-release-metadata.sh' \
+            'Scripts/test-release-bundle-metadata-key-probe.sh'; do
+            sed -n '/^  pull_request:/,/^permissions:/p' .github/workflows/production-release.yml \
+              | grep -Fq "      - '$required_path'" || {
+                echo "Production Release Candidate pull_request.paths is missing required path: $required_path" >&2
+                exit 1
+              }
+          done
 
       - name: Shell syntax
         run: |
@@ -65,6 +70,7 @@ jobs:
           bash -n Scripts/verify-release-decoded-credentials.sh
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/record-release-bundle-metadata.sh
+          bash -n Scripts/test-release-bundle-metadata-key-probe.sh
           bash -n Scripts/verify-release-evidence.sh
 
       - name: Production release baseline
@@ -263,6 +269,9 @@ jobs:
           grep -F 'required release environment value is missing: DEVELOPER_ID_P12_BASE64' "$LOG" >/dev/null
           test ! -e release-output
           rm -f "$LOG"
+
+      - name: Release bundle metadata key-probe failure fixture
+        run: bash Scripts/test-release-bundle-metadata-key-probe.sh
 
       - name: Release evidence schema fixture
         run: |
