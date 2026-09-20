@@ -234,6 +234,7 @@ decoded credential validatorはcredentialの構造を証明するだけであり
 
 - P12内に実際の`Developer ID Application` certificate/private key identityがあること
 - temporary keychainへのimportが成功すること
+- `security find-identity` enumerationが正常完了していること。partial output後のnon-zero statusはidentity証明として扱わない
 - `Developer ID Application` identityがexactly oneであること
 - certificateのTeam IDが`APPLE_TEAM_ID`と一致すること
 - `.p8` / Key ID / Issuer IDの組み合わせがApple側の実Team API keyと一致すること
