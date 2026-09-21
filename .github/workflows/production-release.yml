@@ -25,6 +25,8 @@ on:
       - 'Scripts/verify-release-decoded-credentials.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-production-release-preflight.sh'
+      - 'Scripts/verify-optional-release-entitlements.sh'
+      - 'Scripts/test-optional-release-entitlement-probes.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
 
 permissions:
@@ -58,7 +60,9 @@ jobs:
             'Scripts/verify-release-metadata.sh' \
             'Scripts/test-release-bundle-metadata-key-probe.sh' \
             'Scripts/initialize-release-evidence-schema.sh' \
-            'Scripts/test-release-evidence-schema-probe.sh'; do
+            'Scripts/test-release-evidence-schema-probe.sh' \
+            'Scripts/verify-optional-release-entitlements.sh' \
+            'Scripts/test-optional-release-entitlement-probes.sh'; do
             sed -n '/^  pull_request:/,/^permissions:/p' .github/workflows/production-release.yml \
               | grep -Fq "      - '$required_path'" || {
                 echo "Production Release Candidate pull_request.paths is missing required path: $required_path" >&2
@@ -70,6 +74,8 @@ jobs:
         run: |
           bash -n Scripts/verify-release-metadata.sh
           bash -n Scripts/verify-production-release-preflight.sh
+          bash -n Scripts/verify-optional-release-entitlements.sh
+          bash -n Scripts/test-optional-release-entitlement-probes.sh
           bash -n Scripts/verify-release-credential-inputs.sh
           bash -n Scripts/verify-release-decoded-credentials.sh
           bash -n Scripts/build-notarized-release.sh
@@ -81,6 +87,9 @@ jobs:
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
+
+      - name: Optional entitlement probe failure fixture
+        run: bash Scripts/test-optional-release-entitlement-probes.sh
 
       - name: Credential input contract fixture
         env:
