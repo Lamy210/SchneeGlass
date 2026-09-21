@@ -153,6 +153,8 @@ Before those bundle metadata keys are appended, the recorder must positively pro
 
 `RELEASE_EVIDENCE.txt` is a strict contract, not a free-form log.
 
+Schema initialization is also fail-closed: an existing `schema_version` is rejected, confirmed absence is required before prepending `schema_version=1`, and a probe failure must leave the evidence unchanged.
+
 Required keys, each exactly once:
 
 ```text
