@@ -9,6 +9,7 @@ rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/commands.log"
 : > "$LOG"
+REAL_GREP="$(command -v grep)"
 
 export GH_FIXTURE_ROOT="$ROOT"
 export GH_FIXTURE_LOG="$LOG"
@@ -18,6 +19,8 @@ export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
 export GH_FIXTURE_MAIN_RACE_MODE='none'
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
 export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_GREP_MODE='normal'
+export GH_FIXTURE_REAL_GREP="$REAL_GREP"
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -378,6 +381,29 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
 
+cat > "$FIXTURE/bin/grep" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+REAL_GREP="${GH_FIXTURE_REAL_GREP:?}"
+MODE="${GH_FIXTURE_GREP_MODE:-normal}"
+LAST_ARG="${!#:-}"
+
+case "$MODE:$LAST_ARG" in
+  failure-preexisting:*/existing-release-tags.txt)
+    echo 'fixture: pre-existing Release-name membership probe unavailable' >&2
+    exit 42
+    ;;
+  failure-after-cleanup:*/mutable-cleanup-release-tags.txt)
+    echo 'fixture: post-cleanup Release-name membership probe unavailable' >&2
+    exit 42
+    ;;
+esac
+
+exec "$REAL_GREP" "$@"
+SHIM
+chmod +x "$FIXTURE/bin/grep"
+
 export PATH="$FIXTURE/bin:$PATH"
 export RELEASE_VERSION='0.1.0'
 export CANDIDATE_RUN_ID='123'
@@ -547,6 +573,36 @@ fi
 
 grep -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_PROBE_FAILURE"
 ! grep -Fq 'gh release create ' "$LOG"
+
+# A successful Release-name enumeration is not sufficient if exact membership cannot be
+# evaluated. A grep/probe error must remain ambiguous and stop before Draft creation.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_GREP_MODE='failure-preexisting'
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+OUTPUT_RELEASE_MATCH_PROBE_FAILURE="$FIXTURE/output-release-match-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RELEASE_MATCH_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RELEASE_MATCH_PROBE_FAILURE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly continued when exact Release-name membership could not be determined.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_MATCH_PROBE_FAILURE"
+if "$REAL_GREP" -Fq 'gh release create ' "$LOG"; then
+  cat "$LOG"
+  echo 'Ambiguous Release-name membership reached Draft creation.' >&2
+  exit 1
+fi
+export GH_FIXTURE_GREP_MODE='normal'
 
 # An existing Draft/public GitHub Release with the target tag remains an immediate blocker.
 : > "$LOG"
@@ -817,6 +873,39 @@ if grep -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTAB
   exit 1
 fi
 grep -Fq 'gh release delete ' "$LOG"
+
+# Even when the Release-name API enumeration itself succeeds, exact membership must be
+# positively evaluated. A grep/probe error after deletion is ambiguous and must never be
+# reported as confirmed removal.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_GREP_MODE='failure-after-cleanup'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE="$FIXTURE/output-mutable-release-match-probe-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
+  echo 'Mutable cleanup unexpectedly reported success when exact Release-name absence could not be proven.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq 'Release promotion failed: unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
+if "$REAL_GREP" -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"; then
+  cat "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
+  echo 'Ambiguous Release-name membership was incorrectly reported as confirmed removal.' >&2
+  exit 1
+fi
+"$REAL_GREP" -Fq 'gh release delete ' "$LOG"
+export GH_FIXTURE_GREP_MODE='normal'
 
 # The remote tag probe has a distinct confirmed-absent status. Any other post-cleanup
 # probe failure must also remain ambiguous instead of being treated as absence.
