@@ -19,6 +19,7 @@ export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
 export GH_FIXTURE_MAIN_RACE_MODE='none'
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
 export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_DELETE_MODE='success'
 export GH_FIXTURE_GREP_MODE='normal'
 export GH_FIXTURE_REAL_GREP="$REAL_GREP"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -364,7 +365,19 @@ EOF
         ;;
       delete)
         touch "$STATE/cleanup-attempted"
-        rm -f "$STATE/release-created" "$STATE/release-public"
+        case "${GH_FIXTURE_DELETE_MODE:-success}" in
+          success)
+            rm -f "$STATE/release-created" "$STATE/release-public"
+            ;;
+          failure)
+            echo 'fixture: mutable Draft cleanup delete unavailable' >&2
+            exit 42
+            ;;
+          *)
+            echo "unexpected delete fixture mode: ${GH_FIXTURE_DELETE_MODE:-}" >&2
+            exit 106
+            ;;
+        esac
         ;;
       *)
         echo "unexpected gh release subcommand: $SUBCOMMAND" >&2
@@ -684,6 +697,44 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+
+# If a positively-owned mutable Draft cleanup delete fails, the original publication
+# failure must remain, but the operator must also be told that manual reconciliation is
+# required. The Draft state intentionally remains to model the failed delete.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_GREP_MODE='normal'
+export GH_FIXTURE_DELETE_MODE='failure'
+export GH_FIXTURE_ASSET_MODE='extra-before'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
+OUTPUT_CLEANUP_DELETE_FAILURE="$FIXTURE/output-cleanup-delete-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CLEANUP_DELETE_FAILURE" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_CLEANUP_DELETE_FAILURE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after Draft asset mismatch and cleanup delete failure.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq   'Release promotion failed: draft release asset set does not exactly match expected public assets'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
+"$REAL_GREP" -Fq   'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft/tag; manual reconciliation required'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
+"$REAL_GREP" -Fq 'gh release delete ' "$LOG"
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" ]]; then
+  cat "$OUTPUT_CLEANUP_DELETE_FAILURE"
+  cat "$LOG"
+  echo 'Fixture did not preserve the Draft after simulated cleanup delete failure.' >&2
+  exit 1
+fi
+export GH_FIXTURE_DELETE_MODE='success'
 
 # If the run-owned Draft becomes public before a pre-publication failure and the
 # immutability read is unavailable, cleanup ownership is ambiguous. The trap must preserve
