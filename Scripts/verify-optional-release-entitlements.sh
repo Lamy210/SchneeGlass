@@ -18,6 +18,7 @@ fail() {
 plutil -lint "$ENTITLEMENTS_PATH" >/dev/null
 
 # Mechanically extracted from the two production release paths for TDD.
+# This test-only baseline intentionally preserves the original boolean-probe semantics.
 # The RED fixture demonstrates that probe-process failures are currently
 # indistinguishable from confirmed key absence.
 if "$PLIST_BUDDY_BIN"   -c 'Print :com.apple.security.network.client'   "$ENTITLEMENTS_PATH" >/dev/null 2>&1; then
