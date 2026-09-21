@@ -105,10 +105,12 @@ cleanup() {
     fi
 
     if [[ "$CLEANUP_IS_DRAFT" == 'true' && "$CLEANUP_IS_IMMUTABLE" == 'false' ]]; then
-      gh release delete "$TAG" \
+      if ! gh release delete "$TAG" \
         --repo "$GITHUB_REPOSITORY" \
         --cleanup-tag \
-        --yes >/dev/null 2>&1 || true
+        --yes >/dev/null 2>&1; then
+        echo "Release cleanup failed for $TAG: unable to delete run-owned mutable Draft/tag; manual reconciliation required." >&2
+      fi
       return
     fi
 
