@@ -568,12 +568,12 @@ evidence commit SHA == candidate workflow head SHA
 SHA256SUMS
 candidate commit exactly matches freshly fetched current main before Draft creation
 public Release build-number history
-pre-existing tag / release absence, with both target-tag and GitHub Release probe failures distinguished from confirmed absence
+pre-existing tag / release absence, with API enumeration and exact Release-name match probe failures distinguished from confirmed absence
 draft target SHA / assets
 candidate commit still exactly matches re-fetched current main after Draft asset validation
 published release isImmutable == true
 explicitly mutable release cleanup requires positive Release + tag absence proof
-post-delete Release/tag probe failures remain ambiguous and fail closed
+post-delete Release/tag enumeration or exact-match probe failures remain ambiguous and fail closed
 ```
 
 Build history contract:

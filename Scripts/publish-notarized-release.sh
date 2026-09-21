@@ -227,9 +227,21 @@ if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
   > "$EXISTING_RELEASE_TAGS"; then
   fail "unable to determine whether GitHub Release already exists: $TAG"
 fi
-if grep -Fxq "$TAG" "$EXISTING_RELEASE_TAGS"; then
-  fail "GitHub Release already exists: $TAG"
-fi
+set +e
+grep -Fxq "$TAG" "$EXISTING_RELEASE_TAGS"
+EXISTING_RELEASE_MATCH_STATUS=$?
+set -e
+
+case "$EXISTING_RELEASE_MATCH_STATUS" in
+  0)
+    fail "GitHub Release already exists: $TAG"
+    ;;
+  1)
+    ;;
+  *)
+    fail "unable to determine whether GitHub Release already exists: $TAG"
+    ;;
+esac
 
 # Create the draft without assets first. Only a successful create establishes ownership
 # for cleanup, avoiding deletion of a concurrently-created release on create failure.
@@ -321,9 +333,21 @@ if [[ "$IS_IMMUTABLE" == 'false' ]]; then
     > "$MUTABLE_CLEANUP_RELEASE_TAGS"; then
     fail "unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation"
   fi
-  if grep -Fxq "$TAG" "$MUTABLE_CLEANUP_RELEASE_TAGS"; then
-    fail "mutable release still exists after cleanup"
-  fi
+  set +e
+  grep -Fxq "$TAG" "$MUTABLE_CLEANUP_RELEASE_TAGS"
+  MUTABLE_RELEASE_MATCH_STATUS=$?
+  set -e
+
+  case "$MUTABLE_RELEASE_MATCH_STATUS" in
+    0)
+      fail "mutable release still exists after cleanup"
+      ;;
+    1)
+      ;;
+    *)
+      fail "unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation"
+      ;;
+  esac
 
   set +e
   git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
