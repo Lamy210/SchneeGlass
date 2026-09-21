@@ -574,6 +574,7 @@ candidate commit still exactly matches re-fetched current main after Draft asset
 published release isImmutable == true
 explicitly mutable release cleanup requires positive Release + tag absence proof
 post-delete Release/tag enumeration or exact-match probe failures remain ambiguous and fail closed
+pre-publication run-owned Draft cleanup delete failure preserves the original error and emits manual-reconciliation guidance
 ```
 
 Build history contract:
