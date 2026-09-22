@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/thread-sanitizer.yml'
+      - 'Scripts/verify-xcode-version.sh'
   workflow_dispatch:
   schedule:
     - cron: '37 17 * * 1'
@@ -29,9 +30,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: ThreadSanitizer package tests
         run: |
