@@ -9,6 +9,8 @@ rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/gh.log"
 : > "$LOG"
+REAL_JQ="$(command -v jq)"
+export REAL_JQ
 
 cat > "$FIXTURE/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
@@ -136,6 +138,19 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
 
+cat > "$FIXTURE/bin/jq" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${GH_FIXTURE_JQ_MODE:-}" == 'partial-length-failure' && "${1:-}" == 'length' ]]; then
+  printf '1\n'
+  exit 42
+fi
+
+exec "${REAL_JQ:?}" "$@"
+SHIM
+chmod +x "$FIXTURE/bin/jq"
+
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
@@ -214,6 +229,24 @@ grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must fail closed when ruleset-count enumeration returns partial output and fails.
+# The old implementation embedded jq inside [[ ... ]] and could mask exit 42 when the
+# partial output happened to be the trusted count "1".
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+export GH_FIXTURE_JQ_MODE='partial-length-failure'
+VERIFY_PARTIAL_COUNT_LOG="$FIXTURE/verify-partial-count.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_PARTIAL_COUNT_LOG" 2>&1
+STATUS=$?
+set -e
+unset GH_FIXTURE_JQ_MODE
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: unable to enumerate repository ruleset count (jq status 42)' "$VERIFY_PARTIAL_COUNT_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
 
 # Verify-only must fail closed when the canonical ruleset grants a bypass actor.
 : > "$LOG"

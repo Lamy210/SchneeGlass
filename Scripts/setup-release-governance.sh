@@ -47,18 +47,28 @@ gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
 jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
   || fail "repository rulesets response must be a JSON array"
 
+RULESET_COUNT=''
+set +e
+RULESET_COUNT="$(jq 'length' "$RULESETS_JSON")"
+RULESET_COUNT_STATUS=$?
+set -e
+
+[[ "$RULESET_COUNT_STATUS" -eq 0 ]] \
+  || fail "unable to enumerate repository ruleset count (jq status $RULESET_COUNT_STATUS)"
+[[ "$RULESET_COUNT" =~ ^[0-9]+$ ]] \
+  || fail "repository ruleset count is not numeric: $RULESET_COUNT"
+
 RULESET_ID=''
 
 if [[ "$VERIFY_ONLY" == true ]]; then
   jq -e --arg name "$RULESET_NAME" 'any(.[]; .name == $name)' "$RULESETS_JSON" >/dev/null \
     || fail "verify-only requires canonical ruleset: $RULESET_NAME"
-  [[ "$(jq 'length' "$RULESETS_JSON")" -eq 1 ]] \
+  [[ "$RULESET_COUNT" -eq 1 ]] \
     || fail "verify-only requires canonical ruleset to be the only repository ruleset"
   jq -e '.[0].enforcement == "active"' "$RULESETS_JSON" >/dev/null \
     || fail "verify-only requires canonical ruleset enforcement=active"
   RULESET_ID="$(jq -r --arg name "$RULESET_NAME" '.[] | select(.name == $name) | .id // empty' "$RULESETS_JSON")"
 else
-  RULESET_COUNT="$(jq 'length' "$RULESETS_JSON")"
   CANONICAL_RULESET_COUNT="$(jq --arg name "$RULESET_NAME" '[.[] | select(.name == $name)] | length' "$RULESETS_JSON")"
 
   if [[ "$CANONICAL_RULESET_COUNT" -eq 1 && "$RULESET_COUNT" -eq 1 ]]; then
