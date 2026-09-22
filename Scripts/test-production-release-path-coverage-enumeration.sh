@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-FIXTURE="\${RUNNER_TEMP:-/tmp}/schneeglass-production-path-coverage-fixture"
+FIXTURE="${RUNNER_TEMP:-/tmp}/schneeglass-production-path-coverage-fixture"
 rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 
@@ -27,7 +27,7 @@ REQUIRED_PATHS=(
 # Control: the real workflow remains fully covered.
 bash Scripts/verify-production-release-path-coverage.sh \
   .github/workflows/production-release.yml \
-  "\${REQUIRED_PATHS[@]}" >/dev/null
+  "${REQUIRED_PATHS[@]}" >/dev/null
 
 cat > "$FIXTURE/bin/sed" <<'SHIM'
 #!/usr/bin/env bash
@@ -57,7 +57,7 @@ set +e
 PATH="$FIXTURE/bin:$PATH" \
   bash Scripts/verify-production-release-path-coverage.sh \
   .github/workflows/production-release.yml \
-  "\${REQUIRED_PATHS[@]}" \
+  "${REQUIRED_PATHS[@]}" \
   >"$OUTPUT" 2>&1
 STATUS=$?
 set -e
