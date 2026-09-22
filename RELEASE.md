@@ -318,6 +318,7 @@ A production macOS release must not be published until all of the following are 
 - Developer ID Application signing using credentials stored outside the repository
 - Hardened Runtime preserved
 - App Sandbox entitlements verified after signing
+- optional release entitlements are fail-closed: `network.client` must be positively absent, `get-task-allow=true` is rejected, and ambiguous PlistBuddy probe results are not treated as absence
 - `codesign --verify --deep --strict` PASS
 - signed ZIP bundle metadata matches requested version/build/bundle identity
 - `RELEASE_EVIDENCE.txt` schema v1 validation PASS

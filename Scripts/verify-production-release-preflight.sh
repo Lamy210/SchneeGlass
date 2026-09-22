@@ -54,12 +54,8 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$ENT
 test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$ENTITLEMENTS_PATH")" = 'true' \
   || fail "user-selected read-write entitlement must remain enabled"
 
-if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' "$ENTITLEMENTS_PATH" >/dev/null 2>&1; then
-  fail "unexpected network client entitlement"
-fi
-
-if GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' "$ENTITLEMENTS_PATH" 2>/dev/null)"; then
-  [[ "$GET_TASK_ALLOW" != "true" ]] || fail "get-task-allow must not be enabled for notarized distribution"
-fi
+bash Scripts/verify-optional-release-entitlements.sh \
+  "$ENTITLEMENTS_PATH" \
+  'Production release preflight'
 
 echo "Production release preflight OK: Developer ID / Hardened Runtime / Sandbox / notarization toolchain baseline is ready"

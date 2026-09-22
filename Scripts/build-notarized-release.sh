@@ -170,13 +170,9 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SIG
 test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$SIGNED_ENTITLEMENTS")" = 'true' \
   || fail "signed app lost user-selected read-write entitlement"
 
-if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' "$SIGNED_ENTITLEMENTS" >/dev/null 2>&1; then
-  fail "signed app unexpectedly gained network client entitlement"
-fi
-
-if GET_TASK_ALLOW="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.get-task-allow' "$SIGNED_ENTITLEMENTS" 2>/dev/null)"; then
-  [[ "$GET_TASK_ALLOW" != "true" ]] || fail "signed app has get-task-allow enabled"
-fi
+bash Scripts/verify-optional-release-entitlements.sh \
+  "$SIGNED_ENTITLEMENTS" \
+  'Signed release entitlement validation'
 
 cp "$SIGNED_ENTITLEMENTS" "$OUTPUT_DIR/evidence/signed-entitlements.plist"
 cp "$CODESIGN_DETAILS" "$OUTPUT_DIR/evidence/codesign-details.txt"
