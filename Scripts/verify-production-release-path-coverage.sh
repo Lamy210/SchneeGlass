@@ -20,7 +20,11 @@ cleanup() {
 trap cleanup EXIT
 
 set +e
-sed -n '/^  pull_request:/,/^permissions:/p' "$WORKFLOW" > "$PATHS_SECTION"
+sed -n \
+  '/^  pull_request:$/,/^[^ ]/ { \
+    /^    paths:$/,/^    [^ ]/p \
+  }' \
+  "$WORKFLOW" > "$PATHS_SECTION"
 SED_STATUS=$?
 set -e
 
