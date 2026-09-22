@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/release-candidate.yml'
       - 'Scripts/verify-xcode-version.sh'
+      - 'Scripts/resolve-release-version.sh'
+      - 'Scripts/test-release-candidate-version-extraction.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
@@ -57,18 +59,13 @@ jobs:
             bash Scripts/verify-release-metadata.sh
           fi
 
+      - name: Release version extraction failure fixture
+        run: bash Scripts/test-release-candidate-version-extraction.sh
+
       - name: Resolve release version
         id: release
         run: |
-          SETTINGS="$(xcodebuild \
-            -project SchneeGlass.xcodeproj \
-            -scheme SchneeGlass \
-            -configuration Release \
-            -showBuildSettings)"
-          VERSION="$(printf '%s\n' "$SETTINGS" \
-            | sed -n 's/^[[:space:]]*MARKETING_VERSION = //p' \
-            | head -n 1)"
-          test -n "$VERSION"
+          VERSION="$(bash Scripts/resolve-release-version.sh)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Swift package tests
