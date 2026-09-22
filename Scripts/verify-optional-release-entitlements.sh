@@ -30,7 +30,7 @@ probe_entitlement() {
     status=$?
   fi
 
-  if [[ "$status" -eq 1 && "$output" == *"$key"* && "$output" == *'Does Not Exist'* ]]; then
+  if [[ "$status" -eq 1 && "$output" == *'Does Not Exist'* ]]; then
     PROBE_VALUE=''
     return 1
   fi
