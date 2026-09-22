@@ -403,6 +403,10 @@ MODE="${GH_FIXTURE_GREP_MODE:-normal}"
 LAST_ARG="${!#:-}"
 
 case "$MODE:$LAST_ARG" in
+  partial-main-fetch-count-failure:*)
+    printf '2\n'
+    exit 42
+    ;;
   failure-preexisting:*/existing-release-tags.txt)
     echo 'fixture: pre-existing Release-name membership probe unavailable' >&2
     exit 42
@@ -416,6 +420,31 @@ esac
 exec "$REAL_GREP" "$@"
 SHIM
 chmod +x "$FIXTURE/bin/grep"
+
+assert_main_fetch_count() {
+  local expected="$1"
+  local count=''
+  local status=0
+
+  if count="$(grep -Fc 'git fetch origin main ' "$LOG")"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Main-fetch count assertion failed: unable to enumerate fetches (grep status $status)" >&2
+    return 1
+  fi
+  if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+    echo "Main-fetch count assertion failed: count is not numeric: $count" >&2
+    return 1
+  fi
+  if [[ "$count" -ne "$expected" ]]; then
+    echo "Main-fetch count assertion failed: expected $expected fetch(es), found $count" >&2
+    return 1
+  fi
+}
 
 export PATH="$FIXTURE/bin:$PATH"
 export RELEASE_VERSION='0.1.0'
@@ -499,11 +528,26 @@ if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-pu
   echo 'Run-owned mutable Draft was not cleaned up after final main freshness failure.' >&2
   exit 1
 fi
-if [[ "$(grep -Fc 'git fetch origin main ' "$LOG")" -ne 2 ]]; then
+if ! assert_main_fetch_count 2; then
   cat "$LOG"
   echo 'Publication did not fetch current main exactly twice across the initial and final freshness checks.' >&2
   exit 1
 fi
+
+# The fetch-count proof itself must fail closed if grep emits the expected count
+# and then reports an enumeration failure.
+export GH_FIXTURE_GREP_MODE='partial-main-fetch-count-failure'
+set +e
+assert_main_fetch_count 2
+STATUS=$?
+set -e
+export GH_FIXTURE_GREP_MODE='normal'
+
+if [[ "$STATUS" -eq 0 ]]; then
+  echo 'Main-fetch count assertion unexpectedly accepted partial output from failed enumeration.' >&2
+  exit 1
+fi
+
 ASSET_VIEW_LINE="$(grep -nF -- '--json assets ' "$LOG" | tail -n 1 | cut -d: -f1)"
 FINAL_MAIN_FETCH_LINE="$(grep -nF 'git fetch origin main --force ' "$LOG" | tail -n 1 | cut -d: -f1)"
 if [[ -z "$ASSET_VIEW_LINE" || -z "$FINAL_MAIN_FETCH_LINE" \
