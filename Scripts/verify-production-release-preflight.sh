@@ -49,10 +49,17 @@ DEPLOYMENT_TARGET="$(setting_from "$RELEASE_SETTINGS" MACOSX_DEPLOYMENT_TARGET)"
 [[ -f "$ENTITLEMENTS_PATH" ]] || fail "entitlements file is missing: $ENTITLEMENTS_PATH"
 plutil -lint "$ENTITLEMENTS_PATH" >/dev/null
 
-test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$ENTITLEMENTS_PATH")" = 'true' \
-  || fail "App Sandbox entitlement must remain enabled"
-test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$ENTITLEMENTS_PATH")" = 'true' \
-  || fail "user-selected read-write entitlement must remain enabled"
+bash Scripts/verify-required-plist-value.sh \
+  "$ENTITLEMENTS_PATH" \
+  'com.apple.security.app-sandbox' \
+  'true' \
+  'Production release preflight'
+
+bash Scripts/verify-required-plist-value.sh \
+  "$ENTITLEMENTS_PATH" \
+  'com.apple.security.files.user-selected.read-write' \
+  'true' \
+  'Production release preflight'
 
 bash Scripts/verify-optional-release-entitlements.sh \
   "$ENTITLEMENTS_PATH" \

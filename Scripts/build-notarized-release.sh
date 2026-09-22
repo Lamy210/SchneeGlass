@@ -165,10 +165,17 @@ grep -E '^Timestamp=' "$CODESIGN_DETAILS" >/dev/null \
 codesign -d --entitlements :- "$APP" > "$SIGNED_ENTITLEMENTS" 2>/dev/null
 plutil -lint "$SIGNED_ENTITLEMENTS" >/dev/null
 
-test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$SIGNED_ENTITLEMENTS")" = 'true' \
-  || fail "signed app lost App Sandbox entitlement"
-test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' "$SIGNED_ENTITLEMENTS")" = 'true' \
-  || fail "signed app lost user-selected read-write entitlement"
+bash Scripts/verify-required-plist-value.sh \
+  "$SIGNED_ENTITLEMENTS" \
+  'com.apple.security.app-sandbox' \
+  'true' \
+  'Signed release entitlement validation'
+
+bash Scripts/verify-required-plist-value.sh \
+  "$SIGNED_ENTITLEMENTS" \
+  'com.apple.security.files.user-selected.read-write' \
+  'true' \
+  'Signed release entitlement validation'
 
 bash Scripts/verify-optional-release-entitlements.sh \
   "$SIGNED_ENTITLEMENTS" \
