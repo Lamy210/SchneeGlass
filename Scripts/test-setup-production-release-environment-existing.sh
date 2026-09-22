@@ -9,6 +9,8 @@ rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/gh.log"
 POLICY_CREATED="$FIXTURE/policy-created"
+REAL_GREP="$(command -v grep)"
+export REAL_GREP
 : > "$LOG"
 
 cat > "$FIXTURE/bin/gh" <<'SHIM'
@@ -105,6 +107,63 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
 
+cat > "$FIXTURE/bin/grep" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${GH_FIXTURE_GREP_MODE:-}" == 'partial-count-failure' && "${1:-}" == '-Fc' ]]; then
+  args=("$@")
+  pattern=''
+  for ((index = 1; index < ${#args[@]}; index += 1)); do
+    if [[ "${args[index]}" == '--' ]]; then
+      continue
+    fi
+    pattern="${args[index]}"
+    break
+  done
+
+  case "$pattern" in
+    '--method POST')
+      printf '1\n'
+      exit 42
+      ;;
+    'deployment-branch-policies\?per_page=100')
+      printf '2\n'
+      exit 42
+      ;;
+  esac
+fi
+
+exec "${REAL_GREP:?}" "$@"
+SHIM
+chmod +x "$FIXTURE/bin/grep"
+
+assert_log_count() {
+  local expected="$1"
+  local pattern="$2"
+  local count=''
+  local status=0
+
+  if count="$(grep -Fc -- "$pattern" "$LOG")"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Fixture log-count assertion failed: unable to enumerate pattern: $pattern (grep status $status)" >&2
+    return 1
+  fi
+  if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+    echo "Fixture log-count assertion failed: count is not numeric for pattern: $pattern ($count)" >&2
+    return 1
+  fi
+  if [[ "$count" -ne "$expected" ]]; then
+    echo "Fixture log-count assertion failed: expected $expected match(es) for pattern: $pattern, found $count" >&2
+    return 1
+  fi
+}
+
 export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_POLICY_CREATED="$POLICY_CREATED"
 export PATH="$FIXTURE/bin:$PATH"
@@ -158,9 +217,30 @@ if [[ "$STATUS" -ne 0 ]]; then
 fi
 grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
-[[ "$(grep -Fc -- '--method POST' "$LOG")" -eq 1 ]]
+assert_log_count 1 '--method POST'
 grep -Fq 'repos/example/SchneeGlass/environments/production-release/deployment-branch-policies' "$LOG"
-[[ "$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")" -eq 2 ]]
+assert_log_count 2 'deployment-branch-policies\?per_page=100'
+
+# Count assertions must reject partial expected output followed by an enumeration failure.
+export GH_FIXTURE_GREP_MODE='partial-count-failure'
+for assertion in \
+  '1|--method POST' \
+  '2|deployment-branch-policies\?per_page=100'
+do
+  expected="${assertion%%|*}"
+  pattern="${assertion#*|}"
+
+  set +e
+  assert_log_count "$expected" "$pattern"
+  STATUS=$?
+  set -e
+
+  if [[ "$STATUS" -eq 0 ]]; then
+    echo "Fixture log-count assertion unexpectedly accepted partial output for: $pattern" >&2
+    exit 1
+  fi
+done
+unset GH_FIXTURE_GREP_MODE
 
 rm -rf "$FIXTURE"
 echo 'Existing production release Environment fixtures passed'
