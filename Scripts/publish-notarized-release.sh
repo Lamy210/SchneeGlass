@@ -161,12 +161,7 @@ test -f "$EVIDENCE" || fail "RELEASE_EVIDENCE.txt is missing"
 
 bash Scripts/verify-release-evidence.sh "$EVIDENCE" "$RELEASE_VERSION" "$RUN_HEAD_SHA"
 
-grep -E "^[0-9a-fA-F]{64}  ${ARCHIVE_NAME}$" "$CHECKSUMS" >/dev/null \
-  || fail "SHA256SUMS does not contain the expected release archive"
-(
-  cd "$CANDIDATE_DIR"
-  shasum -a 256 -c SHA256SUMS
-)
+bash Scripts/verify-release-checksum-manifest.sh "$CANDIDATE_DIR" "$ARCHIVE_NAME"
 
 # Every public (non-draft) release is distribution history, including prereleases.
 # Download its release evidence and require the new build number to exceed the
