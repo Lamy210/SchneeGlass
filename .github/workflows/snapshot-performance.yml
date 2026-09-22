@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/snapshot-performance.yml'
+      - 'Scripts/verify-xcode-version.sh'
       - 'Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/NativeFolderSnapshotReader.swift'
       - 'Packages/SchneeGlassKit/Tests/SchneeGlassFileSystemAdapterTests/NativeFolderSnapshotReaderTests.swift'
   workflow_dispatch:
@@ -32,9 +33,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Measure 500-item direct-child snapshot
         run: |

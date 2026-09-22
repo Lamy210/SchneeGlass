@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/release-candidate.yml'
+      - 'Scripts/verify-xcode-version.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
@@ -41,9 +42,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Validate release metadata
         env:

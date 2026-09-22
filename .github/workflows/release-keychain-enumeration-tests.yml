@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/release-keychain-enumeration-tests.yml'
+      - 'Scripts/verify-xcode-version.sh'
       - 'Scripts/build-notarized-release.sh'
       - 'Scripts/test-build-notarized-release-keychain-enumeration.sh'
       - 'Scripts/test-build-notarized-release-identity-enumeration.sh'
@@ -26,9 +27,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Shell syntax
         run: |

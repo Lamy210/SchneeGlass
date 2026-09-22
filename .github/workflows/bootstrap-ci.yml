@@ -30,9 +30,11 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
+
+      - name: Xcode version probe failure fixture
+        run: bash Scripts/test-xcode-version-probe.sh
 
       - name: Swift format lint
         env:

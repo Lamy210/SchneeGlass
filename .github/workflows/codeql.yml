@@ -10,10 +10,12 @@ on:
     paths:
       - 'Packages/SchneeGlassKit/Sources/**/*.swift'
       - 'Packages/SchneeGlassKit/Package.swift'
+      - 'Scripts/verify-xcode-version.sh'
       - '.github/workflows/codeql.yml'
   pull_request:
     paths:
       - '.github/workflows/codeql.yml'
+      - 'Scripts/verify-xcode-version.sh'
 
 permissions:
   contents: read
@@ -38,9 +40,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
