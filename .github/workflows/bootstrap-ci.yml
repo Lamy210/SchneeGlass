@@ -34,6 +34,9 @@ jobs:
           swift --version
           xcodebuild -version | grep -F 'Xcode 26.6'
 
+      - name: Xcode version probe failure fixture
+        run: bash Scripts/test-xcode-version-probe.sh
+
       - name: Swift format lint
         env:
           EVENT_BEFORE_SHA: ${{ github.event.before }}
