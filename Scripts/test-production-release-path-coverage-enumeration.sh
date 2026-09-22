@@ -10,6 +10,8 @@ mkdir -p "$FIXTURE/bin"
 
 REAL_GREP="$(command -v grep)"
 OUTPUT="$FIXTURE/output.log"
+SCOPE_OUTPUT="$FIXTURE/scope-output.log"
+SCOPE_WORKFLOW="$FIXTURE/scope-workflow.yml"
 
 REQUIRED_PATHS=(
   'Scripts/verify-release-metadata.sh'
@@ -28,6 +30,41 @@ REQUIRED_PATHS=(
 bash Scripts/verify-production-release-path-coverage.sh \
   .github/workflows/production-release.yml \
   "${REQUIRED_PATHS[@]}" >/dev/null
+
+# Scope regression: a same-indented value under pull_request.branches must not satisfy
+# pull_request.paths coverage. The old helper scanned the whole pull_request block and
+# therefore accepted this synthetic workflow.
+cat > "$SCOPE_WORKFLOW" <<'EOF'
+name: Synthetic path-scope fixture
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/production-release.yml'
+    branches:
+      - 'Scripts/verify-release-metadata.sh'
+
+permissions:
+  contents: read
+EOF
+
+set +e
+bash Scripts/verify-production-release-path-coverage.sh \
+  "$SCOPE_WORKFLOW" \
+  'Scripts/verify-release-metadata.sh' \
+  >"$SCOPE_OUTPUT" 2>&1
+SCOPE_STATUS=$?
+set -e
+
+if [[ "$SCOPE_STATUS" -eq 0 ]]; then
+  cat "$SCOPE_OUTPUT"
+  echo 'Production release path coverage unexpectedly accepted a required path outside pull_request.paths.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq \
+  'Production release path coverage validation failed: pull_request.paths is missing required path: Scripts/verify-release-metadata.sh' \
+  "$SCOPE_OUTPUT"
 
 cat > "$FIXTURE/bin/sed" <<'SHIM'
 #!/usr/bin/env bash
