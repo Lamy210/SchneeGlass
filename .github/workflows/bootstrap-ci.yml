@@ -223,11 +223,11 @@ jobs:
           test -d "$APP"
           test -f "$APP/Contents/MacOS/SchneeGlass"
           plutil -lint "$APP/Contents/Info.plist"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = 'io.github.lamy210.schneeglass'
+          bash Scripts/verify-required-plist-value.sh "$APP/Contents/Info.plist" 'CFBundleIdentifier' 'io.github.lamy210.schneeglass' 'Bootstrap bundle verification'
 
           plutil -lint App/SchneeGlass.entitlements
-          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' App/SchneeGlass.entitlements)" = 'true'
-          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.files.user-selected.read-write' App/SchneeGlass.entitlements)" = 'true'
+          bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.app-sandbox' 'true' 'Bootstrap entitlement verification'
+          bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.files.user-selected.read-write' 'true' 'Bootstrap entitlement verification'
           if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' App/SchneeGlass.entitlements >/dev/null 2>&1; then
             echo 'Unexpected network client entitlement' >&2
             exit 1
