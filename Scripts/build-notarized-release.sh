@@ -225,8 +225,9 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUTPUT_DIR/$FINAL_ARCHIVE"
 (
   cd "$OUTPUT_DIR"
   shasum -a 256 "$FINAL_ARCHIVE" > SHA256SUMS
-  shasum -a 256 -c SHA256SUMS
 )
+
+bash Scripts/verify-release-checksum-manifest.sh "$OUTPUT_DIR" "$FINAL_ARCHIVE"
 
 cat > "$OUTPUT_DIR/RELEASE_EVIDENCE.txt" <<EOF
 version=$RELEASE_VERSION
