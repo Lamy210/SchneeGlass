@@ -84,6 +84,14 @@ case "$MODE:$COMMAND" in
     echo 'fixture: get-task-allow entitlement probe unavailable' >&2
     exit 42
     ;;
+  network-malformed-missing:'Print :com.apple.security.network.client')
+    echo 'fixture: status one without confirmed missing-key signature' >&2
+    exit 1
+    ;;
+  get-task-malformed-missing:'Print :com.apple.security.get-task-allow')
+    echo 'fixture: status one without confirmed missing-key signature' >&2
+    exit 1
+    ;;
 esac
 
 exec "$REAL" "$@"
@@ -109,9 +117,25 @@ run_probe_failure() {
   "$REAL_GREP" -Fq     "Optional entitlement fixture failed: unable to inspect entitlement $expected_key (PlistBuddy status 42)"     "$output"
 }
 
-run_probe_failure   'network-failure'   'com.apple.security.network.client'   "$FIXTURE/network-failure.log"
+run_probe_failure \
+  'network-failure' \
+  'com.apple.security.network.client' \
+  "$FIXTURE/network-failure.log"
 
-run_probe_failure   'get-task-failure'   'com.apple.security.get-task-allow'   "$FIXTURE/get-task-failure.log"
+run_probe_failure \
+  'get-task-failure' \
+  'com.apple.security.get-task-allow' \
+  "$FIXTURE/get-task-failure.log"
+
+run_probe_failure \
+  'network-malformed-missing' \
+  'com.apple.security.network.client' \
+  "$FIXTURE/network-malformed-missing.log"
+
+run_probe_failure \
+  'get-task-malformed-missing' \
+  'com.apple.security.get-task-allow' \
+  "$FIXTURE/get-task-malformed-missing.log"
 
 rm -rf "$FIXTURE"
 echo 'Optional release entitlement probe fixtures passed'
