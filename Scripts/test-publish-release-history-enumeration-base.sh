@@ -425,7 +425,27 @@ chmod +x "$FIXTURE/bin/grep"
 
 assert_main_fetch_count() {
   local expected="$1"
-  [[ "$(grep -Fc 'git fetch origin main ' "$LOG")" -eq "$expected" ]]
+  local count=''
+  local status=0
+
+  if count="$(grep -Fc 'git fetch origin main ' "$LOG")"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Main-fetch count assertion failed: unable to enumerate fetches (grep status $status)" >&2
+    return 1
+  fi
+  if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+    echo "Main-fetch count assertion failed: count is not numeric: $count" >&2
+    return 1
+  fi
+  if [[ "$count" -ne "$expected" ]]; then
+    echo "Main-fetch count assertion failed: expected $expected fetch(es), found $count" >&2
+    return 1
+  fi
 }
 
 export PATH="$FIXTURE/bin:$PATH"
