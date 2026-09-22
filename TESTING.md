@@ -522,6 +522,8 @@ credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない
 optional entitlement probe failure / malformed missing-key signature rejection
 required plist partial-output + non-zero probe failure rejection
+checksum manifest exact filename / single-entry contract
+dotted-version decoy filename rejection
 schema v1 evidence fixture
 schema initialization rejects duplicates and ambiguous probes without mutation
 bundle metadata key-probe failure leaves evidence unchanged
@@ -568,7 +570,9 @@ unknown/malformed evidence rejection
 bundle identifier / version / positive build
 notarization / codesign / stapler / Gatekeeper state
 evidence commit SHA == candidate workflow head SHA
-SHA256SUMS
+SHA256SUMS exactly one entry
+SHA256SUMS exact literal candidate archive filename
+SHA256 self-check of that exact archive
 candidate commit exactly matches freshly fetched current main before Draft creation
 public Release build-number history
 pre-existing tag / release absence, with API enumeration and exact Release-name match probe failures distinguished from confirmed absence
