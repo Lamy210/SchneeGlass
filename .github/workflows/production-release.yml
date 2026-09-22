@@ -16,6 +16,7 @@ on:
     paths:
       - '.github/workflows/production-release.yml'
       - 'Scripts/build-notarized-release.sh'
+      - 'Scripts/verify-xcode-version.sh'
       - 'Scripts/record-release-bundle-metadata.sh'
       - 'Scripts/test-release-bundle-metadata-key-probe.sh'
       - 'Scripts/initialize-release-evidence-schema.sh'
@@ -56,15 +57,15 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Production release path coverage
         run: |
           bash Scripts/verify-production-release-path-coverage.sh \
             .github/workflows/production-release.yml \
             'Scripts/verify-release-metadata.sh' \
+            'Scripts/verify-xcode-version.sh' \
             'Scripts/test-release-bundle-metadata-key-probe.sh' \
             'Scripts/initialize-release-evidence-schema.sh' \
             'Scripts/test-release-evidence-schema-probe.sh' \
@@ -400,9 +401,8 @@ jobs:
 
       - name: Toolchain
         run: |
-          xcodebuild -version
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
           swift --version
-          xcodebuild -version | grep -F 'Xcode 26.6'
 
       - name: Build signed and notarized release candidate
         run: bash Scripts/build-notarized-release.sh
