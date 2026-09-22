@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/release-candidate.yml'
       - 'Scripts/verify-release-metadata.sh'
+      - 'Scripts/verify-required-plist-value.sh'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
       - 'RELEASE.md'
   workflow_dispatch:
@@ -91,10 +92,10 @@ jobs:
           test -d "$APP"
           test -f "$APP/Contents/MacOS/SchneeGlass"
           plutil -lint "$APP/Contents/Info.plist"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = 'io.github.lamy210.schneeglass'
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = '${{ steps.release.outputs.version }}'
+          bash Scripts/verify-required-plist-value.sh "$APP/Contents/Info.plist" 'CFBundleIdentifier' 'io.github.lamy210.schneeglass' 'Unsigned release candidate'
+          bash Scripts/verify-required-plist-value.sh "$APP/Contents/Info.plist" 'CFBundleShortVersionString' '${{ steps.release.outputs.version }}' 'Unsigned release candidate'
           plutil -lint App/SchneeGlass.entitlements
-          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' App/SchneeGlass.entitlements)" = 'true'
+          bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.app-sandbox' 'true' 'Unsigned release candidate'
 
       - name: Package release candidate and integrity manifest
         run: |
