@@ -403,11 +403,9 @@ MODE="${GH_FIXTURE_GREP_MODE:-normal}"
 LAST_ARG="${!#:-}"
 
 case "$MODE:$LAST_ARG" in
-  partial-main-fetch-count-failure:*/gh.log)
-    if [[ "${1:-}" == '-Fc' && "${2:-}" == 'git fetch origin main ' ]]; then
-      printf '2\n'
-      exit 42
-    fi
+  partial-main-fetch-count-failure:*)
+    printf '2\n'
+    exit 42
     ;;
   failure-preexisting:*/existing-release-tags.txt)
     echo 'fixture: pre-existing Release-name membership probe unavailable' >&2
