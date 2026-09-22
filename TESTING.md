@@ -520,6 +520,7 @@ signing/evidence helper shell syntax
 credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない
 optional entitlement probe failure / malformed missing-key signature rejection
+required plist partial-output + non-zero probe failure rejection
 schema v1 evidence fixture
 schema initialization rejects duplicates and ambiguous probes without mutation
 bundle metadata key-probe failure leaves evidence unchanged
