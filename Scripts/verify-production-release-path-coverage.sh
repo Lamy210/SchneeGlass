@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 fail() {
   echo "Production release path coverage validation failed: $*" >&2
@@ -13,13 +13,36 @@ shift
 
 [[ -f "$WORKFLOW" ]] || fail "workflow is missing: $WORKFLOW"
 
-# Mechanically extracted from the workflow for RED proof.
-# The original step did not enable pipefail, so a partial sed result can satisfy grep.
+PATHS_SECTION="$(mktemp)"
+cleanup() {
+  rm -f "$PATHS_SECTION"
+}
+trap cleanup EXIT
+
+set +e
+sed -n '/^  pull_request:/,/^permissions:/p' "$WORKFLOW" > "$PATHS_SECTION"
+SED_STATUS=$?
+set -e
+
+[[ "$SED_STATUS" -eq 0 ]] \
+  || fail "unable to enumerate pull_request.paths (sed status $SED_STATUS)"
+
 for required_path in "$@"; do
-  sed -n '/^  pull_request:/,/^permissions:/p' "$WORKFLOW" \
-    | grep -Fq "      - '$required_path'" || {
+  set +e
+  grep -Fqx "      - '$required_path'" "$PATHS_SECTION"
+  MATCH_STATUS=$?
+  set -e
+
+  case "$MATCH_STATUS" in
+    0)
+      ;;
+    1)
       fail "pull_request.paths is missing required path: $required_path"
-    }
+      ;;
+    *)
+      fail "unable to probe required path membership: $required_path (grep status $MATCH_STATUS)"
+      ;;
+  esac
 done
 
 echo 'Production release path coverage verified'
