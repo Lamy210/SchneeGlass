@@ -101,10 +101,17 @@ chmod +x "$FIXTURE/bin/PlistBuddy"
 run_probe_failure() {
   local mode="$1"
   local expected_key="$2"
-  local output="$3"
+  local expected_status="$3"
+  local output="$4"
 
   set +e
-  OPTIONAL_ENTITLEMENT_PROBE_MODE="$mode"     REAL_PLIST_BUDDY="$REAL_PLIST_BUDDY"     PLIST_BUDDY_BIN="$FIXTURE/bin/PlistBuddy"     bash Scripts/verify-optional-release-entitlements.sh       "$ABSENT"       'Optional entitlement fixture'       >"$output" 2>&1
+  OPTIONAL_ENTITLEMENT_PROBE_MODE="$mode" \
+    REAL_PLIST_BUDDY="$REAL_PLIST_BUDDY" \
+    PLIST_BUDDY_BIN="$FIXTURE/bin/PlistBuddy" \
+    bash Scripts/verify-optional-release-entitlements.sh \
+      "$ABSENT" \
+      'Optional entitlement fixture' \
+      >"$output" 2>&1
   local status=$?
   set -e
 
@@ -114,27 +121,37 @@ run_probe_failure() {
     exit 1
   fi
 
-  "$REAL_GREP" -Fq     "Optional entitlement fixture failed: unable to inspect entitlement $expected_key (PlistBuddy status 42)"     "$output"
+  if ! "$REAL_GREP" -Fq \
+    "Optional entitlement fixture failed: unable to inspect entitlement $expected_key (PlistBuddy status $expected_status)" \
+    "$output"; then
+    cat "$output"
+    echo "Optional entitlement validator did not report the expected probe status for mode: $mode" >&2
+    exit 1
+  fi
 }
 
 run_probe_failure \
   'network-failure' \
   'com.apple.security.network.client' \
+  '42' \
   "$FIXTURE/network-failure.log"
 
 run_probe_failure \
   'get-task-failure' \
   'com.apple.security.get-task-allow' \
+  '42' \
   "$FIXTURE/get-task-failure.log"
 
 run_probe_failure \
   'network-malformed-missing' \
   'com.apple.security.network.client' \
+  '1' \
   "$FIXTURE/network-malformed-missing.log"
 
 run_probe_failure \
   'get-task-malformed-missing' \
   'com.apple.security.get-task-allow' \
+  '1' \
   "$FIXTURE/get-task-malformed-missing.log"
 
 rm -rf "$FIXTURE"
