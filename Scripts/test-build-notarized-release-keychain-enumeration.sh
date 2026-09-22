@@ -65,12 +65,14 @@ export SECURITY_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 export RUNNER_TEMP="$FIXTURE/runner-temp"
 export RELEASE_VERSION='0.1.0'
-export DEVELOPER_ID_P12_BASE64="$(/usr/bin/base64 < "$FIXTURE/DeveloperID.p12" | tr -d '\n')"
+DEVELOPER_ID_P12_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/DeveloperID.p12")"
+export DEVELOPER_ID_P12_BASE64
 export DEVELOPER_ID_P12_PASSWORD='fixture-password'
 export APPLE_TEAM_ID='ABCDE12345'
 export APPSTORE_CONNECT_KEY_ID='FGHIJ67890'
 export APPSTORE_CONNECT_ISSUER_ID='12345678-1234-1234-1234-1234567890ab'
-export APPSTORE_CONNECT_PRIVATE_KEY_BASE64="$(/usr/bin/base64 < "$FIXTURE/AuthKey.p8" | tr -d '\n')"
+APPSTORE_CONNECT_PRIVATE_KEY_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/AuthKey.p8")"
+export APPSTORE_CONNECT_PRIVATE_KEY_BASE64
 
 set +e
 bash Scripts/build-notarized-release.sh >"$OUTPUT" 2>&1
