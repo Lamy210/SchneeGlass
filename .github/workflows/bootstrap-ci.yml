@@ -228,10 +228,7 @@ jobs:
           plutil -lint App/SchneeGlass.entitlements
           bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.app-sandbox' 'true' 'Bootstrap entitlement verification'
           bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.files.user-selected.read-write' 'true' 'Bootstrap entitlement verification'
-          if /usr/libexec/PlistBuddy -c 'Print :com.apple.security.network.client' App/SchneeGlass.entitlements >/dev/null 2>&1; then
-            echo 'Unexpected network client entitlement' >&2
-            exit 1
-          fi
+          bash Scripts/verify-optional-release-entitlements.sh App/SchneeGlass.entitlements 'Bootstrap entitlement verification'
 
       - name: Package unsigned CI app artifact
         run: |
