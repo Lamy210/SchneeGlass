@@ -19,6 +19,13 @@ fail() {
 [[ -n "$KEY" ]] || fail 'plist key is required'
 [[ -f "$PLIST_PATH" ]] || fail "plist file is missing: $PLIST_PATH"
 
-# Mechanically extracted current semantics for RED/TDD.
-test "$("$PLIST_BUDDY_BIN" -c "Print :$KEY" "$PLIST_PATH")" = "$EXPECTED" \
-  || fail "unexpected value for $KEY"
+VALUE=''
+if VALUE="$("$PLIST_BUDDY_BIN" -c "Print :$KEY" "$PLIST_PATH" 2>&1)"; then
+  :
+else
+  STATUS=$?
+  fail "unable to read required plist key $KEY (PlistBuddy status $STATUS)"
+fi
+
+[[ "$VALUE" == "$EXPECTED" ]] \
+  || fail "unexpected value for $KEY (expected $EXPECTED)"
