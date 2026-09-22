@@ -254,8 +254,8 @@ Before creating a Release it revalidates:
 - positive signed bundle build
 - notarization / codesign / stapler / Gatekeeper state
 - evidence commit SHA equals candidate workflow head SHA
-- expected archive is present in `SHA256SUMS`
-- SHA-256 self-check passes
+- `SHA256SUMS` contains exactly one entry with a 64-hex digest, exactly two separator spaces, and the exact literal candidate archive filename
+- SHA-256 self-check passes for that exact candidate archive
 - all existing public Release build evidence is readable and valid; schema/build key enumeration failures or malformed counts fail closed
 - candidate `bundle_build` is greater than the maximum public Release build when history exists
 - candidate commit exists and exactly matches the freshly fetched current `main` commit before Draft creation
@@ -302,6 +302,8 @@ Verification:
 ```bash
 shasum -a 256 -c SHA256SUMS
 ```
+
+Production release manifests are a strict one-archive contract. `SHA256SUMS` must contain exactly one entry, and that entry must name the exact literal `SchneeGlass-X.Y.Z.zip` candidate. Filename matching is not regex-based; a lookalike filename must not satisfy archive membership. The checksum self-check runs only after this exact manifest contract passes.
 
 A checksum proves artifact integrity relative to the manifest; it does **not** replace Apple code signing or notarization.
 

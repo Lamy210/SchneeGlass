@@ -44,6 +44,8 @@ on:
       - 'Scripts/test-release-build-history-key-enumeration.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/test-release-evidence-enumeration.sh'
+      - 'Scripts/verify-release-checksum-manifest.sh'
+      - 'Scripts/test-release-checksum-manifest.sh'
       - 'Scripts/verify-production-release-path-coverage.sh'
       - 'Scripts/test-production-release-path-coverage-enumeration.sh'
       - 'Scripts/verify-release-branch-protection.sh'
@@ -83,6 +85,8 @@ jobs:
             'Scripts/test-publish-release-provenance.sh' \
             'Scripts/test-release-build-history-key-enumeration.sh' \
             'Scripts/test-release-evidence-enumeration.sh' \
+            'Scripts/verify-release-checksum-manifest.sh' \
+            'Scripts/test-release-checksum-manifest.sh' \
             'Scripts/verify-production-release-path-coverage.sh' \
             'Scripts/test-production-release-path-coverage-enumeration.sh'
 
@@ -98,11 +102,16 @@ jobs:
           bash -n Scripts/test-release-build-history-key-enumeration.sh
           bash -n Scripts/verify-release-evidence.sh
           bash -n Scripts/test-release-evidence-enumeration.sh
+          bash -n Scripts/verify-release-checksum-manifest.sh
+          bash -n Scripts/test-release-checksum-manifest.sh
           bash -n Scripts/verify-production-release-path-coverage.sh
           bash -n Scripts/test-production-release-path-coverage-enumeration.sh
           bash -n Scripts/verify-release-branch-protection.sh
           bash -n Scripts/verify-release-required-branch-rules.sh
           bash -n Scripts/verify-release-required-checks.sh
+
+      - name: Release checksum manifest fixture
+        run: bash Scripts/test-release-checksum-manifest.sh
 
       - name: Release build-history key enumeration failure fixture
         run: bash Scripts/test-release-build-history-key-enumeration.sh

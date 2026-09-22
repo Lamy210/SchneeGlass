@@ -24,6 +24,8 @@ on:
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
       - 'Scripts/verify-release-evidence.sh'
+      - 'Scripts/verify-release-checksum-manifest.sh'
+      - 'Scripts/test-release-checksum-manifest.sh'
       - 'Scripts/verify-production-release-preflight.sh'
       - 'Scripts/verify-optional-release-entitlements.sh'
       - 'Scripts/test-optional-release-entitlement-probes.sh'
@@ -70,6 +72,8 @@ jobs:
             'Scripts/test-optional-release-entitlement-probes.sh' \
             'Scripts/verify-required-plist-value.sh' \
             'Scripts/test-required-plist-value-probes.sh' \
+            'Scripts/verify-release-checksum-manifest.sh' \
+            'Scripts/test-release-checksum-manifest.sh' \
             'Scripts/verify-production-release-path-coverage.sh' \
             'Scripts/test-production-release-path-coverage-enumeration.sh'
 
@@ -94,6 +98,11 @@ jobs:
           bash -n Scripts/initialize-release-evidence-schema.sh
           bash -n Scripts/test-release-evidence-schema-probe.sh
           bash -n Scripts/verify-release-evidence.sh
+          bash -n Scripts/verify-release-checksum-manifest.sh
+          bash -n Scripts/test-release-checksum-manifest.sh
+
+      - name: Release checksum manifest fixture
+        run: bash Scripts/test-release-checksum-manifest.sh
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
