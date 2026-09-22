@@ -141,7 +141,27 @@ chmod +x "$FIXTURE/bin/grep"
 assert_log_count() {
   local expected="$1"
   local pattern="$2"
-  [[ "$(grep -Fc -- "$pattern" "$LOG")" -eq "$expected" ]]
+  local count=''
+  local status=0
+
+  if count="$(grep -Fc -- "$pattern" "$LOG")"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "Fixture log-count assertion failed: unable to enumerate pattern: $pattern (grep status $status)" >&2
+    return 1
+  fi
+  if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+    echo "Fixture log-count assertion failed: count is not numeric for pattern: $pattern ($count)" >&2
+    return 1
+  fi
+  if [[ "$count" -ne "$expected" ]]; then
+    echo "Fixture log-count assertion failed: expected $expected match(es) for pattern: $pattern, found $count" >&2
+    return 1
+  fi
 }
 
 export GH_FIXTURE_LOG="$LOG"
