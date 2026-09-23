@@ -68,10 +68,17 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
+emit_canonical_ruleset_detail() {
+  local id="$1"
+  cat <<JSON
+{"id":$id,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Compatibility / macOS 15 / App Build","integration_id":15368},{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368}],"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false}},{"type":"pull_request","parameters":{"allowed_merge_methods":["rebase","merge","squash"],"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"non_fast_forward"},{"type":"deletion"}]}
+JSON
+}
+
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
-      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target)
+      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
       inactive)
@@ -93,7 +100,7 @@ case "$METHOD:$ENDPOINT" in
     printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
     ;;
   GET:repos/example/SchneeGlass/rulesets/123)
-    printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+    emit_canonical_ruleset_detail 123
     ;;
   GET:repos/example/SchneeGlass/rulesets/55)
     case "$MODE" in
@@ -109,8 +116,18 @@ case "$METHOD:$ENDPOINT" in
       wrong-target)
         printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/release"],"exclude":[]}}}\n'
         ;;
+      drifted-pr)
+        cat <<'JSON'
+{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"allowed_merge_methods":["merge","squash","rebase"],"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_approving_review_count":1,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"do_not_enforce_on_create":false,"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]}
+JSON
+        ;;
+      extra-rule)
+        cat <<'JSON'
+{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"allowed_merge_methods":["merge","squash","rebase"],"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"do_not_enforce_on_create":false,"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}},{"type":"required_signatures"}]}
+JSON
+        ;;
       *)
-        printf '{"id":55,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
+        emit_canonical_ruleset_detail 55
         ;;
     esac
     ;;
