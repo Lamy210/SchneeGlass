@@ -86,7 +86,12 @@ load_deployment_policy_counts() {
     all(.[];
       type == "object" and
       (.total_count | type == "number" and . >= 0 and floor == .) and
-      (.branch_policies | type == "array")
+      (.branch_policies | type == "array") and
+      all(.branch_policies[];
+        type == "object" and
+        (.name | type == "string" and length > 0) and
+        (.type | type == "string" and (. == "branch" or . == "tag"))
+      )
     )
   ' "$pages_json" >/dev/null \
     || fail "$context response is malformed"
@@ -99,12 +104,12 @@ load_deployment_policy_counts() {
     || fail "$context pages disagree on total_count"
 
   POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$pages_json")"
-  MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$pages_json")"
+  MAIN_BRANCH_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main" and .type == "branch")] | length' "$pages_json")"
 
   [[ "$POLICY_COUNT" =~ ^[0-9]+$ ]] \
     || fail "$context observed policy count is not numeric: $POLICY_COUNT"
-  [[ "$MAIN_POLICY_COUNT" =~ ^[0-9]+$ ]] \
-    || fail "$context main policy count is not numeric: $MAIN_POLICY_COUNT"
+  [[ "$MAIN_BRANCH_POLICY_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "$context exact main branch policy count is not numeric: $MAIN_BRANCH_POLICY_COUNT"
   [[ "$POLICY_REPORTED_COUNT" =~ ^[0-9]+$ ]] \
     || fail "$context reported policy count is not numeric: $POLICY_REPORTED_COUNT"
 
@@ -212,10 +217,10 @@ if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
     'deployment branch policy after recovery'
 fi
 
-[[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \
-  || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy named main"
+[[ "$POLICY_COUNT" -eq 1 && "$MAIN_BRANCH_POLICY_COUNT" -eq 1 ]] \
+  || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy for branch main"
 
-echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main policy"
+echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main branch policy"
 
 if [[ "$MODE" == '--verify-credential-names' ]]; then
   gh secret list \

@@ -80,13 +80,17 @@ JSON
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     if [[ "$MODE" == 'extra-policy' ]]; then
-      printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main"},{"id":102,"name":"release/*"}]}]\n'
+      printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"},{"id":102,"name":"release/*","type":"branch"}]}]\n'
     elif [[ "$MODE" == 'incomplete-policy-enumeration' ]]; then
-      printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+      printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+    elif [[ "$MODE" == 'main-tag-policy' ]]; then
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"tag"}]}]\n'
+    elif [[ "$MODE" == 'missing-policy-type' ]]; then
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
     elif [[ "$MODE" == 'missing-policy' && ! -f "$POLICY_CREATED" ]]; then
       printf '[{"total_count":0,"branch_policies":[]}]\n'
     else
-      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     fi
     ;;
   POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
@@ -95,7 +99,7 @@ JSON
       exit 93
     }
     touch "$POLICY_CREATED"
-    printf '{"id":101,"name":"main"}\n'
+    printf '{"id":101,"name":"main","type":"branch"}\n'
     ;;
   PUT:*|POST:*)
     echo "unexpected mutation for existing Environment: $METHOD $ENDPOINT" >&2
@@ -183,7 +187,7 @@ if [[ "$STATUS" -ne 0 ]]; then
   cat "$LOG" >&2
   exit "$STATUS"
 fi
-grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+grep -Fq 'Production release Environment verified: production-release allows only exact main branch policy' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
@@ -207,6 +211,44 @@ grep -Fq 'Production release environment setup failed: deployment branch policy 
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
+# A main-named tag policy must not be certified as the protected main branch.
+: > "$LOG"
+export GH_FIXTURE_MODE='main-tag-policy'
+OUTPUT="$FIXTURE/main-tag-policy.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT" >&2
+  cat "$LOG" >&2
+  echo 'Production release Environment unexpectedly accepted a main tag policy.' >&2
+  exit 1
+fi
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# A policy object without an explicit type must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='missing-policy-type'
+OUTPUT="$FIXTURE/missing-policy-type.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT" >&2
+  cat "$LOG" >&2
+  echo 'Production release Environment unexpectedly accepted a policy without type.' >&2
+  exit 1
+fi
+grep -Fq 'Production release environment setup failed: deployment branch policy response is malformed' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
 # Any extra deployment policy must fail closed and remain non-destructive.
 : > "$LOG"
 export GH_FIXTURE_MODE='extra-policy'
@@ -217,7 +259,7 @@ STATUS=$?
 set -e
 
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy named main' "$OUTPUT"
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
@@ -237,7 +279,7 @@ if [[ "$STATUS" -ne 0 ]]; then
   cat "$LOG" >&2
   exit "$STATUS"
 fi
-grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+grep -Fq 'Production release Environment verified: production-release allows only exact main branch policy' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 assert_log_count 1 '--method POST'
 grep -Fq 'repos/example/SchneeGlass/environments/production-release/deployment-branch-policies' "$LOG"

@@ -103,7 +103,7 @@ JSON
     if [[ "$MODE" == 'missing-policy' ]]; then
       printf '[{"total_count":0,"branch_policies":[]}]\n'
     else
-      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     fi
     ;;
   PUT:*|POST:*)
@@ -147,7 +147,7 @@ STATUS=$?
 set -e
 
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy named main' "$OUTPUT"
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'secret list ' "$LOG"
