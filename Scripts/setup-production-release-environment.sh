@@ -67,12 +67,12 @@ load_environment_counts() {
     || fail "environment pages disagree on total_count"
 
   ENVIRONMENT_OBSERVED_COUNT="$(jq '[.[] .environments[]?] | length' "$pages_json")"
-  ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select(.name == $name)] | length' "$pages_json")"
+  ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select((.name | ascii_downcase) == ($name | ascii_downcase))] | length' "$pages_json")"
 
   [[ "$ENVIRONMENT_OBSERVED_COUNT" =~ ^[0-9]+$ ]] \
     || fail "observed environment count is not numeric: $ENVIRONMENT_OBSERVED_COUNT"
   [[ "$ENVIRONMENT_COUNT" =~ ^[0-9]+$ ]] \
-    || fail "$ENVIRONMENT_NAME count is not numeric: $ENVIRONMENT_COUNT"
+    || fail "$ENVIRONMENT_NAME case-insensitive count is not numeric: $ENVIRONMENT_COUNT"
   [[ "$ENVIRONMENT_REPORTED_COUNT" =~ ^[0-9]+$ ]] \
     || fail "reported environment count is not numeric: $ENVIRONMENT_REPORTED_COUNT"
 
@@ -152,7 +152,7 @@ gh api --paginate --slurp \
   > "$ENVIRONMENTS_PAGES_JSON"
 load_environment_counts "$ENVIRONMENTS_PAGES_JSON"
 [[ "$ENVIRONMENT_COUNT" -le 1 ]] \
-  || fail "multiple environments named $ENVIRONMENT_NAME were returned"
+  || fail "multiple case-insensitive Environment identities matched $ENVIRONMENT_NAME"
 
 if [[ "$MODE" == '--verify-credential-names' && "$ENVIRONMENT_COUNT" -eq 0 ]]; then
   fail "credential-name verification requires existing Environment: $ENVIRONMENT_NAME"
@@ -188,11 +188,13 @@ gh api \
   "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
   > "$ENVIRONMENT_JSON"
 jq -e --arg name "$ENVIRONMENT_NAME" '
-  .name == $name and
+  type == "object" and
+  (.name | type == "string" and length > 0) and
+  ((.name | ascii_downcase) == ($name | ascii_downcase)) and
   .deployment_branch_policy.protected_branches == false and
   .deployment_branch_policy.custom_branch_policies == true
 ' "$ENVIRONMENT_JSON" >/dev/null \
-  || fail "$ENVIRONMENT_NAME must use custom deployment branch policies"
+  || fail "$ENVIRONMENT_NAME must resolve case-insensitively and use custom deployment branch policies"
 
 gh api --paginate --slurp \
   -H "X-GitHub-Api-Version: $API_VERSION" \
