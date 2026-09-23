@@ -29,13 +29,9 @@ gh auth status >/dev/null
 RULESET_RECIPE='.github/rulesets/main-release-governance.json'
 RULESET_NAME='SchneeGlass main release governance'
 [[ -f "$RULESET_RECIPE" ]] || fail "ruleset recipe is missing: $RULESET_RECIPE"
-jq -e '
-  type == "object" and
-  has("bypass_actors") and
-  (.bypass_actors | type == "array") and
-  (.bypass_actors | length == 0)
-' "$RULESET_RECIPE" >/dev/null \
-  || fail "canonical ruleset recipe must declare an empty bypass_actors array"
+if ! bash Scripts/verify-release-canonical-ruleset.sh "$RULESET_RECIPE"; then
+  fail "canonical ruleset recipe does not match the fixed release governance baseline"
+fi
 
 TMP="$(mktemp -d)"
 cleanup() {
