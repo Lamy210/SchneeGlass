@@ -322,6 +322,39 @@ grep -Fq 'Release governance setup failed: canonical ruleset detail does not mat
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
 
+# Verify-only must reject drift in reviewed pull-request rule parameters.
+: > "$LOG"
+export GH_FIXTURE_MODE='drifted-pr'
+VERIFY_DRIFTED_PR_LOG="$FIXTURE/verify-drifted-pr.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_DRIFTED_PR_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$VERIFY_DRIFTED_PR_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$VERIFY_DRIFTED_PR_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Normal recovery must also reject a sole canonical-named ruleset with an extra rule
+# before mutating immutability or certifying branch governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='extra-rule'
+EXTRA_RULE_LOG="$FIXTURE/extra-rule.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$EXTRA_RULE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$EXTRA_RULE_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$EXTRA_RULE_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
 # Verify-only must fail closed when the canonical ruleset is absent.
 : > "$LOG"
 export GH_FIXTURE_MODE='empty'
