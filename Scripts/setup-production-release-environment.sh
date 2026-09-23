@@ -159,6 +159,13 @@ if [[ "$MODE" == '--verify-credential-names' && "$ENVIRONMENT_COUNT" -eq 0 ]]; t
 fi
 
 if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
+  gh api --paginate --slurp \
+    "repos/$REPOSITORY/environments?per_page=100" \
+    > "$ENVIRONMENTS_PAGES_JSON"
+  load_environment_counts "$ENVIRONMENTS_PAGES_JSON"
+  [[ "$ENVIRONMENT_COUNT" -eq 0 ]] \
+    || fail "$ENVIRONMENT_NAME appeared before creation; refusing create-or-update mutation"
+
   jq -n '{
     deployment_branch_policy: {
       protected_branches: false,
