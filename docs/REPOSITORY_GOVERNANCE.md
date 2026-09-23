@@ -78,19 +78,22 @@ GitHub repository Administration permission
 
 The helper is intentionally fail-closed. It:
 
-1. reads the current repository ruleset list;
-2. creates `.github/rulesets/main-release-governance.json` only when the repository has zero rulesets;
-3. when exactly one ruleset exists and it is the active canonical `SchneeGlass main release governance` ruleset, resumes setup without creating another ruleset;
-4. rejects an inactive canonical ruleset, duplicate/layered canonical rulesets, and any differently named pre-existing ruleset before further mutation;
-5. fetches the exact canonical ruleset detail by ID and requires an active branch ruleset targeting exactly `refs/heads/main` with no excluded refs;
-6. requires `bypass_actors` to be observable and exactly empty before certifying governance;
-7. semantically normalizes the live ruleset detail and the checked-in recipe, then requires the reviewed rule set and parameters to match exactly (ordering differences are ignored, but added/removed rules and parameter drift are rejected);
-8. enables or re-enables repository release immutability through the GitHub REST API;
-9. re-reads the immutable-release state and requires `enabled=true`;
-10. re-reads the live `main` branch and effective active branch rules;
-11. runs the same branch/rule/required-check validators used by production publication.
+1. validates the checked-in `.github/rulesets/main-release-governance.json` before any GitHub API mutation and requires its `bypass_actors` field to exist as an empty array;
+2. reads the current repository ruleset list;
+3. creates the checked-in canonical ruleset only when the repository has zero rulesets;
+4. when exactly one ruleset exists and it is the active canonical `SchneeGlass main release governance` ruleset, resumes setup without creating another ruleset;
+5. rejects an inactive canonical ruleset, duplicate/layered canonical rulesets, and any differently named pre-existing ruleset before further mutation;
+6. fetches the exact canonical ruleset detail by ID and requires an active branch ruleset targeting exactly `refs/heads/main` with no excluded refs;
+7. requires live `bypass_actors` to be observable and exactly empty before certifying governance;
+8. semantically normalizes the live ruleset detail and the checked-in recipe, then requires the reviewed rule set and parameters to match exactly (ordering differences are ignored, but added/removed rules and parameter drift are rejected);
+9. enables or re-enables repository release immutability through the GitHub REST API;
+10. re-reads the immutable-release state and requires `enabled=true`;
+11. re-reads the live `main` branch and effective active branch rules;
+12. runs the same branch/rule/required-check validators used by production publication.
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
+
+The checked-in ruleset recipe is rejected before any `gh api` call if `bypass_actors` is missing, malformed, or non-empty. This prevents an unsafe recipe drift from being POSTed and only discovered after live mutation.
 
 The setup is not transactional across GitHub APIs. If ruleset creation succeeds but the subsequent release-immutability operation fails, rerunning the normal setup mode is supported only when the live repository contains exactly one active canonical ruleset and no other repository rulesets. In that narrow recovery state the helper does not POST another ruleset; it retries release immutability and then revalidates the complete live governance state. Inactive, duplicate, layered, or differently named rulesets remain fail-closed and require manual review.
 
