@@ -57,7 +57,10 @@ load_deployment_policy_counts() {
     || fail "$context response is malformed"
 
   POLICY_REPORTED_COUNT="$(jq -r '.[0].total_count' "$pages_json")"
-  jq -e --argjson total "$POLICY_REPORTED_COUNT"     'all(.[]; .total_count == $total)'     "$pages_json" >/dev/null \
+  jq -e \
+    --argjson total "$POLICY_REPORTED_COUNT" \
+    'all(.[]; .total_count == $total)' \
+    "$pages_json" >/dev/null \
     || fail "$context pages disagree on total_count"
 
   POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$pages_json")"
@@ -157,7 +160,9 @@ gh api --paginate --slurp \
   -H "X-GitHub-Api-Version: $API_VERSION" \
   "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
   > "$POLICIES_PAGES_JSON"
-load_deployment_policy_counts   "$POLICIES_PAGES_JSON"   'deployment branch policy'
+load_deployment_policy_counts \
+  "$POLICIES_PAGES_JSON" \
+  'deployment branch policy'
 
 if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
   jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
@@ -173,7 +178,9 @@ if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
     -H "X-GitHub-Api-Version: $API_VERSION" \
     "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
     > "$POLICIES_PAGES_JSON"
-  load_deployment_policy_counts     "$POLICIES_PAGES_JSON"     'deployment branch policy after recovery'
+  load_deployment_policy_counts \
+    "$POLICIES_PAGES_JSON" \
+    'deployment branch policy after recovery'
 fi
 
 [[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \
