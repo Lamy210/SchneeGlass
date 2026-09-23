@@ -348,11 +348,55 @@ set -e
 cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
 
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release governance setup failed: canonical ruleset recipe must declare an empty bypass_actors array' "$RECIPE_BYPASS_LOG"
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe must be an object with an empty bypass_actors array and a rules array' "$RECIPE_BYPASS_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_BYPASS_LOG"
 ! grep -Fq 'api ' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
+
+# Recipe target drift must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_TARGET_LOG="$FIXTURE/recipe-target.log"
+"$REAL_JQ" '.conditions.ref_name.include = ["refs/heads/release"]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Required-check integration drift must also fail before mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_CHECK_LOG="$FIXTURE/recipe-check.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "required_status_checks" then
+      .parameters.required_status_checks[0].integration_id = 999
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_CHECK_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+! grep -Fq 'api ' "$LOG"
 
 # Verify-only must reject drift in reviewed pull-request rule parameters.
 : > "$LOG"
