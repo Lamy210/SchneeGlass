@@ -348,12 +348,37 @@ set -e
 cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
 
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Canonical release ruleset verification failed: canonical recipe must be an object with an empty bypass_actors array and a rules array' "$RECIPE_BYPASS_LOG"
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_BYPASS_LOG"
 grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_BYPASS_LOG"
 ! grep -Fq 'api ' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
+
+# An unreviewed parameter on a known rule must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_EXTRA_FIELD_LOG="$FIXTURE/recipe-extra-field.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "pull_request" then
+      .parameters.unreviewed_future_switch = true
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_EXTRA_FIELD_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_EXTRA_FIELD_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_EXTRA_FIELD_LOG"
+! grep -Fq 'api ' "$LOG"
 
 # Recipe target drift must fail before any GitHub API call.
 : > "$LOG"
