@@ -243,7 +243,7 @@ assert_log 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/
 assert_log 'api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies --input'
 assert_log 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release'
 assert_log 'api --paginate --slurp -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release/deployment-branch-policies\?per_page=100'
-grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+grep -Fq 'Production release Environment verified: production-release allows only exact main branch policy' "$OUTPUT"
 
 PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
 POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
