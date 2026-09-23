@@ -97,6 +97,18 @@ JSON
       incomplete-environment-enumeration)
         printf '[{"total_count":2,"environments":[{"name":"staging"}]}]\n'
         ;;
+      missing-environment-name)
+        printf '[{"total_count":1,"environments":[{}]}]\n'
+        ;;
+      null-environment-name)
+        printf '[{"total_count":1,"environments":[{"name":null}]}]\n'
+        ;;
+      numeric-environment-name)
+        printf '[{"total_count":1,"environments":[{"name":123}]}]\n'
+        ;;
+      empty-environment-name)
+        printf '[{"total_count":1,"environments":[{"name":""}]}]\n'
+        ;;
       *)
         echo "unexpected Environment enumeration mode: $MODE" >&2
         exit 94
@@ -216,6 +228,29 @@ set -e
 grep -Fq 'Production release environment setup failed: environment enumeration is incomplete: reported 2, observed 1' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
+
+# Malformed Environment identities must never be treated as positive proof that
+# production-release is absent.
+for malformed_mode in \
+  missing-environment-name \
+  null-environment-name \
+  numeric-environment-name \
+  empty-environment-name
+do
+  : > "$LOG"
+  export GH_FIXTURE_MODE="$malformed_mode"
+  OUTPUT="$FIXTURE/$malformed_mode.log"
+  CURRENT_OUTPUT="$OUTPUT"
+  set +e
+  bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+  STATUS=$?
+  set -e
+
+  [[ "$STATUS" -ne 0 ]]
+  grep -Fq 'Production release environment setup failed: environments response is malformed' "$OUTPUT"
+  ! grep -Fq -- '--method PUT' "$LOG"
+  ! grep -Fq -- '--method POST' "$LOG"
+done
 
 # Happy path: valid governance + missing Environment creates the Environment and exact main policy.
 : > "$LOG"
