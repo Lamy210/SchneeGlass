@@ -41,6 +41,77 @@ POLICY_PAYLOAD="$TMP/policy-payload.json"
 SECRET_NAMES_JSON="$TMP/environment-secret-names.json"
 VARIABLE_NAMES_JSON="$TMP/environment-variable-names.json"
 
+load_environment_counts() {
+  local pages_json="$1"
+
+  jq -e '
+    type == "array" and
+    length >= 1 and
+    all(.[];
+      type == "object" and
+      (.total_count | type == "number" and . >= 0 and floor == .) and
+      (.environments | type == "array")
+    )
+  ' "$pages_json" >/dev/null \
+    || fail "environments response is malformed"
+
+  ENVIRONMENT_REPORTED_COUNT="$(jq -r '.[0].total_count' "$pages_json")"
+  jq -e \
+    --argjson total "$ENVIRONMENT_REPORTED_COUNT" \
+    'all(.[]; .total_count == $total)' \
+    "$pages_json" >/dev/null \
+    || fail "environment pages disagree on total_count"
+
+  ENVIRONMENT_OBSERVED_COUNT="$(jq '[.[] .environments[]?] | length' "$pages_json")"
+  ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select(.name == $name)] | length' "$pages_json")"
+
+  [[ "$ENVIRONMENT_OBSERVED_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "observed environment count is not numeric: $ENVIRONMENT_OBSERVED_COUNT"
+  [[ "$ENVIRONMENT_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "$ENVIRONMENT_NAME count is not numeric: $ENVIRONMENT_COUNT"
+  [[ "$ENVIRONMENT_REPORTED_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "reported environment count is not numeric: $ENVIRONMENT_REPORTED_COUNT"
+
+  [[ "$ENVIRONMENT_OBSERVED_COUNT" -eq "$ENVIRONMENT_REPORTED_COUNT" ]] \
+    || fail "environment enumeration is incomplete: reported $ENVIRONMENT_REPORTED_COUNT, observed $ENVIRONMENT_OBSERVED_COUNT"
+}
+
+load_deployment_policy_counts() {
+  local pages_json="$1"
+  local context="$2"
+
+  jq -e '
+    type == "array" and
+    length >= 1 and
+    all(.[];
+      type == "object" and
+      (.total_count | type == "number" and . >= 0 and floor == .) and
+      (.branch_policies | type == "array")
+    )
+  ' "$pages_json" >/dev/null \
+    || fail "$context response is malformed"
+
+  POLICY_REPORTED_COUNT="$(jq -r '.[0].total_count' "$pages_json")"
+  jq -e \
+    --argjson total "$POLICY_REPORTED_COUNT" \
+    'all(.[]; .total_count == $total)' \
+    "$pages_json" >/dev/null \
+    || fail "$context pages disagree on total_count"
+
+  POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$pages_json")"
+  MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$pages_json")"
+
+  [[ "$POLICY_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "$context observed policy count is not numeric: $POLICY_COUNT"
+  [[ "$MAIN_POLICY_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "$context main policy count is not numeric: $MAIN_POLICY_COUNT"
+  [[ "$POLICY_REPORTED_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "$context reported policy count is not numeric: $POLICY_REPORTED_COUNT"
+
+  [[ "$POLICY_COUNT" -eq "$POLICY_REPORTED_COUNT" ]] \
+    || fail "$context enumeration is incomplete: reported $POLICY_REPORTED_COUNT, observed $POLICY_COUNT"
+}
+
 gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
 jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
   || fail "main branch response is malformed"
@@ -70,13 +141,7 @@ bash Scripts/verify-release-required-checks.sh \
 gh api --paginate --slurp \
   "repos/$REPOSITORY/environments?per_page=100" \
   > "$ENVIRONMENTS_PAGES_JSON"
-jq -e '
-  type == "array" and
-  all(.[]; type == "object" and (.environments | type == "array"))
-' "$ENVIRONMENTS_PAGES_JSON" >/dev/null \
-  || fail "environments response is malformed"
-
-ENVIRONMENT_COUNT="$(jq --arg name "$ENVIRONMENT_NAME" '[.[] .environments[]? | select(.name == $name)] | length' "$ENVIRONMENTS_PAGES_JSON")"
+load_environment_counts "$ENVIRONMENTS_PAGES_JSON"
 [[ "$ENVIRONMENT_COUNT" -le 1 ]] \
   || fail "multiple environments named $ENVIRONMENT_NAME were returned"
 
@@ -124,14 +189,9 @@ gh api --paginate --slurp \
   -H "X-GitHub-Api-Version: $API_VERSION" \
   "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
   > "$POLICIES_PAGES_JSON"
-jq -e '
-  type == "array" and
-  all(.[]; type == "object" and (.branch_policies | type == "array"))
-' "$POLICIES_PAGES_JSON" >/dev/null \
-  || fail "deployment branch policies response is malformed"
-
-POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
-MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+load_deployment_policy_counts \
+  "$POLICIES_PAGES_JSON" \
+  'deployment branch policy'
 
 if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
   jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
@@ -147,14 +207,9 @@ if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
     -H "X-GitHub-Api-Version: $API_VERSION" \
     "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
     > "$POLICIES_PAGES_JSON"
-  jq -e '
-    type == "array" and
-    all(.[]; type == "object" and (.branch_policies | type == "array"))
-  ' "$POLICIES_PAGES_JSON" >/dev/null \
-    || fail "deployment branch policies response is malformed after recovery"
-
-  POLICY_COUNT="$(jq '[.[] .branch_policies[]?] | length' "$POLICIES_PAGES_JSON")"
-  MAIN_POLICY_COUNT="$(jq '[.[] .branch_policies[]? | select(.name == "main")] | length' "$POLICIES_PAGES_JSON")"
+  load_deployment_policy_counts \
+    "$POLICIES_PAGES_JSON" \
+    'deployment branch policy after recovery'
 fi
 
 [[ "$POLICY_COUNT" -eq 1 && "$MAIN_POLICY_COUNT" -eq 1 ]] \

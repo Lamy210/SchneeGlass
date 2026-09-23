@@ -90,8 +90,18 @@ JSON
     ;;
   GET:repos/example/SchneeGlass/environments?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    [[ "$MODE" == 'create-environment' ]]
-    printf '[{"total_count":0,"environments":[]}]\n'
+    case "$MODE" in
+      create-environment)
+        printf '[{"total_count":0,"environments":[]}]\n'
+        ;;
+      incomplete-environment-enumeration)
+        printf '[{"total_count":2,"environments":[{"name":"staging"}]}]\n'
+        ;;
+      *)
+        echo "unexpected Environment enumeration mode: $MODE" >&2
+        exit 94
+        ;;
+    esac
     ;;
   PUT:repos/example/SchneeGlass/environments/production-release)
     [[ "$MODE" == 'create-environment' ]]
@@ -188,6 +198,22 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release required-check verification failed: missing required status check from app ID 15368: Canonical / Xcode 26.6 / App Build / Safety Guards' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Incomplete Environment pagination must fail before a missing production-release
+# result can authorize a PUT mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='incomplete-environment-enumeration'
+OUTPUT="$FIXTURE/incomplete-environment-enumeration.log"
+CURRENT_OUTPUT="$OUTPUT"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: environment enumeration is incomplete: reported 2, observed 1' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
