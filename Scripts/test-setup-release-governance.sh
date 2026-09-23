@@ -90,6 +90,30 @@ JSON
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
+      concurrent-layer|concurrent-replace|concurrent-disable)
+        if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
+          case "$MODE" in
+            concurrent-layer)
+              printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Concurrent unrelated policy","enforcement":"active"}]\n'
+              ;;
+            concurrent-replace)
+              printf '[{"id":999,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+              ;;
+            concurrent-disable)
+              printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"disabled"}]\n'
+              ;;
+          esac
+        else
+          printf '[]\n'
+        fi
+        ;;
+      empty)
+        if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
+          printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+        else
+          printf '[]\n'
+        fi
+        ;;
       duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
@@ -201,6 +225,54 @@ DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d:
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
 [[ "$POST_LINE" -lt "$DETAIL_LINE" && "$DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
+
+# Mutation safety: ruleset exclusivity must be revalidated after canonical detail
+# verification. A concurrent unrelated ruleset appearing after the initial empty
+# inventory must block immutable-release mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-layer'
+CONCURRENT_LAYER_LOG="$FIXTURE/concurrent-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before immutability mutation' "$CONCURRENT_LAYER_LOG"
+grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Mutation safety: replacing the canonical ruleset with a same-named different
+# identity between detail validation and mutation must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-replace'
+CONCURRENT_REPLACE_LOG="$FIXTURE/concurrent-replace.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_REPLACE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset identity changed before immutability mutation' "$CONCURRENT_REPLACE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Mutation safety: enforcement must still be active at the revalidation boundary.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-disable'
+CONCURRENT_DISABLE_LOG="$FIXTURE/concurrent-disable.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_DISABLE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset enforcement changed before immutability mutation' "$CONCURRENT_DISABLE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
 
 # Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
 # Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable

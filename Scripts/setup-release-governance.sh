@@ -46,20 +46,28 @@ IMMUTABLE_JSON="$TMP/immutable-releases.json"
 BRANCH_JSON="$TMP/main-branch.json"
 RULES_PAGES_JSON="$TMP/main-rules-pages.json"
 
-gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
-jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
-  || fail "repository rulesets response must be a JSON array"
+load_ruleset_inventory() {
+  gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
+  jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
+    || fail "repository rulesets response must be a JSON array"
 
-RULESET_COUNT=''
-set +e
-RULESET_COUNT="$(jq 'length' "$RULESETS_JSON")"
-RULESET_COUNT_STATUS=$?
-set -e
+  RULESET_COUNT=''
+  set +e
+  RULESET_COUNT="$(jq 'length' "$RULESETS_JSON")"
+  RULESET_COUNT_STATUS=$?
+  set -e
 
-[[ "$RULESET_COUNT_STATUS" -eq 0 ]] \
-  || fail "unable to enumerate repository ruleset count (jq status $RULESET_COUNT_STATUS)"
-[[ "$RULESET_COUNT" =~ ^[0-9]+$ ]] \
-  || fail "repository ruleset count is not numeric: $RULESET_COUNT"
+  [[ "$RULESET_COUNT_STATUS" -eq 0 ]] \
+    || fail "unable to enumerate repository ruleset count (jq status $RULESET_COUNT_STATUS)"
+  [[ "$RULESET_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "repository ruleset count is not numeric: $RULESET_COUNT"
+
+  CANONICAL_RULESET_COUNT="$(jq --arg name "$RULESET_NAME" '[.[] | select(.name == $name)] | length' "$RULESETS_JSON")"
+  [[ "$CANONICAL_RULESET_COUNT" =~ ^[0-9]+$ ]] \
+    || fail "canonical ruleset count is not numeric: $CANONICAL_RULESET_COUNT"
+}
+
+load_ruleset_inventory
 
 RULESET_ID=''
 
@@ -72,8 +80,6 @@ if [[ "$VERIFY_ONLY" == true ]]; then
     || fail "verify-only requires canonical ruleset enforcement=active"
   RULESET_ID="$(jq -r --arg name "$RULESET_NAME" '.[] | select(.name == $name) | .id // empty' "$RULESETS_JSON")"
 else
-  CANONICAL_RULESET_COUNT="$(jq --arg name "$RULESET_NAME" '[.[] | select(.name == $name)] | length' "$RULESETS_JSON")"
-
   if [[ "$CANONICAL_RULESET_COUNT" -eq 1 && "$RULESET_COUNT" -eq 1 ]]; then
     jq -e '.[0].enforcement == "active"' "$RULESETS_JSON" >/dev/null \
       || fail "matching ruleset exists but enforcement is not active: $RULESET_NAME"
@@ -129,6 +135,20 @@ if ! bash Scripts/verify-release-canonical-ruleset.sh \
 fi
 
 if [[ "$VERIFY_ONLY" != true ]]; then
+  load_ruleset_inventory
+  [[ "$RULESET_COUNT" -eq 1 && "$CANONICAL_RULESET_COUNT" -eq 1 ]] \
+    || fail "repository ruleset inventory changed before immutability mutation"
+
+  REVALIDATED_RULESET_ID="$(jq -r --arg name "$RULESET_NAME" '.[] | select(.name == $name) | .id // empty' "$RULESETS_JSON")"
+  [[ "$REVALIDATED_RULESET_ID" =~ ^[1-9][0-9]*$ ]] \
+    || fail "revalidated canonical ruleset ID must be a positive integer"
+  [[ "$REVALIDATED_RULESET_ID" == "$RULESET_ID" ]] \
+    || fail "canonical ruleset identity changed before immutability mutation"
+  jq -e --arg name "$RULESET_NAME" \
+    'length == 1 and .[0].name == $name and .[0].enforcement == "active"' \
+    "$RULESETS_JSON" >/dev/null \
+    || fail "canonical ruleset enforcement changed before immutability mutation"
+
   gh api \
     --method PUT \
     -H 'X-GitHub-Api-Version: 2026-03-10' \
