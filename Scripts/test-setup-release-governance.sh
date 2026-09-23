@@ -8,7 +8,6 @@ FIXTURE="${RUNNER_TEMP:-/tmp}/schneeglass-governance-setup-fixture"
 rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/gh.log"
-STATE="$FIXTURE/gh-state"
 : > "$LOG"
 REAL_JQ="$(command -v jq)"
 export REAL_JQ
@@ -30,7 +29,6 @@ cat > "$FIXTURE/bin/gh" <<'SHIM'
 set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
-STATE="${GH_FIXTURE_STATE:?}"
 MODE="${GH_FIXTURE_MODE:-empty}"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -93,16 +91,17 @@ case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
       concurrent-layer)
-        ruleset_read_count=0
-        if [[ -f "$STATE" ]]; then
-          read -r ruleset_read_count < "$STATE"
-        fi
-        ruleset_read_count=$((ruleset_read_count + 1))
-        printf '%s\n' "$ruleset_read_count" > "$STATE"
-        if [[ "$ruleset_read_count" -eq 1 ]]; then
-          printf '[]\n'
-        else
+        if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
           printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Concurrent unrelated policy","enforcement":"active"}]\n'
+        else
+          printf '[]\n'
+        fi
+        ;;
+      empty)
+        if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
+          printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+        else
+          printf '[]\n'
         fi
         ;;
       duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule)
@@ -196,7 +195,6 @@ SHIM
 chmod +x "$FIXTURE/bin/jq"
 
 export GH_FIXTURE_LOG="$LOG"
-export GH_FIXTURE_STATE="$STATE"
 export PATH="$FIXTURE/bin:$PATH"
 
 # Happy path: no rulesets exist, so create once, verify the created canonical ruleset detail,
@@ -222,7 +220,6 @@ BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cu
 # verification. A concurrent unrelated ruleset appearing after the initial empty
 # inventory must block immutable-release mutation.
 : > "$LOG"
-rm -f "$STATE"
 export GH_FIXTURE_MODE='concurrent-layer'
 CONCURRENT_LAYER_LOG="$FIXTURE/concurrent-layer.log"
 set +e
