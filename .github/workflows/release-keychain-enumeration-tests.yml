@@ -7,6 +7,7 @@ on:
       - '.github/workflows/release-keychain-enumeration-tests.yml'
       - 'Scripts/verify-xcode-version.sh'
       - 'Scripts/build-notarized-release.sh'
+      - 'Scripts/encode-release-fixture-base64.sh'
       - 'Scripts/test-build-notarized-release-keychain-enumeration.sh'
       - 'Scripts/test-build-notarized-release-identity-enumeration.sh'
 
@@ -33,6 +34,7 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/build-notarized-release.sh
+          bash -n Scripts/encode-release-fixture-base64.sh
           bash -n Scripts/test-build-notarized-release-keychain-enumeration.sh
           bash -n Scripts/test-build-notarized-release-identity-enumeration.sh
 

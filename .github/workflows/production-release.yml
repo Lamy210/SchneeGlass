@@ -24,6 +24,8 @@ on:
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
+      - 'Scripts/encode-release-fixture-base64.sh'
+      - 'Scripts/test-release-fixture-base64-encoding.sh'
       - 'Scripts/verify-release-evidence.sh'
       - 'Scripts/verify-release-checksum-manifest.sh'
       - 'Scripts/test-release-checksum-manifest.sh'
@@ -73,6 +75,8 @@ jobs:
             'Scripts/test-optional-release-entitlement-probes.sh' \
             'Scripts/verify-required-plist-value.sh' \
             'Scripts/test-required-plist-value-probes.sh' \
+            'Scripts/encode-release-fixture-base64.sh' \
+            'Scripts/test-release-fixture-base64-encoding.sh' \
             'Scripts/verify-release-checksum-manifest.sh' \
             'Scripts/test-release-checksum-manifest.sh' \
             'Scripts/verify-production-release-path-coverage.sh' \
@@ -93,6 +97,8 @@ jobs:
           bash -n Scripts/test-production-release-path-coverage-enumeration.sh
           bash -n Scripts/verify-release-credential-inputs.sh
           bash -n Scripts/verify-release-decoded-credentials.sh
+          bash -n Scripts/encode-release-fixture-base64.sh
+          bash -n Scripts/test-release-fixture-base64-encoding.sh
           bash -n Scripts/build-notarized-release.sh
           bash -n Scripts/record-release-bundle-metadata.sh
           bash -n Scripts/test-release-bundle-metadata-key-probe.sh
@@ -101,6 +107,9 @@ jobs:
           bash -n Scripts/verify-release-evidence.sh
           bash -n Scripts/verify-release-checksum-manifest.sh
           bash -n Scripts/test-release-checksum-manifest.sh
+
+      - name: Release fixture Base64 encoding failure fixture
+        run: bash Scripts/test-release-fixture-base64-encoding.sh
 
       - name: Release checksum manifest fixture
         run: bash Scripts/test-release-checksum-manifest.sh
@@ -256,12 +265,14 @@ jobs:
           LOG="$RUNNER_TEMP/decoded-credential-build-integration.log"
 
           export RELEASE_VERSION='0.1.0'
-          export DEVELOPER_ID_P12_BASE64="$(/usr/bin/base64 < "$FIXTURE/not-p12.bin" | tr -d '\n')"
+          DEVELOPER_ID_P12_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/not-p12.bin")"
+          export DEVELOPER_ID_P12_BASE64
           export DEVELOPER_ID_P12_PASSWORD='fixture-password'
           export APPLE_TEAM_ID='ABCDE12345'
           export APPSTORE_CONNECT_KEY_ID='FGHIJ67890'
           export APPSTORE_CONNECT_ISSUER_ID='12345678-1234-1234-1234-1234567890ab'
-          export APPSTORE_CONNECT_PRIVATE_KEY_BASE64="$(/usr/bin/base64 < "$FIXTURE/AuthKey.p8" | tr -d '\n')"
+          APPSTORE_CONNECT_PRIVATE_KEY_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/AuthKey.p8")"
+          export APPSTORE_CONNECT_PRIVATE_KEY_BASE64
 
           set +e
           bash Scripts/build-notarized-release.sh >"$LOG" 2>&1
