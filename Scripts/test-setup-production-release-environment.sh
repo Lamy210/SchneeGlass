@@ -94,6 +94,14 @@ JSON
       create-environment)
         printf '[{"total_count":0,"environments":[]}]\n'
         ;;
+      concurrent-environment)
+        environment_reads="$(grep -Fc 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG")"
+        if [[ "$environment_reads" -le 1 ]]; then
+          printf '[{"total_count":0,"environments":[]}]\n'
+        else
+          printf '[{"total_count":1,"environments":[{"name":"Production-Release"}]}]\n'
+        fi
+        ;;
       incomplete-environment-enumeration)
         printf '[{"total_count":2,"environments":[{"name":"staging"}]}]\n'
         ;;
@@ -116,7 +124,7 @@ JSON
     esac
     ;;
   PUT:repos/example/SchneeGlass/environments/production-release)
-    [[ "$MODE" == 'create-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
     [[ -n "$INPUT" && -f "$INPUT" ]]
     jq -e '
       .deployment_branch_policy.protected_branches == false and
@@ -125,17 +133,17 @@ JSON
     printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
     ;;
   POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
-    [[ "$MODE" == 'create-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
     [[ -n "$INPUT" && -f "$INPUT" ]]
     jq -e '.name == "main" and .type == "branch"' "$INPUT" >/dev/null
     printf '{"id":101,"name":"main","type":"branch"}\n'
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
-    [[ "$MODE" == 'create-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
     printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
-    [[ "$MODE" == 'create-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     ;;
@@ -251,6 +259,23 @@ do
   ! grep -Fq -- '--method PUT' "$LOG"
   ! grep -Fq -- '--method POST' "$LOG"
 done
+
+# Creation safety: a case-insensitive target appearing after the initial absent
+# inventory must block the create-or-update PUT.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-environment'
+OUTPUT="$FIXTURE/concurrent-environment.log"
+CURRENT_OUTPUT="$OUTPUT"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release appeared before creation; refusing create-or-update mutation' "$OUTPUT"
+[[ "$(grep -Fc 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG")" -eq 2 ]]
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
 
 # Happy path: valid governance + missing Environment creates the Environment and exact main policy.
 : > "$LOG"
