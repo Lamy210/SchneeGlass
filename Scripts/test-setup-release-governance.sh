@@ -12,6 +12,18 @@ LOG="$FIXTURE/gh.log"
 REAL_JQ="$(command -v jq)"
 export REAL_JQ
 
+RULESET_RECIPE='.github/rulesets/main-release-governance.json'
+RULESET_RECIPE_BACKUP="$FIXTURE/main-release-governance.json"
+cp "$RULESET_RECIPE" "$RULESET_RECIPE_BACKUP"
+
+cleanup() {
+  if [[ -f "$RULESET_RECIPE_BACKUP" ]]; then
+    cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+  fi
+  rm -rf "$FIXTURE"
+}
+trap cleanup EXIT
+
 cat > "$FIXTURE/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -322,6 +334,26 @@ grep -Fq 'Release governance setup failed: canonical ruleset detail does not mat
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
 
+# The checked-in mutation recipe must reject bypass actors before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_BYPASS_LOG="$FIXTURE/recipe-bypass.log"
+"$REAL_JQ" '.bypass_actors = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset recipe must declare an empty bypass_actors array' "$RECIPE_BYPASS_LOG"
+! grep -Fq 'api ' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
 # Verify-only must reject drift in reviewed pull-request rule parameters.
 : > "$LOG"
 export GH_FIXTURE_MODE='drifted-pr'
@@ -411,5 +443,4 @@ grep -Fq 'Release governance setup failed: repository already has rulesets; revi
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 
-rm -rf "$FIXTURE"
 echo 'Release governance setup fixtures passed'
