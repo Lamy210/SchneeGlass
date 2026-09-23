@@ -78,7 +78,7 @@ GitHub repository Administration permission
 
 The helper is intentionally fail-closed. It:
 
-1. validates the checked-in `.github/rulesets/main-release-governance.json` before any GitHub API mutation and requires its `bypass_actors` field to exist as an empty array;
+1. validates the checked-in `.github/rulesets/main-release-governance.json` against the fixed SchneeGlass governance baseline before any GitHub API mutation, including an empty `bypass_actors` array, exact main targeting, the reviewed rule set and parameters, and the two source-bound Bootstrap checks;
 2. reads the current repository ruleset list;
 3. creates the checked-in canonical ruleset only when the repository has zero rulesets;
 4. when exactly one ruleset exists and it is the active canonical `SchneeGlass main release governance` ruleset, resumes setup without creating another ruleset;
@@ -93,7 +93,7 @@ The helper is intentionally fail-closed. It:
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
 
-The checked-in ruleset recipe is rejected before any `gh api` call if `bypass_actors` is missing, malformed, or non-empty. This prevents an unsafe recipe drift from being POSTed and only discovered after live mutation.
+The checked-in ruleset recipe is rejected before any `gh api` call if it differs from the fixed governance baseline. This includes missing/malformed/non-empty `bypass_actors`, target/ref drift, added or removed rules, reviewed pull-request policy changes, required-check changes, integration-binding changes, and strict-policy drift. Ordering is normalized only where order is not semantically meaningful. This prevents an unsafe recipe drift from being POSTed and only discovered after live mutation.
 
 The setup is not transactional across GitHub APIs. If ruleset creation succeeds but the subsequent release-immutability operation fails, rerunning the normal setup mode is supported only when the live repository contains exactly one active canonical ruleset and no other repository rulesets. In that narrow recovery state the helper does not POST another ruleset; it retries release immutability and then revalidates the complete live governance state. Inactive, duplicate, layered, or differently named rulesets remain fail-closed and require manual review.
 
@@ -117,6 +117,7 @@ ruleset target = branch
 ruleset include = refs/heads/main only
 ruleset exclude = empty
 ruleset bypass_actors = empty
+checked-in recipe semantics = fixed SchneeGlass governance baseline
 live ruleset semantics = checked-in canonical recipe
 repository release immutability enabled = true
 main protected = true
