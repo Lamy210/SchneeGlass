@@ -72,10 +72,31 @@ JSON
     ;;
   GET:repos/example/SchneeGlass/environments?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[{"total_count":1,"environments":[{"name":"production-release"}]}]\n'
+    case "$MODE" in
+      environment-case-title)
+        printf '[{"total_count":1,"environments":[{"name":"Production-Release"}]}]\n'
+        ;;
+      environment-case-mixed)
+        printf '[{"total_count":1,"environments":[{"name":"PrOdUcTiOn-ReLeAsE"}]}]\n'
+        ;;
+      *)
+        printf '[{"total_count":1,"environments":[{"name":"production-release"}]}]\n'
+        ;;
+    esac
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
-    printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+    case "$MODE" in
+      environment-case-title)
+        environment_name='Production-Release'
+        ;;
+      environment-case-mixed)
+        environment_name='PrOdUcTiOn-ReLeAsE'
+        ;;
+      *)
+        environment_name='production-release'
+        ;;
+    esac
+    printf '{"name":"%s","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n' "$environment_name"
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
@@ -190,6 +211,29 @@ fi
 grep -Fq 'Production release Environment verified: production-release allows only exact main branch policy' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
+
+# GitHub Environment names are case-insensitive. Existing case variants must be
+# recognized as the same target and verified without creation/update mutation.
+for environment_case_mode in environment-case-title environment-case-mixed
+do
+  : > "$LOG"
+  export GH_FIXTURE_MODE="$environment_case_mode"
+  OUTPUT="$FIXTURE/$environment_case_mode.log"
+  set +e
+  bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+  STATUS=$?
+  set -e
+
+  if [[ "$STATUS" -ne 0 ]]; then
+    cat "$OUTPUT" >&2
+    cat "$LOG" >&2
+    exit "$STATUS"
+  fi
+
+  grep -Fq 'Production release Environment verified: production-release allows only exact main branch policy' "$OUTPUT"
+  ! grep -Fq -- '--method PUT' "$LOG"
+  ! grep -Fq -- '--method POST' "$LOG"
+done
 
 # Incomplete pagination must not be certified from the observed subset when the
 # API reports more policies than were returned.
