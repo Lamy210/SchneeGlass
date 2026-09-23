@@ -116,7 +116,7 @@ JSON
     [[ "$MODE" == 'create-environment' ]]
     [[ -n "$INPUT" && -f "$INPUT" ]]
     jq -e '.name == "main" and .type == "branch"' "$INPUT" >/dev/null
-    printf '{"id":101,"name":"main"}\n'
+    printf '{"id":101,"name":"main","type":"branch"}\n'
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
     [[ "$MODE" == 'create-environment' ]]
@@ -125,7 +125,7 @@ JSON
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$MODE" == 'create-environment' ]]
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
+    printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     ;;
   *)
     echo "unexpected gh api request: $METHOD $ENDPOINT" >&2
