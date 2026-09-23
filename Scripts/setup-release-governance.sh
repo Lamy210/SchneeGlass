@@ -119,6 +119,12 @@ jq -e 'has("bypass_actors") and (.bypass_actors | type == "array")' \
 jq -e '.bypass_actors | length == 0' "$RULESET_DETAIL_JSON" >/dev/null \
   || fail "canonical ruleset must not define bypass actors"
 
+if ! bash Scripts/verify-release-canonical-ruleset.sh \
+  "$RULESET_RECIPE" \
+  "$RULESET_DETAIL_JSON"; then
+  fail "canonical ruleset semantics do not match the checked-in recipe"
+fi
+
 if [[ "$VERIFY_ONLY" != true ]]; then
   gh api \
     --method PUT \
