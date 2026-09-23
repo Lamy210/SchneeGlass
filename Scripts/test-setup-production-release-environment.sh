@@ -273,7 +273,9 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Production release environment setup failed: production-release appeared before creation; refusing create-or-update mutation' "$OUTPUT"
-[[ "$(grep -Fc 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG")" -eq 2 ]]
+ENVIRONMENT_ENUMERATION_COUNT="$(grep -Fc 'api --paginate --slurp repos/example/SchneeGlass/environments\?per_page=100' "$LOG")"
+[[ "$ENVIRONMENT_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
+[[ "$ENVIRONMENT_ENUMERATION_COUNT" -eq 2 ]]
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
