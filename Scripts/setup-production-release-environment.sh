@@ -50,7 +50,11 @@ load_environment_counts() {
     all(.[];
       type == "object" and
       (.total_count | type == "number" and . >= 0 and floor == .) and
-      (.environments | type == "array")
+      (.environments | type == "array") and
+      all(.environments[];
+        type == "object" and
+        (.name | type == "string" and length > 0)
+      )
     )
   ' "$pages_json" >/dev/null \
     || fail "environments response is malformed"
