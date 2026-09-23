@@ -128,14 +128,69 @@ CANONICAL_BASELINE_FILTER='
   }
 '
 
-jq -e '
+RECIPE_SHAPE_FILTER='
+  def keys_exact($expected):
+    (keys | sort) == ($expected | sort);
+
   type == "object" and
-  has("bypass_actors") and
-  (.bypass_actors | type == "array") and
-  (.bypass_actors | length == 0) and
-  (.rules | type == "array")
-' "$RECIPE" >/dev/null \
-  || fail "canonical recipe must be an object with an empty bypass_actors array and a rules array"
+  keys_exact(["bypass_actors", "conditions", "enforcement", "name", "rules", "target"]) and
+  (.bypass_actors | type == "array" and length == 0) and
+  (.conditions |
+    type == "object" and
+    keys_exact(["ref_name"]) and
+    (.ref_name |
+      type == "object" and
+      keys_exact(["exclude", "include"]) and
+      (.include | type == "array" and all(.[]; type == "string")) and
+      (.exclude | type == "array" and all(.[]; type == "string"))
+    )
+  ) and
+  (.rules |
+    type == "array" and
+    all(.[];
+      type == "object" and
+      if .type == "deletion" or .type == "non_fast_forward" then
+        keys_exact(["type"])
+      elif .type == "pull_request" then
+        keys_exact(["parameters", "type"]) and
+        (.parameters |
+          type == "object" and
+          keys_exact([
+            "allowed_merge_methods",
+            "dismiss_stale_reviews_on_push",
+            "require_code_owner_review",
+            "require_last_push_approval",
+            "required_approving_review_count",
+            "required_review_thread_resolution"
+          ]) and
+          (.allowed_merge_methods | type == "array" and all(.[]; type == "string"))
+        )
+      elif .type == "required_status_checks" then
+        keys_exact(["parameters", "type"]) and
+        (.parameters |
+          type == "object" and
+          keys_exact([
+            "do_not_enforce_on_create",
+            "required_status_checks",
+            "strict_required_status_checks_policy"
+          ]) and
+          (.required_status_checks |
+            type == "array" and
+            all(.[];
+              type == "object" and
+              keys_exact(["context", "integration_id"])
+            )
+          )
+        )
+      else
+        false
+      end
+    )
+  )
+'
+
+jq -e "$RECIPE_SHAPE_FILTER" "$RECIPE" >/dev/null \
+  || fail "canonical recipe contains missing, malformed, or unreviewed fields"
 
 jq -S "$NORMALIZE_FILTER" "$RECIPE" > "$EXPECTED" \
   || fail "unable to normalize canonical recipe"
