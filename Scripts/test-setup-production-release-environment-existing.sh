@@ -81,6 +81,8 @@ JSON
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     if [[ "$MODE" == 'extra-policy' ]]; then
       printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main"},{"id":102,"name":"release/*"}]}]\n'
+    elif [[ "$MODE" == 'incomplete-policy-enumeration' ]]; then
+      printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main"}]}]\n'
     elif [[ "$MODE" == 'missing-policy' && ! -f "$POLICY_CREATED" ]]; then
       printf '[{"total_count":0,"branch_policies":[]}]\n'
     else
@@ -182,6 +184,26 @@ if [[ "$STATUS" -ne 0 ]]; then
   exit "$STATUS"
 fi
 grep -Fq 'Production release Environment verified: production-release allows only exact main policy' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Incomplete pagination must not be certified from the observed subset when the
+# API reports more policies than were returned.
+: > "$LOG"
+export GH_FIXTURE_MODE='incomplete-policy-enumeration'
+OUTPUT="$FIXTURE/incomplete-policy-enumeration.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT" >&2
+  cat "$LOG" >&2
+  echo 'Production release Environment unexpectedly accepted incomplete policy enumeration.' >&2
+  exit 1
+fi
+grep -Fq 'Production release environment setup failed: deployment branch policy enumeration is incomplete' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
