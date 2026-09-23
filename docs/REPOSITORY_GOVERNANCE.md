@@ -84,10 +84,11 @@ The helper is intentionally fail-closed. It:
 4. rejects an inactive canonical ruleset, duplicate/layered canonical rulesets, and any differently named pre-existing ruleset before further mutation;
 5. fetches the exact canonical ruleset detail by ID and requires an active branch ruleset targeting exactly `refs/heads/main` with no excluded refs;
 6. requires `bypass_actors` to be observable and exactly empty before certifying governance;
-7. enables or re-enables repository release immutability through the GitHub REST API;
-8. re-reads the immutable-release state and requires `enabled=true`;
-9. re-reads the live `main` branch and effective active branch rules;
-10. runs the same branch/rule/required-check validators used by production publication.
+7. semantically normalizes the live ruleset detail and the checked-in recipe, then requires the reviewed rule set and parameters to match exactly (ordering differences are ignored, but added/removed rules and parameter drift are rejected);
+8. enables or re-enables repository release immutability through the GitHub REST API;
+9. re-reads the immutable-release state and requires `enabled=true`;
+10. re-reads the live `main` branch and effective active branch rules;
+11. runs the same branch/rule/required-check validators used by production publication.
 
 The helper does not configure `production-release` Environment secrets or variables and never handles Apple credential material.
 
@@ -113,6 +114,7 @@ ruleset target = branch
 ruleset include = refs/heads/main only
 ruleset exclude = empty
 ruleset bypass_actors = empty
+live ruleset semantics = checked-in canonical recipe
 repository release immutability enabled = true
 main protected = true
 deletion rule active
@@ -123,7 +125,7 @@ Compatibility Bootstrap CI required from GitHub Actions App 15368
 strict required-status-check policy = true
 ```
 
-The mode fails closed before branch-governance certification when the canonical ruleset is missing, inactive, layered with another repository ruleset, targets anything other than the exact `main` branch contract, or contains a bypass actor. Repository ruleset enumeration and count extraction must also complete successfully; partial numeric output from a failed `jq` probe is not accepted as proof that exactly one ruleset exists. It also fails closed when the ruleset detail does not expose `bypass_actors`; GitHub only returns that field to callers with ruleset write access, so this administrator-side verification must use sufficiently privileged authentication. It never creates/updates a ruleset and never enables release immutability.
+The mode fails closed before branch-governance certification when the canonical ruleset is missing, inactive, layered with another repository ruleset, targets anything other than the exact `main` branch contract, contains a bypass actor, or drifts from the checked-in rule semantics. The semantic comparison normalizes unordered lists such as allowed merge methods and required checks while still rejecting added/removed rules or changed reviewed parameters. Repository ruleset enumeration and count extraction must also complete successfully; partial numeric output from a failed `jq` probe is not accepted as proof that exactly one ruleset exists. It also fails closed when the ruleset detail does not expose `bypass_actors`; GitHub only returns that field to callers with ruleset write access, so this administrator-side verification must use sufficiently privileged authentication. It never creates/updates a ruleset and never enables release immutability.
 
 This administrator-side read-only check now proves the canonical ruleset has no bypass actors in addition to the effective branch rules used by production publication. The publication workflow itself intentionally keeps a lower-privilege token and therefore does not substitute for this pre-publication administrator verification or the remaining Environment/repository-setting review described below.
 
