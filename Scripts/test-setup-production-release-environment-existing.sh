@@ -110,12 +110,19 @@ JSON
       printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main"}]}]\n'
     elif [[ "$MODE" == 'missing-policy' && ! -f "$POLICY_CREATED" ]]; then
       printf '[{"total_count":0,"branch_policies":[]}]\n'
+    elif [[ "$MODE" == 'concurrent-policy-recovery' ]]; then
+      policy_reads="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+      if [[ "$policy_reads" -le 1 && ! -f "$POLICY_CREATED" ]]; then
+        printf '[{"total_count":0,"branch_policies":[]}]\n'
+      else
+        printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+      fi
     else
       printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     fi
     ;;
   POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
-    [[ "$MODE" == 'missing-policy' ]] || {
+    [[ "$MODE" == 'missing-policy' || "$MODE" == 'concurrent-policy-recovery' ]] || {
       echo "unexpected deployment policy mutation: $METHOD $ENDPOINT" >&2
       exit 93
     }
@@ -305,6 +312,22 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Recovery safety: a concurrent exact main policy appearing after the first
+# empty policy read must block the recovery POST.
+: > "$LOG"
+rm -f "$POLICY_CREATED"
+export GH_FIXTURE_MODE='concurrent-policy-recovery'
+OUTPUT="$FIXTURE/concurrent-policy-recovery.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release deployment policy appeared before creation; refusing policy mutation' "$OUTPUT"
+assert_log_count 2 'deployment-branch-policies\?per_page=100'
 ! grep -Fq -- '--method POST' "$LOG"
 
 # A partial prior setup may leave the Environment valid but with no deployment policy.
