@@ -90,7 +90,7 @@ JSON
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
-      concurrent-layer|concurrent-replace|concurrent-disable)
+      concurrent-layer|concurrent-replace|concurrent-disable|post-mutation-layer)
         if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
           case "$MODE" in
             concurrent-layer)
@@ -102,12 +102,19 @@ case "$METHOD:$ENDPOINT" in
             concurrent-disable)
               printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"disabled"}]\n'
               ;;
+            post-mutation-layer)
+              if grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"; then
+                printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Concurrent unrelated policy","enforcement":"active"}]\n'
+              else
+                printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+              fi
+              ;;
           esac
         else
           printf '[]\n'
         fi
         ;;
-      empty)
+      empty|post-mutation-drift)
         if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
           printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         else
@@ -136,7 +143,13 @@ case "$METHOD:$ENDPOINT" in
     printf '{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}}}\n'
     ;;
   GET:repos/example/SchneeGlass/rulesets/123)
-    emit_canonical_ruleset_detail 123
+    if [[ "$MODE" == 'post-mutation-drift' ]] && grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"; then
+      cat <<'JSON'
+{"id":123,"name":"SchneeGlass main release governance","target":"branch","enforcement":"active","bypass_actors":[],"conditions":{"ref_name":{"include":["refs/heads/main"],"exclude":[]}},"rules":[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Compatibility / macOS 15 / App Build","integration_id":15368},{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368}],"strict_required_status_checks_policy":true,"do_not_enforce_on_create":false}},{"type":"pull_request","parameters":{"allowed_merge_methods":["rebase","merge","squash"],"dismiss_stale_reviews_on_push":false,"require_code_owner_review":false,"require_last_push_approval":false,"required_approving_review_count":1,"required_review_thread_resolution":true}},{"type":"non_fast_forward"},{"type":"deletion"}]}
+JSON
+    else
+      emit_canonical_ruleset_detail 123
+    fi
     ;;
   GET:repos/example/SchneeGlass/rulesets/55)
     case "$MODE" in
@@ -221,10 +234,14 @@ grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 POST_LINE="$(grep -n 'api --method POST repos/example/SchneeGlass/rulesets' "$LOG" | cut -d: -f1)"
-DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
+DETAIL_COUNT="$(grep -Fc 'repos/example/SchneeGlass/rulesets/123' "$LOG")"
+[[ "$DETAIL_COUNT" =~ ^[0-9]+$ ]]
+[[ "$DETAIL_COUNT" -eq 2 ]]
+INITIAL_DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | sed -n '1s/:.*//p')"
+FINAL_DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | sed -n '$s/:.*//p')"
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
-[[ "$POST_LINE" -lt "$DETAIL_LINE" && "$DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
+[[ "$POST_LINE" -lt "$INITIAL_DETAIL_LINE" && "$INITIAL_DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" && "$BRANCH_LINE" -lt "$FINAL_DETAIL_LINE" ]]
 
 # Mutation safety: ruleset exclusivity must be revalidated after canonical detail
 # verification. A concurrent unrelated ruleset appearing after the initial empty
@@ -273,6 +290,38 @@ set -e
 grep -Fq 'Release governance setup failed: canonical ruleset enforcement changed before immutability mutation' "$CONCURRENT_DISABLE_LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
+
+# Final certification safety: a layered ruleset stack appearing only after the
+# immutable-release mutation must prevent a successful governance certification.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-mutation-layer'
+POST_MUTATION_LAYER_LOG="$FIXTURE/post-mutation-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$POST_MUTATION_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before final certification' "$POST_MUTATION_LAYER_LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+
+# Final certification safety: canonical semantics drifting only after immutable
+# mutation must also fail even when repository ruleset inventory remains singular.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-mutation-drift'
+POST_MUTATION_DRIFT_LOG="$FIXTURE/post-mutation-drift.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$POST_MUTATION_DRIFT_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$POST_MUTATION_DRIFT_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$POST_MUTATION_DRIFT_LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 
 # Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
 # Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable
