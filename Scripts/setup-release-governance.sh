@@ -67,6 +67,39 @@ load_ruleset_inventory() {
     || fail "canonical ruleset count is not numeric: $CANONICAL_RULESET_COUNT"
 }
 
+verify_canonical_ruleset_detail() {
+  local expected_id="$1"
+
+  gh api \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    "repos/$REPOSITORY/rulesets/$expected_id" \
+    > "$RULESET_DETAIL_JSON"
+
+  jq -e \
+    --arg name "$RULESET_NAME" \
+    'type == "object" and
+     .name == $name and
+     .target == "branch" and
+     .enforcement == "active" and
+     .conditions.ref_name.include == ["refs/heads/main"] and
+     .conditions.ref_name.exclude == []' \
+    "$RULESET_DETAIL_JSON" >/dev/null \
+    || fail "canonical ruleset detail does not match the release governance baseline"
+
+  jq -e 'has("bypass_actors") and (.bypass_actors | type == "array")' \
+    "$RULESET_DETAIL_JSON" >/dev/null \
+    || fail "canonical ruleset bypass actors are not observable; authenticate with ruleset write access"
+
+  jq -e '.bypass_actors | length == 0' "$RULESET_DETAIL_JSON" >/dev/null \
+    || fail "canonical ruleset must not define bypass actors"
+
+  if ! bash Scripts/verify-release-canonical-ruleset.sh \
+    "$RULESET_RECIPE" \
+    "$RULESET_DETAIL_JSON"; then
+    fail "canonical ruleset semantics do not match the checked-in recipe"
+  fi
+}
+
 load_ruleset_inventory
 
 RULESET_ID=''
@@ -105,34 +138,7 @@ fi
 [[ "$RULESET_ID" =~ ^[1-9][0-9]*$ ]] \
   || fail "canonical ruleset ID must be a positive integer"
 
-gh api \
-  -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/$REPOSITORY/rulesets/$RULESET_ID" \
-  > "$RULESET_DETAIL_JSON"
-
-jq -e \
-  --arg name "$RULESET_NAME" \
-  'type == "object" and
-   .name == $name and
-   .target == "branch" and
-   .enforcement == "active" and
-   .conditions.ref_name.include == ["refs/heads/main"] and
-   .conditions.ref_name.exclude == []' \
-  "$RULESET_DETAIL_JSON" >/dev/null \
-  || fail "canonical ruleset detail does not match the release governance baseline"
-
-jq -e 'has("bypass_actors") and (.bypass_actors | type == "array")' \
-  "$RULESET_DETAIL_JSON" >/dev/null \
-  || fail "canonical ruleset bypass actors are not observable; authenticate with ruleset write access"
-
-jq -e '.bypass_actors | length == 0' "$RULESET_DETAIL_JSON" >/dev/null \
-  || fail "canonical ruleset must not define bypass actors"
-
-if ! bash Scripts/verify-release-canonical-ruleset.sh \
-  "$RULESET_RECIPE" \
-  "$RULESET_DETAIL_JSON"; then
-  fail "canonical ruleset semantics do not match the checked-in recipe"
-fi
+verify_canonical_ruleset_detail "$RULESET_ID"
 
 if [[ "$VERIFY_ONLY" != true ]]; then
   load_ruleset_inventory
@@ -186,6 +192,22 @@ bash Scripts/verify-release-required-checks.sh \
   15368 \
   'Canonical / Xcode 26.6 / App Build / Safety Guards' \
   'Compatibility / macOS 15 / App Build'
+
+load_ruleset_inventory
+[[ "$RULESET_COUNT" -eq 1 && "$CANONICAL_RULESET_COUNT" -eq 1 ]] \
+  || fail "repository ruleset inventory changed before final certification"
+
+FINAL_RULESET_ID="$(jq -r --arg name "$RULESET_NAME" '.[] | select(.name == $name) | .id // empty' "$RULESETS_JSON")"
+[[ "$FINAL_RULESET_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "final canonical ruleset ID must be a positive integer"
+[[ "$FINAL_RULESET_ID" == "$RULESET_ID" ]] \
+  || fail "canonical ruleset identity changed before final certification"
+jq -e --arg name "$RULESET_NAME" \
+  'length == 1 and .[0].name == $name and .[0].enforcement == "active"' \
+  "$RULESETS_JSON" >/dev/null \
+  || fail "canonical ruleset enforcement changed before final certification"
+
+verify_canonical_ruleset_detail "$RULESET_ID"
 
 if [[ "$VERIFY_ONLY" == true ]]; then
   echo "Release governance verified read-only for $REPOSITORY"
