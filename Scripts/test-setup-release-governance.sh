@@ -121,7 +121,7 @@ case "$METHOD:$ENDPOINT" in
           printf '[]\n'
         fi
         ;;
-      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule)
+      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule|paginated-layer)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
       inactive)
@@ -137,6 +137,11 @@ case "$METHOD:$ENDPOINT" in
         printf '[]\n'
         ;;
     esac
+    ;;
+  GET:repos/example/SchneeGlass/rulesets?per_page=100)
+    [[ "$PAGINATE" == true && "$SLURP" == true ]]
+    [[ "$MODE" == 'paginated-layer' ]]
+    printf '[[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}],[{"id":77,"name":"Hidden later-page policy","enforcement":"active"}]]\n'
     ;;
   POST:repos/example/SchneeGlass/rulesets)
     [[ -n "$INPUT" && -f "$INPUT" ]]
@@ -590,6 +595,22 @@ set -e
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must enumerate every repository-ruleset page. A canonical ruleset
+# on the first page with an unrelated ruleset on a later page is still layered.
+: > "$LOG"
+export GH_FIXTURE_MODE='paginated-layer'
+VERIFY_PAGINATED_LAYER_LOG="$FIXTURE/verify-paginated-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_PAGINATED_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_PAGINATED_LAYER_LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rulesets\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
 
 # Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
 : > "$LOG"
