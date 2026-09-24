@@ -345,7 +345,10 @@ grep -Fq 'Production release Environment verified: production-release allows onl
 PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
 POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
 VERIFY_LINE="$(grep -Fn 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
-[[ "$PUT_LINE" -lt "$POST_LINE" && "$POST_LINE" -lt "$VERIFY_LINE" ]]
+POLICY_ENUMERATION_COUNT="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+[[ "$POLICY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
+[[ "$POLICY_ENUMERATION_COUNT" -eq 3 ]]
+[[ "$PUT_LINE" -lt "$VERIFY_LINE" && "$VERIFY_LINE" -lt "$POST_LINE" ]]
 
 CURRENT_OUTPUT=''
 trap - EXIT
