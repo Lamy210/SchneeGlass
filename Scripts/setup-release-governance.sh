@@ -39,6 +39,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
+RULESETS_PAGES_JSON="$TMP/rulesets-pages.json"
 RULESETS_JSON="$TMP/rulesets.json"
 RULESET_CREATE_JSON="$TMP/ruleset-create.json"
 RULESET_DETAIL_JSON="$TMP/canonical-ruleset.json"
@@ -47,9 +48,29 @@ BRANCH_JSON="$TMP/main-branch.json"
 RULES_PAGES_JSON="$TMP/main-rules-pages.json"
 
 load_ruleset_inventory() {
-  gh api "repos/$REPOSITORY/rulesets" > "$RULESETS_JSON"
-  jq -e 'type == "array"' "$RULESETS_JSON" >/dev/null \
-    || fail "repository rulesets response must be a JSON array"
+  gh api --paginate --slurp \
+    "repos/$REPOSITORY/rulesets?per_page=100" \
+    > "$RULESETS_PAGES_JSON"
+
+  jq -e '
+    type == "array" and
+    length >= 1 and
+    all(.[]; type == "array")
+  ' "$RULESETS_PAGES_JSON" >/dev/null \
+    || fail "repository ruleset pages response must be a JSON array of arrays"
+
+  jq '[.[] | .[]]' "$RULESETS_PAGES_JSON" > "$RULESETS_JSON"
+
+  jq -e '
+    type == "array" and
+    all(.[];
+      type == "object" and
+      (.id | type == "number" and . > 0 and floor == .) and
+      (.name | type == "string" and length > 0) and
+      (.enforcement | type == "string" and length > 0)
+    )
+  ' "$RULESETS_JSON" >/dev/null \
+    || fail "repository ruleset inventory contains malformed entries"
 
   RULESET_COUNT=''
   set +e
