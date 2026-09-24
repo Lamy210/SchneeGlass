@@ -228,10 +228,769 @@ grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
 grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 POST_LINE="$(grep -n 'api --method POST repos/example/SchneeGlass/rulesets' "$LOG" | cut -d: -f1)"
-DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
+DETAIL_LINES="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | cut -d: -f1)"
+DETAIL_COUNT="$(grep -Fc 'repos/example/SchneeGlass/rulesets/123' "$LOG")"
+[[ "$DETAIL_COUNT" =~ ^[0-9]+$ ]]
+[[ "$DETAIL_COUNT" -eq 2 ]]
+INITIAL_DETAIL_LINE="${DETAIL_LINES%%
+
+# Mutation safety: ruleset exclusivity must be revalidated after canonical detail
+# verification. A concurrent unrelated ruleset appearing after the initial empty
+# inventory must block immutable-release mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-layer'
+CONCURRENT_LAYER_LOG="$FIXTURE/concurrent-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before immutability mutation' "$CONCURRENT_LAYER_LOG"
+grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Mutation safety: replacing the canonical ruleset with a same-named different
+# identity between detail validation and mutation must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-replace'
+CONCURRENT_REPLACE_LOG="$FIXTURE/concurrent-replace.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_REPLACE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset identity changed before immutability mutation' "$CONCURRENT_REPLACE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Mutation safety: enforcement must still be active at the revalidation boundary.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-disable'
+CONCURRENT_DISABLE_LOG="$FIXTURE/concurrent-disable.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_DISABLE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset enforcement changed before immutability mutation' "$CONCURRENT_DISABLE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Final certification safety: a layered ruleset stack appearing only after the
+# immutable-release mutation must prevent a successful governance certification.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-mutation-layer'
+POST_MUTATION_LAYER_LOG="$FIXTURE/post-mutation-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$POST_MUTATION_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before final certification' "$POST_MUTATION_LAYER_LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+
+# Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
+# Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable
+# immutability, and re-verify live governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass
+
+! grep -Fq -- '--method POST' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+
+# Recovery safety: an inactive canonical ruleset is not a resumable partial setup.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+INACTIVE_SETUP_LOG="$FIXTURE/inactive-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$INACTIVE_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset exists but enforcement is not active: SchneeGlass main release governance' "$INACTIVE_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Recovery safety: a layered ruleset stack remains ambiguous and must not be mutated.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+LAYERED_SETUP_LOG="$FIXTURE/layered-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$LAYERED_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$LAYERED_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
+
+grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must fail closed when ruleset-count enumeration returns partial output and fails.
+# The old implementation embedded jq inside [[ ... ]] and could mask exit 42 when the
+# partial output happened to be the trusted count "1".
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+export GH_FIXTURE_JQ_MODE='partial-length-failure'
+VERIFY_PARTIAL_COUNT_LOG="$FIXTURE/verify-partial-count.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_PARTIAL_COUNT_LOG" 2>&1
+STATUS=$?
+set -e
+unset GH_FIXTURE_JQ_MODE
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: unable to enumerate repository ruleset count (jq status 42)' "$VERIFY_PARTIAL_COUNT_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset grants a bypass actor.
+: > "$LOG"
+export GH_FIXTURE_MODE='bypass'
+VERIFY_BYPASS_LOG="$FIXTURE/verify-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Missing bypass_actors means the administrator helper could not observe the sensitive policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='missing-bypass'
+VERIFY_MISSING_BYPASS_LOG="$FIXTURE/verify-missing-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_MISSING_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# A malformed bypass_actors value must also fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='invalid-bypass'
+VERIFY_INVALID_BYPASS_LOG="$FIXTURE/verify-invalid-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INVALID_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_INVALID_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# The detailed canonical ruleset must still target exactly main.
+: > "$LOG"
+export GH_FIXTURE_MODE='wrong-target'
+VERIFY_WRONG_TARGET_LOG="$FIXTURE/verify-wrong-target.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_WRONG_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset detail does not match the release governance baseline' "$VERIFY_WRONG_TARGET_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# The checked-in mutation recipe must reject bypass actors before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_BYPASS_LOG="$FIXTURE/recipe-bypass.log"
+"$REAL_JQ" '.bypass_actors = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_BYPASS_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_BYPASS_LOG"
+! grep -Fq 'api ' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# An unreviewed parameter on a known rule must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_EXTRA_FIELD_LOG="$FIXTURE/recipe-extra-field.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "pull_request" then
+      .parameters.unreviewed_future_switch = true
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_EXTRA_FIELD_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_EXTRA_FIELD_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_EXTRA_FIELD_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Recipe target drift must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_TARGET_LOG="$FIXTURE/recipe-target.log"
+"$REAL_JQ" '.conditions.ref_name.include = ["refs/heads/release"]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Required-check integration drift must also fail before mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_CHECK_LOG="$FIXTURE/recipe-check.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "required_status_checks" then
+      .parameters.required_status_checks[0].integration_id = 999
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_CHECK_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Verify-only must reject drift in reviewed pull-request rule parameters.
+: > "$LOG"
+export GH_FIXTURE_MODE='drifted-pr'
+VERIFY_DRIFTED_PR_LOG="$FIXTURE/verify-drifted-pr.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_DRIFTED_PR_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$VERIFY_DRIFTED_PR_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$VERIFY_DRIFTED_PR_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Normal recovery must also reject a sole canonical-named ruleset with an extra rule
+# before mutating immutability or certifying branch governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='extra-rule'
+EXTRA_RULE_LOG="$FIXTURE/extra-rule.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$EXTRA_RULE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$EXTRA_RULE_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$EXTRA_RULE_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset is absent.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+VERIFY_MISSING_LOG="$FIXTURE/verify-missing.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+VERIFY_LAYERED_LOG="$FIXTURE/verify-layered.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_LAYERED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_LAYERED_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject a present-but-inactive canonical ruleset before certifying live governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+VERIFY_INACTIVE_LOG="$FIXTURE/verify-inactive.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INACTIVE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset enforcement=active' "$VERIFY_INACTIVE_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Layering safety: any pre-existing differently named ruleset requires manual review.
+: > "$LOG"
+export GH_FIXTURE_MODE='unrelated'
+UNRELATED_LOG="$FIXTURE/unrelated.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$UNRELATED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository already has rulesets; review existing policy before applying the canonical recipe' "$UNRELATED_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+echo 'Release governance setup fixtures passed'
+\n'*}"
+FINAL_DETAIL_LINE="${DETAIL_LINES##*
+
+# Mutation safety: ruleset exclusivity must be revalidated after canonical detail
+# verification. A concurrent unrelated ruleset appearing after the initial empty
+# inventory must block immutable-release mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-layer'
+CONCURRENT_LAYER_LOG="$FIXTURE/concurrent-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before immutability mutation' "$CONCURRENT_LAYER_LOG"
+grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Mutation safety: replacing the canonical ruleset with a same-named different
+# identity between detail validation and mutation must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-replace'
+CONCURRENT_REPLACE_LOG="$FIXTURE/concurrent-replace.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_REPLACE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset identity changed before immutability mutation' "$CONCURRENT_REPLACE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Mutation safety: enforcement must still be active at the revalidation boundary.
+: > "$LOG"
+export GH_FIXTURE_MODE='concurrent-disable'
+CONCURRENT_DISABLE_LOG="$FIXTURE/concurrent-disable.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$CONCURRENT_DISABLE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset enforcement changed before immutability mutation' "$CONCURRENT_DISABLE_LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Final certification safety: a layered ruleset stack appearing only after the
+# immutable-release mutation must prevent a successful governance certification.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-mutation-layer'
+POST_MUTATION_LAYER_LOG="$FIXTURE/post-mutation-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$POST_MUTATION_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before final certification' "$POST_MUTATION_LAYER_LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+
+# Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
+# Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable
+# immutability, and re-verify live governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass
+
+! grep -Fq -- '--method POST' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+
+# Recovery safety: an inactive canonical ruleset is not a resumable partial setup.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+INACTIVE_SETUP_LOG="$FIXTURE/inactive-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$INACTIVE_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset exists but enforcement is not active: SchneeGlass main release governance' "$INACTIVE_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Recovery safety: a layered ruleset stack remains ambiguous and must not be mutated.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+LAYERED_SETUP_LOG="$FIXTURE/layered-setup.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$LAYERED_SETUP_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: matching ruleset already exists: SchneeGlass main release governance' "$LAYERED_SETUP_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# Verify-only: an existing canonical ruleset can be revalidated without mutating repository policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
+
+grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must fail closed when ruleset-count enumeration returns partial output and fails.
+# The old implementation embedded jq inside [[ ... ]] and could mask exit 42 when the
+# partial output happened to be the trusted count "1".
+: > "$LOG"
+export GH_FIXTURE_MODE='duplicate'
+export GH_FIXTURE_JQ_MODE='partial-length-failure'
+VERIFY_PARTIAL_COUNT_LOG="$FIXTURE/verify-partial-count.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_PARTIAL_COUNT_LOG" 2>&1
+STATUS=$?
+set -e
+unset GH_FIXTURE_JQ_MODE
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: unable to enumerate repository ruleset count (jq status 42)' "$VERIFY_PARTIAL_COUNT_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset grants a bypass actor.
+: > "$LOG"
+export GH_FIXTURE_MODE='bypass'
+VERIFY_BYPASS_LOG="$FIXTURE/verify-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
+grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Missing bypass_actors means the administrator helper could not observe the sensitive policy.
+: > "$LOG"
+export GH_FIXTURE_MODE='missing-bypass'
+VERIFY_MISSING_BYPASS_LOG="$FIXTURE/verify-missing-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_MISSING_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# A malformed bypass_actors value must also fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='invalid-bypass'
+VERIFY_INVALID_BYPASS_LOG="$FIXTURE/verify-invalid-bypass.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INVALID_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_INVALID_BYPASS_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# The detailed canonical ruleset must still target exactly main.
+: > "$LOG"
+export GH_FIXTURE_MODE='wrong-target'
+VERIFY_WRONG_TARGET_LOG="$FIXTURE/verify-wrong-target.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_WRONG_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: canonical ruleset detail does not match the release governance baseline' "$VERIFY_WRONG_TARGET_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# The checked-in mutation recipe must reject bypass actors before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_BYPASS_LOG="$FIXTURE/recipe-bypass.log"
+"$REAL_JQ" '.bypass_actors = [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_BYPASS_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_BYPASS_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_BYPASS_LOG"
+! grep -Fq 'api ' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+# An unreviewed parameter on a known rule must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_EXTRA_FIELD_LOG="$FIXTURE/recipe-extra-field.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "pull_request" then
+      .parameters.unreviewed_future_switch = true
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_EXTRA_FIELD_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe contains missing, malformed, or unreviewed fields' "$RECIPE_EXTRA_FIELD_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_EXTRA_FIELD_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Recipe target drift must fail before any GitHub API call.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_TARGET_LOG="$FIXTURE/recipe-target.log"
+"$REAL_JQ" '.conditions.ref_name.include = ["refs/heads/release"]' \
+  "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_TARGET_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_TARGET_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Required-check integration drift must also fail before mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+RECIPE_CHECK_LOG="$FIXTURE/recipe-check.log"
+"$REAL_JQ" '
+  .rules |= map(
+    if .type == "required_status_checks" then
+      .parameters.required_status_checks[0].integration_id = 999
+    else
+      .
+    end
+  )
+' "$RULESET_RECIPE_BACKUP" > "$RULESET_RECIPE"
+
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$RECIPE_CHECK_LOG" 2>&1
+STATUS=$?
+set -e
+cp "$RULESET_RECIPE_BACKUP" "$RULESET_RECIPE"
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: canonical recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset recipe does not match the fixed release governance baseline' "$RECIPE_CHECK_LOG"
+! grep -Fq 'api ' "$LOG"
+
+# Verify-only must reject drift in reviewed pull-request rule parameters.
+: > "$LOG"
+export GH_FIXTURE_MODE='drifted-pr'
+VERIFY_DRIFTED_PR_LOG="$FIXTURE/verify-drifted-pr.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_DRIFTED_PR_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$VERIFY_DRIFTED_PR_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$VERIFY_DRIFTED_PR_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Normal recovery must also reject a sole canonical-named ruleset with an extra rule
+# before mutating immutability or certifying branch governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='extra-rule'
+EXTRA_RULE_LOG="$FIXTURE/extra-rule.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$EXTRA_RULE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$EXTRA_RULE_LOG"
+grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$EXTRA_RULE_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must fail closed when the canonical ruleset is absent.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+VERIFY_MISSING_LOG="$FIXTURE/verify-missing.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MISSING_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
+: > "$LOG"
+export GH_FIXTURE_MODE='mixed'
+VERIFY_LAYERED_LOG="$FIXTURE/verify-layered.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_LAYERED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_LAYERED_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Verify-only must reject a present-but-inactive canonical ruleset before certifying live governance.
+: > "$LOG"
+export GH_FIXTURE_MODE='inactive'
+VERIFY_INACTIVE_LOG="$FIXTURE/verify-inactive.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_INACTIVE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset enforcement=active' "$VERIFY_INACTIVE_LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+! grep -Fq 'branches/main' "$LOG"
+
+# Layering safety: any pre-existing differently named ruleset requires manual review.
+: > "$LOG"
+export GH_FIXTURE_MODE='unrelated'
+UNRELATED_LOG="$FIXTURE/unrelated.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$UNRELATED_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository already has rulesets; review existing policy before applying the canonical recipe' "$UNRELATED_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+
+echo 'Release governance setup fixtures passed'
+\n'}"
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
 BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
-[[ "$POST_LINE" -lt "$DETAIL_LINE" && "$DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" ]]
+[[ "$POST_LINE" -lt "$INITIAL_DETAIL_LINE" && "$INITIAL_DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" && "$BRANCH_LINE" -lt "$FINAL_DETAIL_LINE" ]]
 
 # Mutation safety: ruleset exclusivity must be revalidated after canonical detail
 # verification. A concurrent unrelated ruleset appearing after the initial empty
