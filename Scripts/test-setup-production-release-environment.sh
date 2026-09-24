@@ -8,6 +8,7 @@ FIXTURE="${RUNNER_TEMP:-/tmp}/schneeglass-production-environment-fixture"
 rm -rf "$FIXTURE"
 mkdir -p "$FIXTURE/bin"
 LOG="$FIXTURE/gh.log"
+POLICY_CREATED="$FIXTURE/policy-created"
 : > "$LOG"
 
 cat > "$FIXTURE/bin/gh" <<'SHIM'
@@ -16,6 +17,7 @@ set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
 MODE="${GH_FIXTURE_MODE:-unprotected}"
+POLICY_CREATED="${GH_FIXTURE_POLICY_CREATED:?}"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
 
@@ -91,7 +93,7 @@ JSON
   GET:repos/example/SchneeGlass/environments?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     case "$MODE" in
-      create-environment)
+      create-environment|concurrent-policy-create)
         printf '[{"total_count":0,"environments":[]}]\n'
         ;;
       concurrent-environment)
@@ -124,7 +126,7 @@ JSON
     esac
     ;;
   PUT:repos/example/SchneeGlass/environments/production-release)
-    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' || "$MODE" == 'concurrent-policy-create' ]]
     [[ -n "$INPUT" && -f "$INPUT" ]]
     jq -e '
       .deployment_branch_policy.protected_branches == false and
@@ -133,19 +135,31 @@ JSON
     printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
     ;;
   POST:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies)
-    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' || "$MODE" == 'concurrent-policy-create' ]]
     [[ -n "$INPUT" && -f "$INPUT" ]]
     jq -e '.name == "main" and .type == "branch"' "$INPUT" >/dev/null
+    touch "$POLICY_CREATED"
     printf '{"id":101,"name":"main","type":"branch"}\n'
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
-    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' || "$MODE" == 'concurrent-policy-create' ]]
     printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
-    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' ]]
+    [[ "$MODE" == 'create-environment' || "$MODE" == 'concurrent-environment' || "$MODE" == 'concurrent-policy-create' ]]
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
-    printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+    if [[ "$MODE" == 'concurrent-policy-create' ]]; then
+      policy_reads="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+      if [[ "$policy_reads" -le 1 && ! -f "$POLICY_CREATED" ]]; then
+        printf '[{"total_count":0,"branch_policies":[]}]\n'
+      else
+        printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+      fi
+    elif [[ -f "$POLICY_CREATED" ]]; then
+      printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+    else
+      printf '[{"total_count":0,"branch_policies":[]}]\n'
+    fi
     ;;
   *)
     echo "unexpected gh api request: $METHOD $ENDPOINT" >&2
@@ -156,6 +170,7 @@ SHIM
 chmod +x "$FIXTURE/bin/gh"
 
 export GH_FIXTURE_LOG="$LOG"
+export GH_FIXTURE_POLICY_CREATED="$POLICY_CREATED"
 export PATH="$FIXTURE/bin:$PATH"
 
 CURRENT_OUTPUT=''
@@ -279,8 +294,28 @@ ENVIRONMENT_ENUMERATION_COUNT="$(grep -Fc 'api --paginate --slurp repos/example/
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
+# Policy creation safety: after Environment creation, a concurrent exact main
+# policy appearing between the first empty policy read and POST must block mutation.
+: > "$LOG"
+rm -f "$POLICY_CREATED"
+export GH_FIXTURE_MODE='concurrent-policy-create'
+OUTPUT="$FIXTURE/concurrent-policy-create.log"
+CURRENT_OUTPUT="$OUTPUT"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release deployment policy appeared before creation; refusing policy mutation' "$OUTPUT"
+POLICY_ENUMERATION_COUNT="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+[[ "$POLICY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
+[[ "$POLICY_ENUMERATION_COUNT" -eq 2 ]]
+! grep -Fq -- '--method POST' "$LOG"
+
 # Happy path: valid governance + missing Environment creates the Environment and exact main policy.
 : > "$LOG"
+rm -f "$POLICY_CREATED"
 export GH_FIXTURE_MODE='create-environment'
 OUTPUT="$FIXTURE/create-environment.log"
 CURRENT_OUTPUT="$OUTPUT"
@@ -310,7 +345,10 @@ grep -Fq 'Production release Environment verified: production-release allows onl
 PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
 POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
 VERIFY_LINE="$(grep -Fn 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
-[[ "$PUT_LINE" -lt "$POST_LINE" && "$POST_LINE" -lt "$VERIFY_LINE" ]]
+POLICY_ENUMERATION_COUNT="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+[[ "$POLICY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
+[[ "$POLICY_ENUMERATION_COUNT" -eq 3 ]]
+[[ "$PUT_LINE" -lt "$VERIFY_LINE" && "$VERIFY_LINE" -lt "$POST_LINE" ]]
 
 CURRENT_OUTPUT=''
 trap - EXIT

@@ -180,14 +180,6 @@ if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
     --input "$ENVIRONMENT_PAYLOAD" \
     >/dev/null
 
-  jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
-
-  gh api \
-    --method POST \
-    -H "X-GitHub-Api-Version: $API_VERSION" \
-    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies" \
-    --input "$POLICY_PAYLOAD" \
-    >/dev/null
 fi
 
 gh api \
@@ -211,7 +203,18 @@ load_deployment_policy_counts \
   "$POLICIES_PAGES_JSON" \
   'deployment branch policy'
 
-if [[ -z "$MODE" && "$ENVIRONMENT_COUNT" -eq 1 && "$POLICY_COUNT" -eq 0 ]]; then
+if [[ -z "$MODE" && "$POLICY_COUNT" -eq 0 ]]; then
+  gh api --paginate --slurp \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
+    > "$POLICIES_PAGES_JSON"
+  load_deployment_policy_counts \
+    "$POLICIES_PAGES_JSON" \
+    'deployment branch policy before creation'
+
+  [[ "$POLICY_COUNT" -eq 0 ]] \
+    || fail "$ENVIRONMENT_NAME deployment policy appeared before creation; refusing policy mutation"
+
   jq -n '{name: "main", type: "branch"}' > "$POLICY_PAYLOAD"
 
   gh api \
