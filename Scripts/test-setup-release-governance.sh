@@ -90,7 +90,7 @@ JSON
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/rulesets)
     case "$MODE" in
-      concurrent-layer|concurrent-replace|concurrent-disable)
+      concurrent-layer|concurrent-replace|concurrent-disable|post-mutation-layer)
         if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
           case "$MODE" in
             concurrent-layer)
@@ -101,6 +101,13 @@ case "$METHOD:$ENDPOINT" in
               ;;
             concurrent-disable)
               printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"disabled"}]\n'
+              ;;
+            post-mutation-layer)
+              if grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"; then
+                printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"},{"id":77,"name":"Concurrent unrelated policy","enforcement":"active"}]\n'
+              else
+                printf '[{"id":123,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+              fi
               ;;
           esac
         else
@@ -273,6 +280,22 @@ set -e
 grep -Fq 'Release governance setup failed: canonical ruleset enforcement changed before immutability mutation' "$CONCURRENT_DISABLE_LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
+
+# Final certification safety: a layered ruleset stack appearing only after the
+# immutable-release mutation must prevent a successful governance certification.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-mutation-layer'
+POST_MUTATION_LAYER_LOG="$FIXTURE/post-mutation-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$POST_MUTATION_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset inventory changed before final certification' "$POST_MUTATION_LAYER_LOG"
+grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rules/branches/main\?per_page=100' "$LOG"
 
 # Partial recovery: a sole active canonical ruleset may be left behind when immutability setup fails.
 # Normal setup must resume without duplicating the ruleset, revalidate its bypass policy, enable
