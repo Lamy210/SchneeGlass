@@ -141,6 +141,19 @@ load_deployment_policy_counts() {
     || fail "$context enumeration is incomplete: reported $POLICY_REPORTED_COUNT, observed $POLICY_COUNT"
 }
 
+validate_deployment_policy_inventory() {
+  local context="$1"
+
+  gh api --paginate --slurp \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
+    > "$POLICIES_PAGES_JSON"
+  load_deployment_policy_counts "$POLICIES_PAGES_JSON" "$context"
+
+  [[ "$POLICY_COUNT" -eq 1 && "$MAIN_BRANCH_POLICY_COUNT" -eq 1 ]] \
+    || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy for branch main"
+}
+
 gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
 jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
   || fail "main branch response is malformed"
@@ -245,6 +258,7 @@ fi
 [[ "$POLICY_COUNT" -eq 1 && "$MAIN_BRANCH_POLICY_COUNT" -eq 1 ]] \
   || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy for branch main"
 
+validate_deployment_policy_inventory 'final deployment branch policy'
 validate_environment_detail 'final Environment detail'
 
 echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main branch policy"
@@ -286,6 +300,7 @@ if [[ "$MODE" == '--verify-credential-names' ]]; then
       || fail "missing required Environment variable name: $required_variable"
   done
 
+  validate_deployment_policy_inventory 'credential-name final deployment branch policy'
   validate_environment_detail 'credential-name final Environment detail'
 
   echo 'Production release credential names verified: 3 secrets + 3 variables configured'

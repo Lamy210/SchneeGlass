@@ -352,7 +352,7 @@ INITIAL_VERIFY_LINE="$(printf '%s\n' "$DETAIL_LINES" | sed -n '1p')"
 FINAL_VERIFY_LINE="$(printf '%s\n' "$DETAIL_LINES" | sed -n '2p')"
 POLICY_ENUMERATION_COUNT="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
 [[ "$POLICY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
-[[ "$POLICY_ENUMERATION_COUNT" -eq 3 ]]
+[[ "$POLICY_ENUMERATION_COUNT" -eq 4 ]]
 [[ "$PUT_LINE" -lt "$INITIAL_VERIFY_LINE" ]]
 [[ "$INITIAL_VERIFY_LINE" -lt "$POST_LINE" ]]
 [[ "$POST_LINE" -lt "$FINAL_VERIFY_LINE" ]]

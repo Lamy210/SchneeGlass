@@ -121,6 +121,13 @@ JSON
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     if [[ "$MODE" == 'missing-policy' ]]; then
       printf '[{"total_count":0,"branch_policies":[]}]\n'
+    elif [[ "$MODE" == 'post-credential-policy-drift' ]]; then
+      policy_reads="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+      if [[ "$policy_reads" -le 2 ]]; then
+        printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+      else
+        printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"},{"id":102,"name":"release/*","type":"branch"}]}]\n'
+      fi
     else
       printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     fi
@@ -202,6 +209,24 @@ set -e
 grep -Fq 'Production release environment setup failed: missing required Environment secret name: APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$OUTPUT"
 grep -Fq 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG"
 grep -Fq 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Even after credential names are complete, deployment policies must be
+# revalidated immediately before credential-name success is reported.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-credential-policy-drift'
+OUTPUT="$FIXTURE/post-credential-policy-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
+grep -Fq 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+grep -Fq 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+! grep -Fq 'Production release credential names verified:' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
