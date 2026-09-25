@@ -163,6 +163,32 @@ chmod +x "$FIXTURE/bin/gh"
 export GH_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 
+assert_log_count() {
+  local expected="$1"
+  local pattern="$2"
+  local count=''
+  local status=0
+
+  if count="$(grep -Fc -- "$pattern" "$LOG")"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  [[ "$status" -eq 0 ]] || {
+    echo "Fixture log-count assertion failed: unable to enumerate pattern: $pattern (grep status $status)" >&2
+    return 1
+  }
+  [[ "$count" =~ ^[0-9]+$ ]] || {
+    echo "Fixture log-count assertion failed: count is not numeric for pattern: $pattern ($count)" >&2
+    return 1
+  }
+  [[ "$count" -eq "$expected" ]] || {
+    echo "Fixture log-count assertion failed: expected $expected match(es) for pattern: $pattern, found $count" >&2
+    return 1
+  }
+}
+
 # A verification command must never create the Environment it intends to inspect.
 export GH_FIXTURE_MODE='missing-environment'
 OUTPUT="$FIXTURE/missing-environment.log"
@@ -240,7 +266,7 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Production release environment setup failed: missing required Environment secret name: APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$OUTPUT"
-[[ "$(grep -Fc 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG")" -eq 2 ]]
+assert_log_count 2 'secret list --env production-release --repo example/SchneeGlass --json name'
 ! grep -Fq 'Production release credential names verified:' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
@@ -256,7 +282,7 @@ set -e
 
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Production release environment setup failed: missing required Environment variable name: APPSTORE_CONNECT_ISSUER_ID' "$OUTPUT"
-[[ "$(grep -Fc 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG")" -eq 2 ]]
+assert_log_count 2 'variable list --env production-release --repo example/SchneeGlass --json name'
 ! grep -Fq 'Production release credential names verified:' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
