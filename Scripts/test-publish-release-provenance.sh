@@ -15,6 +15,7 @@ export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_STATE="$FIXTURE/state"
 export GH_FIXTURE_CANDIDATE_SHA='0123456789abcdef0123456789abcdef01234567'
 export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -85,6 +86,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
+GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -98,7 +100,7 @@ case "$COMMAND" in
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
-        --paginate)
+        --paginate|--slurp)
           shift
           ;;
         --jq)
@@ -128,6 +130,16 @@ case "$COMMAND" in
           .head_sha) printf '%s\n' "$CANDIDATE_SHA" ;;
           *) echo "unexpected run jq: $JQ" >&2; exit 92 ;;
         esac
+        ;;
+      repos/example/SchneeGlass/branches/main)
+        if [[ "$GOVERNANCE_MODE" == 'drift-before-publication' ]]; then
+          printf '{"protected":false,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+        else
+          printf '{"protected":true,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+        fi
+        ;;
+      'repos/example/SchneeGlass/rules/branches/main?per_page=100')
+        printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
         exit 0
@@ -297,6 +309,35 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# Governance can drift while Draft preparation is in progress even when current main
+# remains unchanged. Publication must re-read governance immediately before Draft -> public.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_GOVERNANCE_MODE='drift-before-publication'
+OUTPUT_GOVERNANCE_DRIFT="$FIXTURE/output-governance-drift.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_GOVERNANCE_DRIFT" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_GOVERNANCE_DRIFT"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after release governance drifted.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: current release governance is no longer valid before publication' "$OUTPUT_GOVERNANCE_DRIFT"; then
+    cat "$OUTPUT_GOVERNANCE_DRIFT"
+    echo 'Governance drift did not fail with the expected final-certification error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Governance drift reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
 
 # The Draft target can be correct and still change after publication. The final public
 # provenance must be re-read and a mismatch must fail without destructive cleanup.

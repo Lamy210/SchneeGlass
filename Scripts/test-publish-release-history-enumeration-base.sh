@@ -133,7 +133,7 @@ case "$COMMAND" in
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
-        --paginate)
+        --paginate|--slurp)
           shift
           ;;
         --jq)
@@ -163,6 +163,12 @@ case "$COMMAND" in
           .head_sha) printf '%s\n' '0123456789abcdef0123456789abcdef01234567' ;;
           *) echo "unexpected run jq: $JQ" >&2; exit 92 ;;
         esac
+        ;;
+      repos/example/SchneeGlass/branches/main)
+        printf '{"protected":true,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+        ;;
+      'repos/example/SchneeGlass/rules/branches/main?per_page=100')
+        printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
         case "$JQ" in

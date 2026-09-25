@@ -289,6 +289,10 @@ FINAL_MAIN_SHA="$(git rev-parse origin/main)" \
 [[ "$RUN_HEAD_SHA" == "$FINAL_MAIN_SHA" ]] \
   || fail "candidate source commit does not match current main before publication: candidate=$RUN_HEAD_SHA current=$FINAL_MAIN_SHA"
 
+if ! bash Scripts/verify-current-release-governance.sh "$GITHUB_REPOSITORY"; then
+  fail "current release governance is no longer valid before publication"
+fi
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
