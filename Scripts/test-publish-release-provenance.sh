@@ -67,6 +67,13 @@ case "${1:-}" in
         missing-before-publication)
           exit 2
           ;;
+        ambiguous-before-publication)
+          printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
+          printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
+          ;;
+        malformed-before-publication)
+          printf 'not-a-sha\trefs/tags/v0.1.0\n'
+          ;;
         mismatch-after-publication)
           if [[ -f "$STATE/release-public" ]]; then
             printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
@@ -410,6 +417,35 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+export GH_FIXTURE_TAG_MODE='exact'
+
+# Multiple remote refs are ambiguous and must fail before publication.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='ambiguous-before-publication'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
+OUTPUT_TAG_AMBIGUOUS="$FIXTURE/output-tag-ambiguous-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_AMBIGUOUS" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: release tag returned an invalid remote ref set before publication' "$OUTPUT_TAG_AMBIGUOUS"
+! grep -Fq 'gh release edit ' "$LOG"
+
+# Malformed tag provenance must also fail before publication.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='malformed-before-publication'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
+OUTPUT_TAG_MALFORMED="$FIXTURE/output-tag-malformed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: release tag returned an invalid remote ref before publication' "$OUTPUT_TAG_MALFORMED"
+! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_TAG_MODE='exact'
 
 # The Draft target can be correct and still change after publication. The final public
