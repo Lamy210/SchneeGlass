@@ -61,7 +61,7 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "${GH_FIXTURE_STATE:?}/release-public" ]]; then
+    if [[ -f "${GH_FIXTURE_STATE:?}/release-public" || -f "${GH_FIXTURE_STATE:?}/release-created" ]]; then
       printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
       exit 0
     fi

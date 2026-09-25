@@ -180,6 +180,9 @@ jobs:
       - name: Publication release history enumeration failure fixture
         run: bash Scripts/test-publish-release-history-enumeration.sh
 
+      - name: Publication provenance fixture
+        run: bash Scripts/test-publish-release-provenance.sh
+
       - name: Publication script fails closed without explicit inputs
         run: |
           LOG="$RUNNER_TEMP/release-promotion-fail-closed.log"
