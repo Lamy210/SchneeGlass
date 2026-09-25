@@ -202,7 +202,9 @@ if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
 
 fi
 
-validate_environment_detail 'initial Environment detail'\n\ngh api --paginate --slurp \
+validate_environment_detail 'initial Environment detail'
+
+gh api --paginate --slurp \
   -H "X-GitHub-Api-Version: $API_VERSION" \
   "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
   > "$POLICIES_PAGES_JSON"
