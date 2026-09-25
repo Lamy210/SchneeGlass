@@ -302,7 +302,18 @@ set -e
 
 [[ "$PREPUBLICATION_TAG_STATUS" -eq 0 ]] \
   || fail "unable to verify release tag before publication"
-[[ "$PREPUBLICATION_TAG_LINE" != *
+
+PREPUBLICATION_TAG_SHA=''
+PREPUBLICATION_TAG_REF=''
+IFS=$'\t' read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF <<< "$PREPUBLICATION_TAG_LINE"
+[[ "$PREPUBLICATION_TAG_LINE" == "$PREPUBLICATION_TAG_SHA"$'\t'"$PREPUBLICATION_TAG_REF" ]] \
+  || fail "release tag returned an invalid remote ref set before publication"
+[[ "$PREPUBLICATION_TAG_SHA" =~ ^[0-9a-f]{40}$ && "$PREPUBLICATION_TAG_REF" == "refs/tags/$TAG" ]] \
+  || fail "release tag returned an invalid remote ref before publication"
+[[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
+  || fail "release tag no longer resolves to candidate source commit before publication"
+
+gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
   --latest
