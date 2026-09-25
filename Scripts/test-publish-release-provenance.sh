@@ -86,6 +86,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
+GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -99,7 +100,7 @@ case "$COMMAND" in
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
-        --paginate)
+        --paginate|--slurp)
           shift
           ;;
         --jq)
@@ -129,6 +130,16 @@ case "$COMMAND" in
           .head_sha) printf '%s\n' "$CANDIDATE_SHA" ;;
           *) echo "unexpected run jq: $JQ" >&2; exit 92 ;;
         esac
+        ;;
+      repos/example/SchneeGlass/branches/main)
+        if [[ "$GOVERNANCE_MODE" == 'drift-before-publication' ]]; then
+          printf '{"protected":false,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+        else
+          printf '{"protected":true,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+        fi
+        ;;
+      'repos/example/SchneeGlass/rules/branches/main?per_page=100')
+        printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
         exit 0
