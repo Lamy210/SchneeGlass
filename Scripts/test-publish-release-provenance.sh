@@ -15,6 +15,7 @@ export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_STATE="$FIXTURE/state"
 export GH_FIXTURE_CANDIDATE_SHA='0123456789abcdef0123456789abcdef01234567'
 export GH_FIXTURE_OTHER_SHA='89abcdef0123456789abcdef0123456789abcdef'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
 mkdir -p "$GH_FIXTURE_STATE"
 
 cat > "$FIXTURE/bin/git" <<'SHIM'
@@ -297,6 +298,35 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# Governance can drift while Draft preparation is in progress even when current main
+# remains unchanged. Publication must re-read governance immediately before Draft -> public.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_GOVERNANCE_MODE='drift-before-publication'
+OUTPUT_GOVERNANCE_DRIFT="$FIXTURE/output-governance-drift.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_GOVERNANCE_DRIFT" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_GOVERNANCE_DRIFT"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after release governance drifted.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: current release governance is no longer valid before publication' "$OUTPUT_GOVERNANCE_DRIFT"; then
+    cat "$OUTPUT_GOVERNANCE_DRIFT"
+    echo 'Governance drift did not fail with the expected final-certification error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Governance drift reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
 
 # The Draft target can be correct and still change after publication. The final public
 # provenance must be re-read and a mismatch must fail without destructive cleanup.
