@@ -29,6 +29,13 @@ if [[ "$1" == 'secret' && "$2" == 'list' ]]; then
   [[ "$*" == *'--json name'* ]]
   if [[ "$MODE" == 'missing-secret' ]]; then
     printf '[{"name":"DEVELOPER_ID_P12_BASE64"},{"name":"DEVELOPER_ID_P12_PASSWORD"}]\n'
+  elif [[ "$MODE" == 'post-credential-secret-drift' ]]; then
+    secret_reads="$(grep -Fc 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG")"
+    if [[ "$secret_reads" -le 1 ]]; then
+      printf '[{"name":"DEVELOPER_ID_P12_BASE64"},{"name":"DEVELOPER_ID_P12_PASSWORD"},{"name":"APPSTORE_CONNECT_PRIVATE_KEY_BASE64"}]\n'
+    else
+      printf '[{"name":"DEVELOPER_ID_P12_BASE64"},{"name":"DEVELOPER_ID_P12_PASSWORD"}]\n'
+    fi
   else
     printf '[{"name":"DEVELOPER_ID_P12_BASE64"},{"name":"DEVELOPER_ID_P12_PASSWORD"},{"name":"APPSTORE_CONNECT_PRIVATE_KEY_BASE64"}]\n'
   fi
@@ -39,7 +46,16 @@ if [[ "$1" == 'variable' && "$2" == 'list' ]]; then
   [[ "$*" == *'--env production-release'* ]]
   [[ "$*" == *'--repo example/SchneeGlass'* ]]
   [[ "$*" == *'--json name'* ]]
-  printf '[{"name":"APPLE_TEAM_ID"},{"name":"APPSTORE_CONNECT_KEY_ID"},{"name":"APPSTORE_CONNECT_ISSUER_ID"}]\n'
+  if [[ "$MODE" == 'post-credential-variable-drift' ]]; then
+    variable_reads="$(grep -Fc 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG")"
+    if [[ "$variable_reads" -le 1 ]]; then
+      printf '[{"name":"APPLE_TEAM_ID"},{"name":"APPSTORE_CONNECT_KEY_ID"},{"name":"APPSTORE_CONNECT_ISSUER_ID"}]\n'
+    else
+      printf '[{"name":"APPLE_TEAM_ID"},{"name":"APPSTORE_CONNECT_KEY_ID"}]\n'
+    fi
+  else
+    printf '[{"name":"APPLE_TEAM_ID"},{"name":"APPSTORE_CONNECT_KEY_ID"},{"name":"APPSTORE_CONNECT_ISSUER_ID"}]\n'
+  fi
   exit 0
 fi
 
@@ -209,6 +225,39 @@ set -e
 grep -Fq 'Production release environment setup failed: missing required Environment secret name: APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$OUTPUT"
 grep -Fq 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG"
 grep -Fq 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Credential names themselves must be re-read immediately before success.
+# A required secret disappearing after the initial credential-name read must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-credential-secret-drift'
+OUTPUT="$FIXTURE/post-credential-secret-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: missing required Environment secret name: APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$OUTPUT"
+[[ "$(grep -Fc 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG")" -eq 2 ]]
+! grep -Fq 'Production release credential names verified:' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# A required variable disappearing after the initial credential-name read must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-credential-variable-drift'
+OUTPUT="$FIXTURE/post-credential-variable-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: missing required Environment variable name: APPSTORE_CONNECT_ISSUER_ID' "$OUTPUT"
+[[ "$(grep -Fc 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG")" -eq 2 ]]
+! grep -Fq 'Production release credential names verified:' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 
