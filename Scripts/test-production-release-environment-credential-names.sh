@@ -96,7 +96,26 @@ JSON
     fi
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
-    printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+    detail_reads="$(grep -Fc 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG")"
+    case "$MODE" in
+      final-environment-drift)
+        if [[ "$detail_reads" -le 1 ]]; then
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+        else
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":false}}\n'
+        fi
+        ;;
+      post-credential-environment-drift)
+        if [[ "$detail_reads" -le 2 ]]; then
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+        else
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":false}}\n'
+        fi
+        ;;
+      *)
+        printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+        ;;
+    esac
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
@@ -153,6 +172,23 @@ grep -Fq 'Production release environment setup failed: production-release must c
 ! grep -Fq 'secret list ' "$LOG"
 ! grep -Fq 'variable list ' "$LOG"
 
+# Credential-name verification must revalidate final Environment settings before
+# consulting credential names or reporting success.
+: > "$LOG"
+export GH_FIXTURE_MODE='final-environment-drift'
+OUTPUT="$FIXTURE/final-environment-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must resolve case-insensitively and use custom deployment branch policies' "$OUTPUT"
+! grep -Fq 'secret list ' "$LOG"
+! grep -Fq 'variable list ' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
 # Missing secret name must fail without exposing or requesting values.
 : > "$LOG"
 export GH_FIXTURE_MODE='missing-secret'
@@ -166,6 +202,24 @@ set -e
 grep -Fq 'Production release environment setup failed: missing required Environment secret name: APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$OUTPUT"
 grep -Fq 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG"
 grep -Fq 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+
+# Even after credential names are complete, Environment settings must be
+# revalidated immediately before credential-name success is reported.
+: > "$LOG"
+export GH_FIXTURE_MODE='post-credential-environment-drift'
+OUTPUT="$FIXTURE/post-credential-environment-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must resolve case-insensitively and use custom deployment branch policies' "$OUTPUT"
+grep -Fq 'secret list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+grep -Fq 'variable list --env production-release --repo example/SchneeGlass --json name' "$LOG"
+! grep -Fq 'Production release credential names verified:' "$OUTPUT"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq -- '--method POST' "$LOG"
 

@@ -86,17 +86,24 @@ JSON
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
     case "$MODE" in
+      final-environment-drift)
+        detail_reads="$(grep -Fc 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG")"
+        if [[ "$detail_reads" -le 1 ]]; then
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+        else
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":false}}\n'
+        fi
+        ;;
       environment-case-title)
-        environment_name='Production-Release'
+        printf '{"name":"Production-Release","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
       environment-case-mixed)
-        environment_name='PrOdUcTiOn-ReLeAsE'
+        printf '{"name":"PrOdUcTiOn-ReLeAsE","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
       *)
-        environment_name='production-release'
+        printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
     esac
-    printf '{"name":"%s","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n' "$environment_name"
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
@@ -241,6 +248,21 @@ do
   ! grep -Fq -- '--method PUT' "$LOG"
   ! grep -Fq -- '--method POST' "$LOG"
 done
+
+# Final certification must re-read Environment detail. A concurrent settings
+# drift after the initial detail check must fail even when exact main policy stays valid.
+: > "$LOG"
+export GH_FIXTURE_MODE='final-environment-drift'
+OUTPUT="$FIXTURE/final-environment-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must resolve case-insensitively and use custom deployment branch policies' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
 
 # Incomplete pagination must not be certified from the observed subset when the
 # API reports more policies than were returned.
