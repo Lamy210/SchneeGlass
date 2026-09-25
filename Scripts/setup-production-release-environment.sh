@@ -154,6 +154,48 @@ validate_deployment_policy_inventory() {
     || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy for branch main"
 }
 
+validate_credential_name_inventory() {
+  local context="$1"
+
+  [[ -n "$context" ]] || fail "credential-name validation context must be non-empty"
+
+  gh secret list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$SECRET_NAMES_JSON"
+  gh variable list \
+    --env "$ENVIRONMENT_NAME" \
+    --repo "$REPOSITORY" \
+    --json name \
+    > "$VARIABLE_NAMES_JSON"
+
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$SECRET_NAMES_JSON" >/dev/null \
+    || fail "$context Environment secret-name response is malformed"
+  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
+    "$VARIABLE_NAMES_JSON" >/dev/null \
+    || fail "$context Environment variable-name response is malformed"
+
+  for required_secret in \
+    DEVELOPER_ID_P12_BASE64 \
+    DEVELOPER_ID_P12_PASSWORD \
+    APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+  do
+    jq -e --arg name "$required_secret" 'any(.[]; .name == $name)' "$SECRET_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment secret name: $required_secret"
+  done
+
+  for required_variable in \
+    APPLE_TEAM_ID \
+    APPSTORE_CONNECT_KEY_ID \
+    APPSTORE_CONNECT_ISSUER_ID
+  do
+    jq -e --arg name "$required_variable" 'any(.[]; .name == $name)' "$VARIABLE_NAMES_JSON" >/dev/null \
+      || fail "missing required Environment variable name: $required_variable"
+  done
+}
+
 gh api "repos/$REPOSITORY/branches/main" > "$BRANCH_JSON"
 jq -e 'type == "object" and (.protected | type == "boolean")' "$BRANCH_JSON" >/dev/null \
   || fail "main branch response is malformed"
@@ -264,44 +306,11 @@ validate_environment_detail 'final Environment detail'
 echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main branch policy"
 
 if [[ "$MODE" == '--verify-credential-names' ]]; then
-  gh secret list \
-    --env "$ENVIRONMENT_NAME" \
-    --repo "$REPOSITORY" \
-    --json name \
-    > "$SECRET_NAMES_JSON"
-  gh variable list \
-    --env "$ENVIRONMENT_NAME" \
-    --repo "$REPOSITORY" \
-    --json name \
-    > "$VARIABLE_NAMES_JSON"
-
-  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
-    "$SECRET_NAMES_JSON" >/dev/null \
-    || fail "Environment secret-name response is malformed"
-  jq -e 'type == "array" and all(.[]; type == "object" and (.name | type == "string"))' \
-    "$VARIABLE_NAMES_JSON" >/dev/null \
-    || fail "Environment variable-name response is malformed"
-
-  for required_secret in \
-    DEVELOPER_ID_P12_BASE64 \
-    DEVELOPER_ID_P12_PASSWORD \
-    APPSTORE_CONNECT_PRIVATE_KEY_BASE64
-  do
-    jq -e --arg name "$required_secret" 'any(.[]; .name == $name)' "$SECRET_NAMES_JSON" >/dev/null \
-      || fail "missing required Environment secret name: $required_secret"
-  done
-
-  for required_variable in \
-    APPLE_TEAM_ID \
-    APPSTORE_CONNECT_KEY_ID \
-    APPSTORE_CONNECT_ISSUER_ID
-  do
-    jq -e --arg name "$required_variable" 'any(.[]; .name == $name)' "$VARIABLE_NAMES_JSON" >/dev/null \
-      || fail "missing required Environment variable name: $required_variable"
-  done
+  validate_credential_name_inventory 'initial credential-name'
 
   validate_deployment_policy_inventory 'credential-name final deployment branch policy'
   validate_environment_detail 'credential-name final Environment detail'
+  validate_credential_name_inventory 'final credential-name'
 
   echo 'Production release credential names verified: 3 secrets + 3 variables configured'
 fi
