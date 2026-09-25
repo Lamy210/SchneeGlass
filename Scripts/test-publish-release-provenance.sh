@@ -56,11 +56,28 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "$STATE/release-public" ]]; then
+    if [[ -f "$STATE/release-created" ]]; then
       case "$TAG_MODE" in
-        exact) printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA" ;;
-        mismatch) printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA" ;;
-        *) echo "unexpected tag fixture mode: $TAG_MODE" >&2; exit 103 ;;
+        exact)
+          printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
+          ;;
+        retarget-before-publication)
+          printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
+          ;;
+        missing-before-publication)
+          exit 2
+          ;;
+        mismatch-after-publication)
+          if [[ -f "$STATE/release-public" ]]; then
+            printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
+          else
+            printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
+          fi
+          ;;
+        *)
+          echo "unexpected tag fixture mode: $TAG_MODE" >&2
+          exit 103
+          ;;
       esac
       exit 0
     fi
@@ -339,6 +356,62 @@ else
 fi
 export GH_FIXTURE_GOVERNANCE_MODE='valid'
 
+# Draft tag provenance must be re-read before publication. A retargeted tag must
+# fail before the Draft-to-public mutation, not only after publication.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='retarget-before-publication'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
+OUTPUT_TAG_RETARGETED="$FIXTURE/output-tag-retargeted-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_RETARGETED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_TAG_RETARGETED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded with a retargeted Draft tag.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: release tag no longer resolves to candidate source commit before publication' "$OUTPUT_TAG_RETARGETED"; then
+    cat "$OUTPUT_TAG_RETARGETED"
+    echo 'Retargeted Draft tag did not fail with the expected pre-publication error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Retargeted Draft tag reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# The same final boundary must fail closed if the Draft-associated tag disappears.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='missing-before-publication'
+export GH_FIXTURE_GOVERNANCE_MODE='valid'
+OUTPUT_TAG_MISSING="$FIXTURE/output-tag-missing-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_MISSING" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_TAG_MISSING"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the Draft tag disappeared.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: unable to verify release tag before publication' "$OUTPUT_TAG_MISSING"; then
+    cat "$OUTPUT_TAG_MISSING"
+    echo 'Missing Draft tag did not fail with the expected pre-publication error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Missing Draft tag reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_TAG_MODE='exact'
+
 # The Draft target can be correct and still change after publication. The final public
 # provenance must be re-read and a mismatch must fail without destructive cleanup.
 reset_case
@@ -374,7 +447,7 @@ fi
 # candidate commit. A different tag commit is ambiguous after publication and must remain.
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
-export GH_FIXTURE_TAG_MODE='mismatch'
+export GH_FIXTURE_TAG_MODE='mismatch-after-publication'
 OUTPUT_TAG_MISMATCH="$FIXTURE/output-tag-mismatch.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_MISMATCH" 2>&1
