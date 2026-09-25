@@ -85,27 +85,25 @@ JSON
     esac
     ;;
   GET:repos/example/SchneeGlass/environments/production-release)
-    if [[ "$MODE" == 'final-environment-drift' ]]; then
-      detail_reads="$(grep -Fc 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG")"
-      if [[ "$detail_reads" -le 1 ]]; then
-        printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
-      else
-        printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":false}}\n'
-      fi
-      break
-    fi
     case "$MODE" in
+      final-environment-drift)
+        detail_reads="$(grep -Fc 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG")"
+        if [[ "$detail_reads" -le 1 ]]; then
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
+        else
+          printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":false}}\n'
+        fi
+        ;;
       environment-case-title)
-        environment_name='Production-Release'
+        printf '{"name":"Production-Release","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
       environment-case-mixed)
-        environment_name='PrOdUcTiOn-ReLeAsE'
+        printf '{"name":"PrOdUcTiOn-ReLeAsE","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
       *)
-        environment_name='production-release'
+        printf '{"name":"production-release","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n'
         ;;
     esac
-    printf '{"name":"%s","protection_rules":[{"type":"branch_policy"},{"type":"wait_timer","wait_timer":10}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}\n' "$environment_name"
     ;;
   GET:repos/example/SchneeGlass/environments/production-release/deployment-branch-policies?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
