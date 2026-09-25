@@ -36,6 +36,7 @@ on:
       - '.github/workflows/publish-release.yml'
       - '.github/rulesets/main-release-governance.json'
       - 'Scripts/publish-notarized-release.sh'
+      - 'Scripts/verify-current-release-governance.sh'
       - 'Scripts/test-publish-release-history-enumeration.sh'
       - 'Scripts/test-publish-release-history-enumeration-base.sh'
       - 'Scripts/test-publish-release-provenance.sh'
@@ -83,6 +84,7 @@ jobs:
             .github/workflows/publish-release.yml \
             'Scripts/test-publish-release-history-enumeration-base.sh' \
             'Scripts/test-publish-release-provenance.sh' \
+            'Scripts/verify-current-release-governance.sh' \
             'Scripts/test-release-build-history-key-enumeration.sh' \
             'Scripts/test-release-evidence-enumeration.sh' \
             'Scripts/verify-release-checksum-manifest.sh' \
@@ -96,7 +98,9 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/publish-notarized-release.sh
+          bash -n Scripts/verify-current-release-governance.sh
           bash -n Scripts/test-publish-release-history-enumeration.sh
+          bash -n Scripts/test-publish-release-provenance.sh
           bash -n Scripts/verify-production-candidate-run.sh
           bash -n Scripts/verify-release-build-history.sh
           bash -n Scripts/test-release-build-history-key-enumeration.sh
@@ -607,31 +611,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify current main release governance
-        run: |
-          BRANCH_JSON="$RUNNER_TEMP/main-branch.json"
-          RULES_PAGES_JSON="$RUNNER_TEMP/main-rules-pages.json"
-          GITHUB_ACTIONS_APP_ID='15368'
-          CANONICAL='Canonical / Xcode 26.6 / App Build / Safety Guards'
-          COMPATIBILITY='Compatibility / macOS 15 / App Build'
-
-          gh api "repos/$GITHUB_REPOSITORY/branches/main" > "$BRANCH_JSON"
-          MAIN_PROTECTED="$(jq -r '.protected' "$BRANCH_JSON")"
-          bash Scripts/verify-release-branch-protection.sh main "$MAIN_PROTECTED"
-
-          gh api --paginate --slurp \
-            "repos/$GITHUB_REPOSITORY/rules/branches/main?per_page=100" \
-            > "$RULES_PAGES_JSON"
-          bash Scripts/verify-release-required-checks.sh \
-            "$BRANCH_JSON" \
-            "$RULES_PAGES_JSON" \
-            "$GITHUB_ACTIONS_APP_ID" \
-            "$CANONICAL" \
-            "$COMPATIBILITY"
-          bash Scripts/verify-release-required-branch-rules.sh \
-            "$RULES_PAGES_JSON" \
-            deletion \
-            non_fast_forward \
-            pull_request
+        run: bash Scripts/verify-current-release-governance.sh "$GITHUB_REPOSITORY"
 
       - name: Publish validated notarized candidate
         run: bash Scripts/publish-notarized-release.sh
