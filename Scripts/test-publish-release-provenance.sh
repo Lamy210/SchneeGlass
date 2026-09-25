@@ -277,6 +277,14 @@ EOF
                   printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.bin'
                 fi
                 ;;
+              enumeration-failure-before-publication)
+                if [[ "$asset_reads" -le 1 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip'
+                  exit 42
+                fi
+                ;;
               *)
                 echo "unexpected asset fixture mode: $ASSET_MODE" >&2
                 exit 104
@@ -413,6 +421,19 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+# Asset enumeration itself must also fail closed at the final Draft boundary.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='enumeration-failure-before-publication'
+OUTPUT_ASSET_ENUMERATION_FAILURE="$FIXTURE/output-asset-enumeration-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_ENUMERATION_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # Governance can drift while Draft preparation is in progress even when current main
