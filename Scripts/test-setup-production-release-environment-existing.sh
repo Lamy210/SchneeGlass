@@ -109,6 +109,13 @@ JSON
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
     if [[ "$MODE" == 'extra-policy' ]]; then
       printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"},{"id":102,"name":"release/*","type":"branch"}]}]\n'
+    elif [[ "$MODE" == 'final-policy-drift' ]]; then
+      policy_reads="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
+      if [[ "$policy_reads" -le 1 ]]; then
+        printf '[{"total_count":1,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
+      else
+        printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"},{"id":102,"name":"release/*","type":"branch"}]}]\n'
+      fi
     elif [[ "$MODE" == 'incomplete-policy-enumeration' ]]; then
       printf '[{"total_count":2,"branch_policies":[{"id":101,"name":"main","type":"branch"}]}]\n'
     elif [[ "$MODE" == 'main-tag-policy' ]]; then
@@ -248,6 +255,21 @@ do
   ! grep -Fq -- '--method PUT' "$LOG"
   ! grep -Fq -- '--method POST' "$LOG"
 done
+
+# Final certification must re-read deployment policy inventory. A concurrent
+# extra policy appearing after the initial exact-main read must fail closed.
+: > "$LOG"
+export GH_FIXTURE_MODE='final-policy-drift'
+OUTPUT="$FIXTURE/final-policy-drift.log"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Production release environment setup failed: production-release must contain exactly one deployment policy for branch main' "$OUTPUT"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
 
 # Final certification must re-read Environment detail. A concurrent settings
 # drift after the initial detail check must fail even when exact main policy stays valid.
