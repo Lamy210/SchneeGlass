@@ -87,9 +87,8 @@ emit_canonical_ruleset_detail() {
 JSON
 }
 
-case "$METHOD:$ENDPOINT" in
-  GET:repos/example/SchneeGlass/rulesets)
-    case "$MODE" in
+emit_ruleset_inventory() {
+  case "$MODE" in
       concurrent-layer|concurrent-replace|concurrent-disable|post-mutation-layer)
         if grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets ' "$LOG"; then
           case "$MODE" in
@@ -121,7 +120,7 @@ case "$METHOD:$ENDPOINT" in
           printf '[]\n'
         fi
         ;;
-      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule)
+      duplicate|bypass|missing-bypass|invalid-bypass|wrong-target|drifted-pr|extra-rule|paginated-layer)
         printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
         ;;
       inactive)
@@ -133,8 +132,31 @@ case "$METHOD:$ENDPOINT" in
       unrelated)
         printf '[{"id":77,"name":"Existing unrelated policy","enforcement":"active"}]\n'
         ;;
+      malformed-ruleset-pages)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+        ;;
       *)
         printf '[]\n'
+        ;;
+    esac
+}
+
+case "$METHOD:$ENDPOINT" in
+  GET:repos/example/SchneeGlass/rulesets)
+    emit_ruleset_inventory
+    ;;
+  GET:repos/example/SchneeGlass/rulesets?per_page=100)
+    [[ "$PAGINATE" == true && "$SLURP" == true ]]
+    case "$MODE" in
+      paginated-layer)
+        printf '[[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}],[{"id":77,"name":"Hidden later-page policy","enforcement":"active"}]]\n'
+        ;;
+      malformed-ruleset-pages)
+        printf '[{"id":55,"name":"SchneeGlass main release governance","enforcement":"active"}]\n'
+        ;;
+      *)
+        inventory="$(emit_ruleset_inventory)"
+        printf '[%s]\n' "$inventory"
         ;;
     esac
     ;;
@@ -225,7 +247,7 @@ export PATH="$FIXTURE/bin:$PATH"
 export GH_FIXTURE_MODE='empty'
 bash Scripts/setup-release-governance.sh example/SchneeGlass
 
-grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rulesets\?per_page=100' "$LOG"
 grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/rulesets/main-release-governance.json' "$LOG"
 grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
 grep -Fq 'api --method PUT -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
@@ -372,7 +394,7 @@ grep -Fq 'Release governance setup failed: matching ruleset already exists: Schn
 export GH_FIXTURE_MODE='duplicate'
 bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only
 
-grep -Fq 'api repos/example/SchneeGlass/rulesets' "$LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rulesets\?per_page=100' "$LOG"
 grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
 grep -Fq 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/immutable-releases' "$LOG"
 grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
@@ -590,6 +612,36 @@ set -e
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
 ! grep -Fq 'branches/main' "$LOG"
+
+# Paginated ruleset responses must preserve the gh --slurp array-of-arrays shape.
+: > "$LOG"
+export GH_FIXTURE_MODE='malformed-ruleset-pages'
+VERIFY_MALFORMED_RULESET_PAGES_LOG="$FIXTURE/verify-malformed-ruleset-pages.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_MALFORMED_RULESET_PAGES_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: repository ruleset pages response must be a JSON array of arrays' "$VERIFY_MALFORMED_RULESET_PAGES_LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+
+# Verify-only must enumerate every repository-ruleset page. A canonical ruleset
+# on the first page with an unrelated ruleset on a later page is still layered.
+: > "$LOG"
+export GH_FIXTURE_MODE='paginated-layer'
+VERIFY_PAGINATED_LAYER_LOG="$FIXTURE/verify-paginated-layer.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass --verify-only >"$VERIFY_PAGINATED_LAYER_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_PAGINATED_LAYER_LOG"
+grep -Fq 'api --paginate --slurp repos/example/SchneeGlass/rulesets\?per_page=100' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
 
 # Verify-only must reject layered rulesets instead of certifying an ambiguous governance stack.
 : > "$LOG"
