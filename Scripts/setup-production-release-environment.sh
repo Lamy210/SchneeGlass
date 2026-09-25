@@ -80,6 +80,26 @@ load_environment_counts() {
     || fail "environment enumeration is incomplete: reported $ENVIRONMENT_REPORTED_COUNT, observed $ENVIRONMENT_OBSERVED_COUNT"
 }
 
+validate_environment_detail() {
+  local context="$1"
+
+  gh api \
+    -H "X-GitHub-Api-Version: $API_VERSION" \
+    "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
+    > "$ENVIRONMENT_JSON"
+
+  jq -e --arg name "$ENVIRONMENT_NAME" '
+    type == "object" and
+    (.name | type == "string" and length > 0) and
+    ((.name | ascii_downcase) == ($name | ascii_downcase)) and
+    .deployment_branch_policy.protected_branches == false and
+    .deployment_branch_policy.custom_branch_policies == true
+  ' "$ENVIRONMENT_JSON" >/dev/null \
+    || fail "$ENVIRONMENT_NAME must resolve case-insensitively and use custom deployment branch policies"
+
+  [[ -n "$context" ]] || fail "Environment detail validation context must be non-empty"
+}
+
 load_deployment_policy_counts() {
   local pages_json="$1"
   local context="$2"
@@ -182,20 +202,7 @@ if [[ "$ENVIRONMENT_COUNT" -eq 0 ]]; then
 
 fi
 
-gh api \
-  -H "X-GitHub-Api-Version: $API_VERSION" \
-  "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME" \
-  > "$ENVIRONMENT_JSON"
-jq -e --arg name "$ENVIRONMENT_NAME" '
-  type == "object" and
-  (.name | type == "string" and length > 0) and
-  ((.name | ascii_downcase) == ($name | ascii_downcase)) and
-  .deployment_branch_policy.protected_branches == false and
-  .deployment_branch_policy.custom_branch_policies == true
-' "$ENVIRONMENT_JSON" >/dev/null \
-  || fail "$ENVIRONMENT_NAME must resolve case-insensitively and use custom deployment branch policies"
-
-gh api --paginate --slurp \
+validate_environment_detail 'initial Environment detail'\n\ngh api --paginate --slurp \
   -H "X-GitHub-Api-Version: $API_VERSION" \
   "repos/$REPOSITORY/environments/$ENVIRONMENT_NAME/deployment-branch-policies?per_page=100" \
   > "$POLICIES_PAGES_JSON"
@@ -235,6 +242,8 @@ fi
 
 [[ "$POLICY_COUNT" -eq 1 && "$MAIN_BRANCH_POLICY_COUNT" -eq 1 ]] \
   || fail "$ENVIRONMENT_NAME must contain exactly one deployment policy for branch main"
+
+validate_environment_detail 'final Environment detail'
 
 echo "Production release Environment verified: $ENVIRONMENT_NAME allows only exact main branch policy"
 
