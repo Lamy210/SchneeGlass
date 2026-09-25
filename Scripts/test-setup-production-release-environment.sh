@@ -344,11 +344,18 @@ grep -Fq 'Production release Environment verified: production-release allows onl
 
 PUT_LINE="$(grep -n -- '--method PUT' "$LOG" | cut -d: -f1)"
 POST_LINE="$(grep -n -- '--method POST' "$LOG" | cut -d: -f1)"
-VERIFY_LINE="$(grep -Fn 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
+DETAIL_LINES="$(grep -Fn 'api -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/environments/production-release ' "$LOG" | cut -d: -f1)"
+DETAIL_COUNT="$(printf '%s\n' "$DETAIL_LINES" | wc -l | tr -d '[:space:]')"
+[[ "$DETAIL_COUNT" =~ ^[0-9]+$ ]]
+[[ "$DETAIL_COUNT" -eq 2 ]]
+INITIAL_VERIFY_LINE="$(printf '%s\n' "$DETAIL_LINES" | sed -n '1p')"
+FINAL_VERIFY_LINE="$(printf '%s\n' "$DETAIL_LINES" | sed -n '2p')"
 POLICY_ENUMERATION_COUNT="$(grep -Fc 'deployment-branch-policies\?per_page=100' "$LOG")"
 [[ "$POLICY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
 [[ "$POLICY_ENUMERATION_COUNT" -eq 3 ]]
-[[ "$PUT_LINE" -lt "$VERIFY_LINE" && "$VERIFY_LINE" -lt "$POST_LINE" ]]
+[[ "$PUT_LINE" -lt "$INITIAL_VERIFY_LINE" ]]
+[[ "$INITIAL_VERIFY_LINE" -lt "$POST_LINE" ]]
+[[ "$POST_LINE" -lt "$FINAL_VERIFY_LINE" ]]
 
 CURRENT_OUTPUT=''
 trap - EXIT
