@@ -176,7 +176,7 @@ if [[ "${GH_FIXTURE_GREP_MODE:-}" == 'partial-count-failure' && "${1:-}" == '-Fc
       exit 42
       ;;
     'deployment-branch-policies\?per_page=100')
-      printf '3\n'
+      printf '4\n'
       exit 42
       ;;
   esac
@@ -394,13 +394,13 @@ grep -Fq 'Production release Environment verified: production-release allows onl
 ! grep -Fq -- '--method PUT' "$LOG"
 assert_log_count 1 '--method POST'
 grep -Fq 'repos/example/SchneeGlass/environments/production-release/deployment-branch-policies' "$LOG"
-assert_log_count 3 'deployment-branch-policies\?per_page=100'
+assert_log_count 4 'deployment-branch-policies\?per_page=100'
 
 # Count assertions must reject partial expected output followed by an enumeration failure.
 export GH_FIXTURE_GREP_MODE='partial-count-failure'
 for assertion in \
   '1|--method POST' \
-  '3|deployment-branch-policies\?per_page=100'
+  '4|deployment-branch-policies\?per_page=100'
 do
   expected="${assertion%%|*}"
   pattern="${assertion#*|}"
