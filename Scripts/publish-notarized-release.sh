@@ -303,15 +303,22 @@ set -e
 [[ "$PREPUBLICATION_TAG_STATUS" -eq 0 ]] \
   || fail "unable to verify release tag before publication"
 
-PREPUBLICATION_TAG_LINES=()
-mapfile -t PREPUBLICATION_TAG_LINES <<< "$PREPUBLICATION_TAG_LINE"
-[[ "${#PREPUBLICATION_TAG_LINES[@]}" -eq 1 ]] \
+PREPUBLICATION_TAG_LINE_COUNT=''
+PREPUBLICATION_TAG_LINE_COUNT_STATUS=0
+set +e
+PREPUBLICATION_TAG_LINE_COUNT="$(printf '%s\n' "$PREPUBLICATION_TAG_LINE" | awk 'END { print NR }')"
+PREPUBLICATION_TAG_LINE_COUNT_STATUS=$?
+set -e
+
+[[ "$PREPUBLICATION_TAG_LINE_COUNT_STATUS" -eq 0 ]] \
+  || fail "unable to enumerate release tag refs before publication"
+[[ "$PREPUBLICATION_TAG_LINE_COUNT" =~ ^[0-9]+$ && "$PREPUBLICATION_TAG_LINE_COUNT" -eq 1 ]] \
   || fail "release tag returned an invalid remote ref set before publication"
 
 PREPUBLICATION_TAG_SHA=''
 PREPUBLICATION_TAG_REF=''
 PREPUBLICATION_TAG_EXTRA=''
-read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <<< "${PREPUBLICATION_TAG_LINES[0]}"
+read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <<< "$PREPUBLICATION_TAG_LINE"
 [[ -z "$PREPUBLICATION_TAG_EXTRA" ]] \
   || fail "release tag returned an invalid remote ref set before publication"
 [[ "$PREPUBLICATION_TAG_SHA" =~ ^[0-9a-f]{40}$ && "$PREPUBLICATION_TAG_REF" == "refs/tags/$TAG" ]] \
