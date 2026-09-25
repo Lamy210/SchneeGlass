@@ -286,5 +286,7 @@ if [[ "$MODE" == '--verify-credential-names' ]]; then
       || fail "missing required Environment variable name: $required_variable"
   done
 
+  validate_environment_detail 'credential-name final Environment detail'
+
   echo 'Production release credential names verified: 3 secrets + 3 variables configured'
 fi
