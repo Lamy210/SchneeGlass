@@ -477,11 +477,15 @@ fi
 [[ "$PREPUBLICATION_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
   || fail "draft release identity changed before publication"
 
-gh release edit "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --draft=false \
-  --prerelease=false \
-  --latest
+if ! gh api --method PATCH \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  "repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID" \
+  -F draft=false \
+  -F prerelease=false \
+  -f make_latest=true \
+  >/dev/null; then
+  fail "unable to publish run-owned Release by identity; publication state is ambiguous and requires manual reconciliation"
+fi
 PUBLICATION_COMMAND_SUCCEEDED=true
 
 if ! IS_DRAFT="$(gh release view "$TAG" \
