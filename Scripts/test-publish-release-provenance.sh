@@ -249,11 +249,26 @@ EOF
         case "$JSON" in
           '') exit 0 ;;
           isDraft)
-            if [[ -f "$STATE/release-public" ]]; then printf 'false\n'; else printf 'true\n'; fi
+            draft_reads="$(awk '/--json isDraft/ { count += 1 } END { print count + 0 }' "$LOG")"
+            if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$draft_reads" -ge 2 ]]; then
+              printf 'true\n'
+              exit 42
+            elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$draft_reads" -ge 2 ]]; then
+              printf 'unknown\n'
+            elif [[ -f "$STATE/release-public" ]]; then
+              printf 'false\n'
+            else
+              printf 'true\n'
+            fi
             ;;
           targetCommitish)
             target_reads="$(awk '/--json targetCommitish/ { count += 1 } END { print count + 0 }' "$LOG")"
-            if [[ "$TARGET_MODE" == 'change-before-publication' && "$target_reads" -ge 2 ]]; then
+            if [[ "$TARGET_MODE" == 'query-failure-before-publication' && "$target_reads" -ge 2 ]]; then
+              printf '%s\n' "$CANDIDATE_SHA"
+              exit 42
+            elif [[ "$TARGET_MODE" == 'malformed-before-publication' && "$target_reads" -ge 2 ]]; then
+              printf 'main\n'
+            elif [[ "$TARGET_MODE" == 'change-before-publication' && "$target_reads" -ge 2 ]]; then
               printf '%s\n' "$OTHER_SHA"
             elif [[ "$TARGET_MODE" == 'change-after' && -f "$STATE/release-public" ]]; then
               printf '%s\n' "$OTHER_SHA"
@@ -503,6 +518,68 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+export GH_FIXTURE_TARGET_MODE='exact'
+
+# Final Draft-state enumeration itself must fail closed, including partial output.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='query-failure-before-publication'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_DRAFT_QUERY_FAILURE="$FIXTURE/output-draft-query-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to verify draft release state before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+
+# A malformed Draft state is not positive proof of ownership/state.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='invalid-before-publication'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_DRAFT_INVALID="$FIXTURE/output-draft-invalid-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_INVALID" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_INVALID"
+! grep -Fq 'gh release edit ' "$LOG"
+export GH_FIXTURE_DRAFT_MODE='exact'
+
+# Final Draft-target enumeration must preserve command failure even with plausible output.
+reset_case
+export GH_FIXTURE_TARGET_MODE='query-failure-before-publication'
+export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_TARGET_QUERY_FAILURE="$FIXTURE/output-target-query-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TARGET_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to verify draft release target before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+
+# Non-SHA target values must also fail before publication.
+reset_case
+export GH_FIXTURE_TARGET_MODE='malformed-before-publication'
+export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_TARGET_MALFORMED="$FIXTURE/output-target-malformed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TARGET_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release target returned an invalid commit SHA before publication' "$OUTPUT_TARGET_MALFORMED"
+! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_TARGET_MODE='exact'
 
 # Governance can drift while Draft preparation is in progress even when current main
