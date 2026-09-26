@@ -414,6 +414,137 @@ case "$COMMAND" in
     fi
 
     case "$ENDPOINT" in
+      repos/example/SchneeGlass/releases/101)
+        [[ "$METHOD" == 'GET' ]]
+        case "$JQ" in
+          .id)
+            if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' && -f "$STATE/release-id" && "$(cat "$STATE/release-id")" != '101' ]]; then
+              echo 'fixture: run-owned release ID 101 no longer exists' >&2
+              exit 1
+            fi
+            printf '101\n'
+            ;;
+          .draft)
+            direct_draft_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .draft' "$LOG")"
+            if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$direct_draft_reads" -eq 2 ]]; then
+              printf 'true\n'
+              exit 42
+            elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$direct_draft_reads" -eq 2 ]]; then
+              printf 'unknown\n'
+            elif [[ -f "$STATE/release-public" ]]; then
+              if [[ "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
+              printf 'false\n'
+            else
+              printf 'true\n'
+            fi
+            ;;
+          .prerelease)
+            case "$PRERELEASE_MODE" in
+              stable)
+                printf 'false\n'
+                ;;
+              change-before-publication)
+                if [[ -f "$STATE/release-prerelease" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
+              change-after-final-check)
+                printf 'false\n'
+                touch "$STATE/release-prerelease"
+                ;;
+              query-failure-before-publication)
+                printf 'false\n'
+                exit 42
+                ;;
+              malformed-before-publication)
+                printf 'unknown\n'
+                ;;
+              *)
+                echo "unexpected run-owned prerelease fixture mode: $PRERELEASE_MODE" >&2
+                exit 116
+                ;;
+            esac
+            ;;
+          .target_commitish)
+            direct_target_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .target_commitish' "$LOG")"
+            if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' && -f "$STATE/run-owned-invalid" ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            elif [[ "$TARGET_MODE" == 'query-failure-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf '%s\n' "$CANDIDATE_SHA"
+              exit 42
+            elif [[ "$TARGET_MODE" == 'malformed-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf 'main\n'
+            elif [[ "$TARGET_MODE" == 'change-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            elif [[ "$TARGET_MODE" == 'change-after' && -f "$STATE/release-public" ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            else
+              printf '%s\n' "$CANDIDATE_SHA"
+              if [[ "$IDENTITY_MODE" == 'replace-before-asset-upload' && "$direct_target_reads" -eq 1 ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
+            fi
+            ;;
+          '.assets[].name')
+            direct_asset_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .assets\[\].name' "$LOG")"
+            case "$ASSET_MODE" in
+              exact)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  if [[ "$DRAFT_MODE" == 'publish-before-publication' ]]; then
+                    touch "$STATE/release-public"
+                  fi
+                  if [[ "$PRERELEASE_MODE" == 'change-before-publication' ]]; then
+                    touch "$STATE/release-prerelease"
+                  fi
+                  if [[ "$IDENTITY_MODE" == 'replace-before-publication' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
+                    touch "$STATE/run-owned-invalid"
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                fi
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              missing-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              extra-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.bin'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              enumeration-failure-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip'
+                  exit 42
+                fi
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              *)
+                echo "unexpected run-owned asset fixture mode: $ASSET_MODE" >&2
+                exit 117
+                ;;
+            esac
+            ;;
+          .immutable)
+            if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
+            ;;
+          *)
+            echo "unexpected run-owned release jq: $JQ" >&2
+            exit 118
+            ;;
+        esac
+        ;;
       repos/example/SchneeGlass/actions/runs/123)
         case "$JQ" in
           .name) printf '%s\n' 'Production Release Candidate' ;;
