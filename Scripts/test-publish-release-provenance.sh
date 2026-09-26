@@ -418,6 +418,17 @@ EOF
                   exit 0
                 fi
                 ;;
+              replace-after-final-prepublication-identity)
+                if [[ "$identity_reads" -eq 2 ]]; then
+                  if [[ -f "$STATE/release-id" ]]; then
+                    cat "$STATE/release-id"
+                  else
+                    printf '101\n'
+                  fi
+                  printf '202\n' > "$STATE/release-id"
+                  exit 0
+                fi
+                ;;
               query-failure-after-publication)
                 if [[ "$identity_reads" -ge 3 ]]; then
                   printf '101\n'
@@ -774,6 +785,36 @@ else
     echo 'Replacement Draft reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# The final pre-publication identity proof cannot safely authorize a later
+# tag-addressed mutation. Replace ID 101 with same-tag Draft ID 202 immediately
+# after the proof; this workflow must never publish the replacement.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-final-prepublication-identity'
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_REPLACED_AT_MUTATION="$FIXTURE/output-replaced-at-publication-mutation.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_REPLACED_AT_MUTATION" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+if grep -Fq 'gh release edit ' "$LOG"; then
+  echo 'Same-tag replacement reached tag-addressed Draft-to-public mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ -f "$GH_FIXTURE_STATE/release-public" && "$(cat "$GH_FIXTURE_STATE/release-id")" == '202' ]]; then
+  echo 'Replacement Release ID 202 was made public before identity mismatch detection.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
+  :
+else
+  echo 'Publication mutation did not target the captured run-owned Release ID 101.' >&2
+  FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
 
