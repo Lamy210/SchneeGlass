@@ -27,6 +27,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TAG_MODE="${GH_FIXTURE_TAG_MODE:-exact}"
+TAG_CLEANUP_MODE="${GH_FIXTURE_TAG_CLEANUP_MODE:-success}"
 printf 'git ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -56,7 +57,7 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "$STATE/release-created" ]]; then
+    if [[ -f "$STATE/release-tag" ]]; then
       case "$TAG_MODE" in
         exact)
           printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
@@ -91,7 +92,28 @@ case "${1:-}" in
     exit 2
     ;;
   push)
-    exit 0
+    [[ "${2:-}" == "--force-with-lease=refs/tags/v0.1.0:$CANDIDATE_SHA" ]]
+    [[ "${3:-}" == 'origin' ]]
+    [[ "${4:-}" == ':refs/tags/v0.1.0' ]]
+    case "$TAG_CLEANUP_MODE" in
+      success)
+        rm -f "$STATE/release-tag"
+        exit 0
+        ;;
+      failure)
+        echo 'fixture: conditional tag cleanup unavailable' >&2
+        exit 42
+        ;;
+      retarget)
+        printf '%s\n' "$OTHER_SHA" > "$STATE/release-tag"
+        echo 'fixture: tag lease rejected after retarget' >&2
+        exit 1
+        ;;
+      *)
+        echo "unexpected tag cleanup fixture mode: $TAG_CLEANUP_MODE" >&2
+        exit 92
+        ;;
+    esac
     ;;
   *)
     echo "unexpected git command: $*" >&2
@@ -125,12 +147,17 @@ shift || true
 
 case "$COMMAND" in
   api)
+    METHOD='GET'
     ENDPOINT=''
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
           shift
+          ;;
+        --method)
+          METHOD="$2"
+          shift 2
           ;;
         --jq)
           JQ="$2"
@@ -146,6 +173,31 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'DELETE' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          touch "$STATE/cleanup-attempted"
+          if [[ "$IDENTITY_MODE" == 'replace-at-delete' ]]; then
+            printf '202\n' > "$STATE/release-id"
+          fi
+          if [[ "${GH_FIXTURE_DELETE_MODE:-success}" == 'failure' ]]; then
+            echo 'fixture: release ID cleanup unavailable' >&2
+            exit 42
+          fi
+          if [[ ! -f "$STATE/release-id" || "$(cat "$STATE/release-id")" != '101' ]]; then
+            echo 'fixture: run-owned release ID no longer exists' >&2
+            exit 1
+          fi
+          rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api delete endpoint: $ENDPOINT" >&2
+          exit 107
+          ;;
+      esac
+    fi
 
     case "$ENDPOINT" in
       repos/example/SchneeGlass/actions/runs/123)
@@ -428,6 +480,7 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
+        touch "$STATE/release-tag"
         printf '101\n' > "$STATE/release-id"
         ;;
       upload)
@@ -447,10 +500,7 @@ EOF
         touch "$STATE/release-public"
         ;;
       delete)
-        if [[ "$IDENTITY_MODE" == 'replace-at-delete' ]]; then
-          printf '202\n' > "$STATE/release-id"
-        fi
-        rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
+        rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id" "$STATE/release-tag"
         ;;
       download)
         echo 'historical release download is not expected in this fixture' >&2
