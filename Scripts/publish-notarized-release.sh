@@ -335,6 +335,26 @@ fi
 release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
   || fail "draft release asset set changed before publication"
 
+if ! PREPUBLICATION_IS_DRAFT="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json isDraft \
+  --jq '.isDraft')"; then
+  fail "unable to verify draft release state before publication"
+fi
+[[ "$PREPUBLICATION_IS_DRAFT" == 'true' ]] \
+  || fail "release is no longer a Draft before publication"
+
+if ! PREPUBLICATION_RELEASE_TARGET="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json targetCommitish \
+  --jq '.targetCommitish')"; then
+  fail "unable to verify draft release target before publication"
+fi
+[[ "$PREPUBLICATION_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]] \
+  || fail "draft release target returned an invalid commit SHA before publication"
+[[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
+  || fail "draft release target changed before publication"
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
