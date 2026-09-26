@@ -659,9 +659,8 @@ fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
 
-# Tag-addressed deletion can retarget after the final identity proof. Replace the
-# same-tag Draft exactly when the destructive delete command resolves its target;
-# the replacement must survive.
+# Even if a fixture is prepared to replace the same-tag Release at a destructive
+# delete boundary, pre-publication EXIT handling must never reach that boundary.
 reset_case
 export GH_FIXTURE_IDENTITY_MODE='replace-at-delete'
 export GH_FIXTURE_ASSET_MODE='extra-before-publication'
@@ -672,68 +671,38 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_IDENTITY_AT_DELETE"
-grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
-! grep -Fq 'gh release delete ' "$LOG"
-! grep -Fq 'git push --force-with-lease=' "$LOG"
-if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
-  echo 'Release-ID cleanup did not preserve the same-tag replacement at the destructive boundary.' >&2
-  FAILURES=$((FAILURES + 1))
-fi
-export GH_FIXTURE_IDENTITY_MODE='stable'
-export GH_FIXTURE_ASSET_MODE='exact'
-
-# Normal pre-publication cleanup must delete the exact run-owned Release object and
-# then delete only the candidate tag under an explicit expected-SHA lease.
-reset_case
-export GH_FIXTURE_IDENTITY_MODE='stable'
-export GH_FIXTURE_DELETE_MODE='success'
-export GH_FIXTURE_TAG_CLEANUP_MODE='success'
-export GH_FIXTURE_ASSET_MODE='extra-before-publication'
-OUTPUT_ID_CLEANUP_SUCCESS="$FIXTURE/output-id-cleanup-success.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_ID_CLEANUP_SUCCESS" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
-grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"
-[[ ! -f "$GH_FIXTURE_STATE/release-created" ]]
-[[ ! -f "$GH_FIXTURE_STATE/release-tag" ]]
-
-# If object-ID deletion fails, tag deletion must not even be attempted.
-reset_case
-export GH_FIXTURE_DELETE_MODE='failure'
-export GH_FIXTURE_TAG_CLEANUP_MODE='success'
-export GH_FIXTURE_ASSET_MODE='extra-before-publication'
-OUTPUT_ID_DELETE_FAILURE="$FIXTURE/output-id-delete-failure.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_ID_DELETE_FAILURE" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft by release ID; manual reconciliation required.' "$OUTPUT_ID_DELETE_FAILURE"
+grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_IDENTITY_AT_DELETE"
+! grep -Fq 'gh api --method DELETE' "$LOG"
 ! grep -Fq 'git push --force-with-lease=' "$LOG"
 [[ -f "$GH_FIXTURE_STATE/release-created" ]]
 [[ -f "$GH_FIXTURE_STATE/release-tag" ]]
-export GH_FIXTURE_DELETE_MODE='success'
+[[ -f "$GH_FIXTURE_STATE/release-id" ]]
+[[ "$(cat "$GH_FIXTURE_STATE/release-id")" == '101' ]]
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
 
-# If conditional tag deletion fails or the tag is retargeted, the already-deleted
-# Release must stay deleted while the tag remains for manual reconciliation.
-for tag_cleanup_mode in failure retarget; do
-  reset_case
-  export GH_FIXTURE_TAG_CLEANUP_MODE="$tag_cleanup_mode"
-  export GH_FIXTURE_ASSET_MODE='extra-before-publication'
-  OUTPUT_TAG_CLEANUP="$FIXTURE/output-tag-cleanup-$tag_cleanup_mode.log"
-  set +e
-  bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_CLEANUP" 2>&1
-  STATUS=$?
-  set -e
-  [[ "$STATUS" -ne 0 ]]
-  grep -Fq 'Release cleanup partially completed for v0.1.0: Release was deleted but tag lease cleanup failed; manual reconciliation required.' "$OUTPUT_TAG_CLEANUP"
-  [[ ! -f "$GH_FIXTURE_STATE/release-created" ]]
-  [[ -f "$GH_FIXTURE_STATE/release-tag" ]]
-done
+# Normal pre-publication failure is intentionally non-destructive. The run-owned
+# Draft/tag remain for an operator to inspect and reconcile manually.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_DELETE_MODE='success'
 export GH_FIXTURE_TAG_CLEANUP_MODE='success'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_NONDESTRUCTIVE_CLEANUP="$FIXTURE/output-nondestructive-cleanup.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_NONDESTRUCTIVE_CLEANUP" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_NONDESTRUCTIVE_CLEANUP"
+grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_NONDESTRUCTIVE_CLEANUP"
+grep -Fq 'no remote Release/tag cleanup was attempted; manual reconciliation required.' "$OUTPUT_NONDESTRUCTIVE_CLEANUP"
+! grep -Fq 'gh api --method DELETE' "$LOG"
+! grep -Fq 'git push --force-with-lease=' "$LOG"
+[[ -f "$GH_FIXTURE_STATE/release-created" ]]
+[[ -f "$GH_FIXTURE_STATE/release-tag" ]]
+[[ -f "$GH_FIXTURE_STATE/release-id" ]]
+[[ "$(cat "$GH_FIXTURE_STATE/release-id")" == '101' ]]
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # The final delete-boundary identity probe must itself fail closed.
@@ -747,10 +716,16 @@ for identity_mode in final-cleanup-query-failure final-cleanup-malformed; do
   STATUS=$?
   set -e
   [[ "$STATUS" -ne 0 ]]
-  if grep -Fq 'gh release delete ' "$LOG"; then
+  if grep -Fq 'gh api --method DELETE' "$LOG"; then
     echo "Final cleanup identity mode $identity_mode reached destructive release deletion." >&2
     FAILURES=$((FAILURES + 1))
   fi
+  if grep -Fq 'git push --force-with-lease=' "$LOG"; then
+    echo "Final cleanup identity mode $identity_mode reached destructive tag deletion." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  grep -Fq 'manual reconciliation required' "$OUTPUT_FINAL_CLEANUP_PROBE"
+  grep -Fq 'release ID 101' "$OUTPUT_FINAL_CLEANUP_PROBE"
   if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '101' ]]; then
     echo "Run-owned Draft did not survive final cleanup identity mode $identity_mode." >&2
     FAILURES=$((FAILURES + 1))
@@ -798,10 +773,16 @@ for identity_mode in cleanup-query-failure cleanup-malformed; do
   STATUS=$?
   set -e
   [[ "$STATUS" -ne 0 ]]
-  if grep -Fq 'gh release delete ' "$LOG"; then
+  if grep -Fq 'gh api --method DELETE' "$LOG"; then
     echo "Cleanup identity mode $identity_mode reached destructive release deletion." >&2
     FAILURES=$((FAILURES + 1))
   fi
+  if grep -Fq 'git push --force-with-lease=' "$LOG"; then
+    echo "Cleanup identity mode $identity_mode reached destructive tag deletion." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  grep -Fq 'manual reconciliation required' "$OUTPUT_IDENTITY_CLEANUP_PROBE"
+  grep -Fq 'release ID 101' "$OUTPUT_IDENTITY_CLEANUP_PROBE"
 done
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
