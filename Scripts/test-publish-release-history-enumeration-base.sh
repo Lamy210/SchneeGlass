@@ -569,9 +569,24 @@ if grep -Fq 'gh release edit ' "$LOG"; then
   echo 'Stale build reached the Draft-to-public mutation after public history advanced.' >&2
   exit 1
 fi
-HISTORY_ENUMERATION_COUNT="$(grep -Fc 'select\(.draft\\ ==\\ false\)' "$LOG")"
-[[ "$HISTORY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]]
-[[ "$HISTORY_ENUMERATION_COUNT" -eq 2 ]]
+HISTORY_ENUMERATION_COUNT=''
+HISTORY_ENUMERATION_STATUS=0
+set +e
+HISTORY_ENUMERATION_COUNT="$(grep -Fc 'select\(.draft\ ==\ false\)' "$LOG")"
+HISTORY_ENUMERATION_STATUS=$?
+set -e
+[[ "$HISTORY_ENUMERATION_STATUS" -eq 0 ]] || {
+  echo "Unable to count public release-history enumerations (grep status $HISTORY_ENUMERATION_STATUS)." >&2
+  exit 1
+}
+[[ "$HISTORY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]] || {
+  echo "Public release-history enumeration count is not numeric: $HISTORY_ENUMERATION_COUNT" >&2
+  exit 1
+}
+[[ "$HISTORY_ENUMERATION_COUNT" -eq 2 ]] || {
+  echo "Expected two public release-history enumerations, found $HISTORY_ENUMERATION_COUNT." >&2
+  exit 1
+}
 export GH_FIXTURE_HISTORY_MODE='empty'
 
 # If main advances after the initial freshness check while the Draft is prepared, the
