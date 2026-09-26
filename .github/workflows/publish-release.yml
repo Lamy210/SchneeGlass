@@ -73,6 +73,7 @@ jobs:
       - name: Required tooling
         run: |
           command -v bash
+          command -v curl
           command -v git
           command -v gh
           command -v jq
