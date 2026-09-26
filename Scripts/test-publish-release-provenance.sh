@@ -112,6 +112,7 @@ OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
 DRAFT_MODE="${GH_FIXTURE_DRAFT_MODE:-exact}"
 PRERELEASE_MODE="${GH_FIXTURE_PRERELEASE_MODE:-stable}"
+IDENTITY_MODE="${GH_FIXTURE_IDENTITY_MODE:-stable}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 IMMUTABILITY_MODE="${GH_FIXTURE_IMMUTABILITY_MODE:-enabled}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
@@ -309,6 +310,24 @@ EOF
                 ;;
             esac
             ;;
+          databaseId)
+            case "$IDENTITY_MODE" in
+              query-failure)
+                printf '101\n'
+                exit 42
+                ;;
+              malformed)
+                printf 'not-an-id\n'
+                ;;
+              *)
+                if [[ -f "$STATE/release-id" ]]; then
+                  cat "$STATE/release-id"
+                else
+                  printf '101\n'
+                fi
+                ;;
+            esac
+            ;;
           targetCommitish)
             target_reads="$(awk '/--json targetCommitish/ { count += 1 } END { print count + 0 }' "$LOG")"
             if [[ "$TARGET_MODE" == 'query-failure-before-publication' && "$target_reads" -ge 2 ]]; then
@@ -335,6 +354,9 @@ EOF
                 if [[ "$PRERELEASE_MODE" == 'change-before-publication' && "$asset_reads" -ge 2 ]]; then
                   touch "$STATE/release-prerelease"
                 fi
+                if [[ "$IDENTITY_MODE" == 'replace-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  printf '202\n' > "$STATE/release-id"
+                fi
                 ;;
               missing-before-publication)
                 if [[ "$asset_reads" -le 1 ]]; then
@@ -347,6 +369,9 @@ EOF
                 if [[ "$asset_reads" -le 1 ]]; then
                   printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
                 else
+                  if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
                   printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.bin'
                 fi
                 ;;
@@ -372,6 +397,7 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
+        printf '101\n' > "$STATE/release-id"
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -390,7 +416,7 @@ EOF
         touch "$STATE/release-public"
         ;;
       delete)
-        rm -f "$STATE/release-created" "$STATE/release-public"
+        rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
         ;;
       download)
         echo 'historical release download is not expected in this fixture' >&2
@@ -437,6 +463,7 @@ reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
 export GH_FIXTURE_DRAFT_MODE='exact'
 export GH_FIXTURE_PRERELEASE_MODE='stable'
+export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_TAG_MODE='exact'
 export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EXACT="$FIXTURE/output-exact.log"
@@ -450,6 +477,58 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# Cleanup ownership must be tied to the exact Release object created by this run.
+# If that Draft is replaced before a later asset failure, the replacement must not
+# be deleted merely because it is also a mutable Draft with the same tag.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-before-cleanup'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_IDENTITY_CLEANUP="$FIXTURE/output-replacement-before-cleanup.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_CLEANUP" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_IDENTITY_CLEANUP"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  echo 'Replacement Draft was deleted by run-owned cleanup.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
+  echo 'Replacement Draft identity did not survive failed run cleanup.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# The same object identity must be certified immediately before publication.
+# A same-tag replacement with otherwise valid target/assets must never be published.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-before-publication'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_IDENTITY_PUBLICATION="$FIXTURE/output-replacement-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_PUBLICATION" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_IDENTITY_PUBLICATION"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the run-owned Draft was replaced.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: draft release identity changed before publication' "$OUTPUT_IDENTITY_PUBLICATION"; then
+    cat "$OUTPUT_IDENTITY_PUBLICATION"
+    echo 'Replacement Draft did not fail with the expected identity error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Replacement Draft reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Draft assets can change after the initial exact-set check. Missing assets must
 # be rejected before Draft -> public, not only by post-publication verification.
