@@ -135,6 +135,7 @@ RELEASE_PROBE_MODE="${GH_FIXTURE_RELEASE_PROBE_MODE:-absent}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 CLEANUP_RACE_MODE="${GH_FIXTURE_CLEANUP_RACE_MODE:-none}"
+MUTABLE_CLEANUP_RACE_MODE="${GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE:-none}"
 MAIN_RACE_MODE="${GH_FIXTURE_MAIN_RACE_MODE:-none}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
@@ -403,7 +404,12 @@ EOF
               success)
                 if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
                 ;;
-              mutable) printf 'false\n' ;;
+              mutable)
+                printf 'false\n'
+                if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' && -f "$STATE/release-public" ]]; then
+                  touch "$STATE/replacement-public-release"
+                fi
+                ;;
               failure)
                 if [[ -f "$STATE/release-public" ]]; then
                   echo 'fixture: published release immutability read unavailable' >&2
@@ -469,6 +475,9 @@ EOF
         touch "$STATE/cleanup-attempted"
         case "${GH_FIXTURE_DELETE_MODE:-success}" in
           success)
+            if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' ]]; then
+              rm -f "$STATE/replacement-public-release"
+            fi
             rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-tag"
             ;;
           failure)
@@ -1057,6 +1066,42 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
 fi
 
 grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+
+# Post-publication mutable cleanup has the same non-atomic destructive boundary:
+# after isImmutable=false is observed, the same tag can resolve to changed/replacement
+# public state before tag-addressed deletion. That state must never be auto-deleted.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='empty'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
+export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
+export GH_FIXTURE_TAG_PROBE_MODE='absent'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE='replace-after-immutability'
+OUTPUT_MUTABLE_RACE="$FIXTURE/output-mutable-replacement-before-delete.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RACE" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'manual reconciliation required' "$OUTPUT_MUTABLE_RACE"
+grep -Fq 'v0.1.0' "$OUTPUT_MUTABLE_RACE"
+grep -Fq 'release ID 101' "$OUTPUT_MUTABLE_RACE"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  echo 'Mutable publication race reached destructive tag-addressed Release cleanup.' >&2
+  exit 1
+fi
+if grep -Fq 'git push ' "$LOG"; then
+  echo 'Mutable publication race reached destructive tag cleanup.' >&2
+  exit 1
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/replacement-public-release" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Replacement public Release/tag did not survive mutable publication recovery.' >&2
+  exit 1
+fi
+export GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE='none'
 
 # A cleanup command that returns success is not enough: if the Release still appears
 # in the authoritative enumeration, publication must fail explicitly.
