@@ -579,6 +579,7 @@ pre-existing tag / release absence, with API enumeration and exact Release-name 
 draft target SHA / assets
 candidate commit still exactly matches re-fetched current main after Draft asset validation
 published release isImmutable == true
+Draft -> public mutation addresses the captured run-created Release databaseId directly and fails closed if that API mutation fails
 published Release databaseId == captured run-created Draft databaseId after final public provenance checks
 explicitly mutable public Release remains intact and fails with manual-reconciliation guidance containing the tag and captured Release ID
 post-publication mutable-state handling performs no remote Release/tag mutation
