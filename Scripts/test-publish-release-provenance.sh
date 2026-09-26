@@ -184,6 +184,34 @@ case "$COMMAND" in
       esac
     done
 
+    if [[ "$METHOD" == 'POST' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases)
+          [[ "$JQ" == '.id' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 3 ]]
+          [[ "${RAW_FIELDS[0]}" == 'tag_name=v0.1.0' ]]
+          [[ "${RAW_FIELDS[1]}" == "target_commitish=$CANDIDATE_SHA" ]]
+          [[ "${RAW_FIELDS[2]}" == 'name=SchneeGlass 0.1.0' ]]
+          [[ "${#FIELDS[@]}" -eq 3 ]]
+          [[ "${FIELDS[0]}" == 'draft=true' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${FIELDS[2]}" == 'generate_release_notes=true' ]]
+          touch "$STATE/release-created"
+          touch "$STATE/release-tag"
+          printf '101\n' > "$STATE/release-id"
+          printf '101\n'
+          if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
+            printf '202\n' > "$STATE/release-id"
+          fi
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api post endpoint: $ENDPOINT" >&2
+          exit 109
+          ;;
+      esac
+    fi
+
     if [[ "$METHOD" == 'PATCH' ]]; then
       case "$ENDPOINT" in
         repos/example/SchneeGlass/releases/101)
