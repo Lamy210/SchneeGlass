@@ -111,6 +111,7 @@ CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
 DRAFT_MODE="${GH_FIXTURE_DRAFT_MODE:-exact}"
+PRERELEASE_MODE="${GH_FIXTURE_PRERELEASE_MODE:-stable}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 IMMUTABILITY_MODE="${GH_FIXTURE_IMMUTABILITY_MODE:-enabled}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
@@ -283,6 +284,31 @@ EOF
               printf 'true\n'
             fi
             ;;
+          isPrerelease)
+            case "$PRERELEASE_MODE" in
+              stable)
+                printf 'false\n'
+                ;;
+              change-before-publication)
+                if [[ -f "$STATE/release-prerelease" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
+              change-after-final-check)
+                printf 'false\n'
+                touch "$STATE/release-prerelease"
+                ;;
+              query-failure-before-publication)
+                printf 'false\n'
+                exit 42
+                ;;
+              malformed-before-publication)
+                printf 'unknown\n'
+                ;;
+              *)
+                echo "unexpected prerelease fixture mode: $PRERELEASE_MODE" >&2
+                exit 106
+                ;;
+            esac
+            ;;
           targetCommitish)
             target_reads="$(awk '/--json targetCommitish/ { count += 1 } END { print count + 0 }' "$LOG")"
             if [[ "$TARGET_MODE" == 'query-failure-before-publication' && "$target_reads" -ge 2 ]]; then
@@ -305,6 +331,9 @@ EOF
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
                 if [[ "$DRAFT_MODE" == 'publish-before-publication' && "$asset_reads" -ge 2 ]]; then
                   touch "$STATE/release-public"
+                fi
+                if [[ "$PRERELEASE_MODE" == 'change-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  touch "$STATE/release-prerelease"
                 fi
                 ;;
               missing-before-publication)
@@ -349,6 +378,15 @@ EOF
         ;;
       edit)
         [[ -f "$STATE/release-created" ]]
+        FORCE_STABLE=false
+        for arg in "$@"; do
+          if [[ "$arg" == '--prerelease=false' ]]; then
+            FORCE_STABLE=true
+          fi
+        done
+        if [[ "$FORCE_STABLE" == true ]]; then
+          rm -f "$STATE/release-prerelease"
+        fi
         touch "$STATE/release-public"
         ;;
       delete)
@@ -398,6 +436,7 @@ FAILURES=0
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
 export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_PRERELEASE_MODE='stable'
 export GH_FIXTURE_TAG_MODE='exact'
 export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EXACT="$FIXTURE/output-exact.log"
@@ -603,6 +642,88 @@ set -e
 grep -Fq 'Release promotion failed: draft release target returned an invalid commit SHA before publication' "$OUTPUT_TARGET_MALFORMED"
 ! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_TARGET_MODE='exact'
+
+# A stable Draft can be changed into a prerelease during the final Draft window.
+# Stable publication must re-read that classification before publishing.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_PRERELEASE_MODE='change-before-publication'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_PRERELEASE_CHANGED="$FIXTURE/output-prerelease-changed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_CHANGED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_PRERELEASE_CHANGED"
+  cat "$LOG"
+  echo 'Stable publication unexpectedly succeeded after the Draft became a prerelease.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: release became a prerelease before stable publication' "$OUTPUT_PRERELEASE_CHANGED"; then
+    cat "$OUTPUT_PRERELEASE_CHANGED"
+    echo 'Prerelease drift did not fail at the final stable-publication boundary.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Prerelease drift reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# Even after a successful final classification read, another administrator can
+# flip the mutable Draft before the publish mutation. The mutation itself must
+# explicitly force stable classification so this race cannot persist.
+reset_case
+export GH_FIXTURE_PRERELEASE_MODE='change-after-final-check'
+OUTPUT_PRERELEASE_AFTER_CHECK="$FIXTURE/output-prerelease-after-final-check.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_AFTER_CHECK" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -ne 0 ]]; then
+  cat "$OUTPUT_PRERELEASE_AFTER_CHECK"
+  cat "$LOG"
+  echo 'Stable publication failed while exercising post-check prerelease race.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if [[ -f "$GH_FIXTURE_STATE/release-prerelease" ]]; then
+    echo 'Publication mutation did not atomically clear prerelease classification.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if ! grep -Fq -- '--prerelease=false' "$LOG"; then
+    echo 'Publication mutation did not explicitly force prerelease=false.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_PRERELEASE_MODE='stable'
+
+# The final prerelease probe itself must preserve command failure.
+reset_case
+export GH_FIXTURE_PRERELEASE_MODE='query-failure-before-publication'
+OUTPUT_PRERELEASE_QUERY_FAILURE="$FIXTURE/output-prerelease-query-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to verify prerelease state before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+
+# Malformed prerelease state is not positive proof of a stable release.
+reset_case
+export GH_FIXTURE_PRERELEASE_MODE='malformed-before-publication'
+OUTPUT_PRERELEASE_MALFORMED="$FIXTURE/output-prerelease-malformed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: prerelease state is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
+! grep -Fq 'gh release edit ' "$LOG"
+export GH_FIXTURE_PRERELEASE_MODE='stable'
 
 # Release immutability can drift after earlier governance checks. A disabled
 # setting must fail before Draft -> public instead of relying on post-publication cleanup.
