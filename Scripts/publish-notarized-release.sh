@@ -42,6 +42,7 @@ done
 [[ "$CONFIRM_PUBLISH" == 'true' ]] \
   || fail "explicit publish confirmation is required"
 
+command -v curl >/dev/null 2>&1 || fail "curl is required"
 command -v gh >/dev/null 2>&1 || fail "gh CLI is required"
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v shasum >/dev/null 2>&1 || fail "shasum is required"
@@ -79,6 +80,29 @@ release_asset_set_is_exact() {
     && "$archive_count" -eq 1 \
     && "$checksums_count" -eq 1 \
     && "$evidence_count" -eq 1 ]]
+}
+
+upload_release_asset_by_id() {
+  local asset_path="$1"
+  local asset_name="$2"
+  local content_type="$3"
+  local upload_url="https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID/assets?name=$asset_name"
+
+  if ! curl \
+    --fail-with-body \
+    --silent \
+    --show-error \
+    --location \
+    --request POST \
+    --header 'Accept: application/vnd.github+json' \
+    --header "Authorization: Bearer $GH_TOKEN" \
+    --header 'X-GitHub-Api-Version: 2026-03-10' \
+    --header "Content-Type: $content_type" \
+    --data-binary "@$asset_path" \
+    "$upload_url" \
+    >/dev/null; then
+    fail "unable to upload release asset $asset_name to run-owned Release ID $CREATED_RELEASE_ID; remote state may be ambiguous and requires manual reconciliation"
+  fi
 }
 
 cleanup_guidance() {
@@ -324,11 +348,9 @@ RELEASE_TARGET="$(gh release view "$TAG" \
 [[ "$RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target mismatch: expected $RUN_HEAD_SHA, got $RELEASE_TARGET"
 
-gh release upload "$TAG" \
-  "$ARCHIVE" \
-  "$CHECKSUMS" \
-  "$EVIDENCE" \
-  --repo "$GITHUB_REPOSITORY"
+upload_release_asset_by_id "$ARCHIVE" "$ARCHIVE_NAME" 'application/zip'
+upload_release_asset_by_id "$CHECKSUMS" 'SHA256SUMS' 'text/plain'
+upload_release_asset_by_id "$EVIDENCE" 'RELEASE_EVIDENCE.txt' 'text/plain'
 
 if ! ASSET_NAMES="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
