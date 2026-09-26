@@ -112,6 +112,7 @@ OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
 DRAFT_MODE="${GH_FIXTURE_DRAFT_MODE:-exact}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
+IMMUTABILITY_MODE="${GH_FIXTURE_IMMUTABILITY_MODE:-enabled}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
@@ -166,6 +167,27 @@ case "$COMMAND" in
         ;;
       'repos/example/SchneeGlass/rules/branches/main?per_page=100')
         printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
+        ;;
+      repos/example/SchneeGlass/immutable-releases)
+        case "$IMMUTABILITY_MODE" in
+          enabled)
+            printf '{"enabled":true}\n'
+            ;;
+          disabled)
+            printf '{"enabled":false}\n'
+            ;;
+          malformed)
+            printf '{"enabled":"true"}\n'
+            ;;
+          query-failure)
+            printf '{"enabled":true}\n'
+            exit 42
+            ;;
+          *)
+            echo "unexpected immutability fixture mode: $IMMUTABILITY_MODE" >&2
+            exit 105
+            ;;
+        esac
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
         exit 0
@@ -581,6 +603,62 @@ set -e
 grep -Fq 'Release promotion failed: draft release target returned an invalid commit SHA before publication' "$OUTPUT_TARGET_MALFORMED"
 ! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_TARGET_MODE='exact'
+
+# Release immutability can drift after earlier governance checks. A disabled
+# setting must fail before Draft -> public instead of relying on post-publication cleanup.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_IMMUTABILITY_MODE='disabled'
+OUTPUT_IMMUTABILITY_DISABLED="$FIXTURE/output-immutability-disabled-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_DISABLED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_IMMUTABILITY_DISABLED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded with repository immutability disabled.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: release immutability is not enabled before publication' "$OUTPUT_IMMUTABILITY_DISABLED"; then
+    cat "$OUTPUT_IMMUTABILITY_DISABLED"
+    echo 'Disabled release immutability did not fail at the final publication boundary.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Disabled release immutability reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# The final immutability probe itself must fail closed on API error, even when it
+# emits a plausible enabled response first.
+reset_case
+export GH_FIXTURE_IMMUTABILITY_MODE='query-failure'
+OUTPUT_IMMUTABILITY_QUERY_FAILURE="$FIXTURE/output-immutability-query-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to verify release immutability before publication' "$OUTPUT_IMMUTABILITY_QUERY_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+
+# Malformed API responses are not positive proof that immutability is enabled.
+reset_case
+export GH_FIXTURE_IMMUTABILITY_MODE='malformed'
+OUTPUT_IMMUTABILITY_MALFORMED="$FIXTURE/output-immutability-malformed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: release immutability response is malformed before publication' "$OUTPUT_IMMUTABILITY_MALFORMED"
+! grep -Fq 'gh release edit ' "$LOG"
+export GH_FIXTURE_IMMUTABILITY_MODE='enabled'
 
 # Governance can drift while Draft preparation is in progress even when current main
 # remains unchanged. Publication must re-read governance immediately before Draft -> public.
