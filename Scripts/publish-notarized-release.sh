@@ -418,6 +418,7 @@ bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
+  --prerelease=false \
   --latest
 PUBLICATION_COMMAND_SUCCEEDED=true
 
