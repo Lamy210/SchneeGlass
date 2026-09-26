@@ -204,6 +204,18 @@ case "$COMMAND" in
           touch "$STATE/release-public"
           exit 0
           ;;
+        repos/example/SchneeGlass/releases/202)
+          [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]
+          [[ "${#FIELDS[@]}" -eq 2 ]]
+          [[ "${FIELDS[0]}" == 'draft=false' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
+          [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
+          [[ -f "$STATE/release-id" && "$(cat "$STATE/release-id")" == '202' ]]
+          rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-public"
+          exit 0
+          ;;
         *)
           echo "unexpected gh api patch endpoint: $ENDPOINT" >&2
           exit 108
@@ -556,6 +568,9 @@ EOF
         touch "$STATE/release-created"
         touch "$STATE/release-tag"
         printf '101\n' > "$STATE/release-id"
+        if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
+          printf '202\n' > "$STATE/release-id"
+        fi
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -637,6 +652,35 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# A successful tag-addressed create followed by a separate tag lookup cannot prove
+# which Release object was created by this run. Replace ID 101 with same-tag ID 202
+# immediately after create returns. The workflow must not adopt or publish ID 202.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-create-before-capture'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_CREATE_CAPTURE_RACE="$FIXTURE/output-replacement-after-create-before-capture.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_CAPTURE_RACE" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  echo 'Same-tag replacement was adopted as the run-owned Draft after create.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'repos/example/SchneeGlass/releases/202' "$LOG"; then
+  echo 'Replacement Release ID 202 reached an ID-addressed workflow mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh release create ' "$LOG"; then
+  echo 'Draft creation still relies on a tag-addressed command without an atomic returned Release ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if ! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases' "$LOG"; then
+  echo 'Draft creation did not use the Release create API that returns the object ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
