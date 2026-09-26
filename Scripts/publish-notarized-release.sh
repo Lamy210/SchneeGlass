@@ -355,6 +355,19 @@ fi
 [[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target changed before publication"
 
+PREPUBLICATION_IMMUTABILITY_JSON="$CANDIDATE_DIR/prepublication-immutable-releases.json"
+if ! gh api \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  "repos/$GITHUB_REPOSITORY/immutable-releases" \
+  > "$PREPUBLICATION_IMMUTABILITY_JSON"; then
+  fail "unable to verify release immutability before publication"
+fi
+jq -e 'type == "object" and has("enabled") and (.enabled | type == "boolean")' \
+  "$PREPUBLICATION_IMMUTABILITY_JSON" >/dev/null \
+  || fail "release immutability response is malformed before publication"
+jq -e '.enabled == true' "$PREPUBLICATION_IMMUTABILITY_JSON" >/dev/null \
+  || fail "release immutability is not enabled before publication"
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
