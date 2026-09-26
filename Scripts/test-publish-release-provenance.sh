@@ -150,6 +150,8 @@ case "$COMMAND" in
     METHOD='GET'
     ENDPOINT=''
     JQ=''
+    FIELDS=()
+    RAW_FIELDS=()
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
@@ -163,6 +165,14 @@ case "$COMMAND" in
           JQ="$2"
           shift 2
           ;;
+        -F|--field)
+          FIELDS+=("$2")
+          shift 2
+          ;;
+        -f|--raw-field)
+          RAW_FIELDS+=("$2")
+          shift 2
+          ;;
         -H|--header)
           shift 2
           ;;
@@ -173,6 +183,33 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'PATCH' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          [[ "${#FIELDS[@]}" -eq 2 ]]
+          [[ "${FIELDS[0]}" == 'draft=false' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
+          [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
+          if [[ "${GH_FIXTURE_PUBLISH_MODE:-success}" == 'failure' ]]; then
+            echo 'fixture: release publication unavailable' >&2
+            exit 42
+          fi
+          if [[ ! -f "$STATE/release-id" || "$(cat "$STATE/release-id")" != '101' ]]; then
+            echo 'fixture: run-owned release ID no longer exists' >&2
+            exit 1
+          fi
+          rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-public"
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api patch endpoint: $ENDPOINT" >&2
+          exit 108
+          ;;
+      esac
+    fi
 
     if [[ "$METHOD" == 'DELETE' ]]; then
       case "$ENDPOINT" in
@@ -817,6 +854,20 @@ else
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# The ID-addressed publication API itself must fail closed without claiming success.
+reset_case
+export GH_FIXTURE_PUBLISH_MODE='failure'
+OUTPUT_PUBLICATION_API_FAILURE="$FIXTURE/output-publication-api-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLICATION_API_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to publish run-owned Release by identity; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_PUBLICATION_API_FAILURE"
+grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+[[ ! -f "$GH_FIXTURE_STATE/release-public" ]]
+export GH_FIXTURE_PUBLISH_MODE='success'
 
 # Cleanup identity enumeration must itself fail closed without destructive action.
 for identity_mode in cleanup-query-failure cleanup-malformed; do
