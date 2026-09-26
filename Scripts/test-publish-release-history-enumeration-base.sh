@@ -167,6 +167,9 @@ case "$COMMAND" in
       repos/example/SchneeGlass/branches/main)
         printf '{"protected":true,"protection":{"required_status_checks":{"contexts":[],"checks":[]}}}\n'
         ;;
+      repos/example/SchneeGlass/immutable-releases)
+        printf '{"enabled":true}\n'
+        ;;
       'repos/example/SchneeGlass/rules/branches/main?per_page=100')
         printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
         ;;
