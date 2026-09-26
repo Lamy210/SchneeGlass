@@ -135,6 +135,7 @@ RELEASE_PROBE_MODE="${GH_FIXTURE_RELEASE_PROBE_MODE:-absent}"
 RELEASE_VERIFY_MODE="${GH_FIXTURE_RELEASE_VERIFY_MODE:-success}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 CLEANUP_RACE_MODE="${GH_FIXTURE_CLEANUP_RACE_MODE:-none}"
+MUTABLE_CLEANUP_RACE_MODE="${GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE:-none}"
 MAIN_RACE_MODE="${GH_FIXTURE_MAIN_RACE_MODE:-none}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
@@ -403,7 +404,12 @@ EOF
               success)
                 if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
                 ;;
-              mutable) printf 'false\n' ;;
+              mutable)
+                printf 'false\n'
+                if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' && -f "$STATE/release-public" ]]; then
+                  touch "$STATE/replacement-public-release"
+                fi
+                ;;
               failure)
                 if [[ -f "$STATE/release-public" ]]; then
                   echo 'fixture: published release immutability read unavailable' >&2
@@ -469,6 +475,9 @@ EOF
         touch "$STATE/cleanup-attempted"
         case "${GH_FIXTURE_DELETE_MODE:-success}" in
           success)
+            if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' ]]; then
+              rm -f "$STATE/replacement-public-release"
+            fi
             rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-tag"
             ;;
           failure)
@@ -1058,149 +1067,43 @@ fi
 
 grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
 
-# A cleanup command that returns success is not enough: if the Release still appears
-# in the authoritative enumeration, publication must fail explicitly.
-: > "$LOG"
-rm -rf "$GH_FIXTURE_STATE"
-mkdir -p "$GH_FIXTURE_STATE"
-export GH_FIXTURE_HISTORY_MODE='empty'
-export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
-export GH_FIXTURE_RELEASE_PROBE_MODE='exists-after-cleanup'
-export GH_FIXTURE_TAG_PROBE_MODE='absent'
-export GH_FIXTURE_ASSET_MODE='exact'
-OUTPUT_MUTABLE_RELEASE_REMAINS="$FIXTURE/output-mutable-release-remains.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_REMAINS" 2>&1
-STATUS=$?
-set -e
-
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_MUTABLE_RELEASE_REMAINS"
-  echo 'Mutable cleanup unexpectedly succeeded while the Release still existed.' >&2
-  exit 1
-fi
-
-grep -Fq 'Release promotion failed: mutable release still exists after cleanup' "$OUTPUT_MUTABLE_RELEASE_REMAINS"
-grep -Fq 'gh release delete ' "$LOG"
-
-# The same positive absence rule applies to the release tag.
+# Post-publication mutable cleanup has the same non-atomic destructive boundary:
+# after isImmutable=false is observed, the same tag can resolve to changed/replacement
+# public state before tag-addressed deletion. That state must never be auto-deleted.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
 export GH_FIXTURE_HISTORY_MODE='empty'
 export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
 export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
-export GH_FIXTURE_TAG_PROBE_MODE='exists-after-cleanup'
-export GH_FIXTURE_ASSET_MODE='exact'
-OUTPUT_MUTABLE_TAG_REMAINS="$FIXTURE/output-mutable-tag-remains.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_TAG_REMAINS" 2>&1
-STATUS=$?
-set -e
-
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_MUTABLE_TAG_REMAINS"
-  echo 'Mutable cleanup unexpectedly succeeded while the release tag still existed.' >&2
-  exit 1
-fi
-
-grep -Fq 'Release promotion failed: mutable release tag still exists after cleanup' "$OUTPUT_MUTABLE_TAG_REMAINS"
-grep -Fq 'gh release delete ' "$LOG"
-
-# If the mutable Release delete succeeds but Release absence cannot be re-enumerated,
-# cleanup verification is ambiguous. The run must not report successful cleanup.
-: > "$LOG"
-rm -rf "$GH_FIXTURE_STATE"
-mkdir -p "$GH_FIXTURE_STATE"
-export GH_FIXTURE_HISTORY_MODE='empty'
-export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
-export GH_FIXTURE_RELEASE_PROBE_MODE='failure-after-cleanup'
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
 export GH_FIXTURE_ASSET_MODE='exact'
-OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE="$FIXTURE/output-mutable-release-probe-failure.log"
+export GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE='replace-after-immutability'
+OUTPUT_MUTABLE_RACE="$FIXTURE/output-mutable-replacement-before-delete.log"
 set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE" 2>&1
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RACE" 2>&1
 STATUS=$?
 set -e
 
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
-  echo 'Mutable cleanup unexpectedly reported success when Release absence could not be verified.' >&2
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'manual reconciliation required' "$OUTPUT_MUTABLE_RACE"
+grep -Fq 'v0.1.0' "$OUTPUT_MUTABLE_RACE"
+grep -Fq 'release ID 101' "$OUTPUT_MUTABLE_RACE"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  echo 'Mutable publication race reached destructive tag-addressed Release cleanup.' >&2
   exit 1
 fi
-
-grep -Fq 'Release promotion failed: unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
-if grep -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"; then
-  cat "$OUTPUT_MUTABLE_RELEASE_PROBE_FAILURE"
-  echo 'Ambiguous Release cleanup was incorrectly reported as confirmed removal.' >&2
+if grep -Fq 'git push ' "$LOG"; then
+  echo 'Mutable publication race reached destructive tag cleanup.' >&2
   exit 1
 fi
-grep -Fq 'gh release delete ' "$LOG"
-
-# Even when the Release-name API enumeration itself succeeds, exact membership must be
-# positively evaluated. A grep/probe error after deletion is ambiguous and must never be
-# reported as confirmed removal.
-: > "$LOG"
-rm -rf "$GH_FIXTURE_STATE"
-mkdir -p "$GH_FIXTURE_STATE"
-export GH_FIXTURE_HISTORY_MODE='empty'
-export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
-export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
-export GH_FIXTURE_GREP_MODE='failure-after-cleanup'
-export GH_FIXTURE_TAG_PROBE_MODE='absent'
-export GH_FIXTURE_ASSET_MODE='exact'
-OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE="$FIXTURE/output-mutable-release-match-probe-failure.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE" 2>&1
-STATUS=$?
-set -e
-
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
-  echo 'Mutable cleanup unexpectedly reported success when exact Release-name absence could not be proven.' >&2
+if [[ ! -f "$GH_FIXTURE_STATE/replacement-public-release" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Replacement public Release/tag did not survive mutable publication recovery.' >&2
   exit 1
 fi
+export GH_FIXTURE_MUTABLE_CLEANUP_RACE_MODE='none'
 
-"$REAL_GREP" -Fq 'Release promotion failed: unable to verify mutable release cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
-if "$REAL_GREP" -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"; then
-  cat "$OUTPUT_MUTABLE_RELEASE_MATCH_PROBE_FAILURE"
-  echo 'Ambiguous Release-name membership was incorrectly reported as confirmed removal.' >&2
-  exit 1
-fi
-"$REAL_GREP" -Fq 'gh release delete ' "$LOG"
-export GH_FIXTURE_GREP_MODE='normal'
-
-# The remote tag probe has a distinct confirmed-absent status. Any other post-cleanup
-# probe failure must also remain ambiguous instead of being treated as absence.
-: > "$LOG"
-rm -rf "$GH_FIXTURE_STATE"
-mkdir -p "$GH_FIXTURE_STATE"
-export GH_FIXTURE_HISTORY_MODE='empty'
-export GH_FIXTURE_RELEASE_VERIFY_MODE='mutable'
-export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
-export GH_FIXTURE_TAG_PROBE_MODE='failure-after-cleanup'
-export GH_FIXTURE_ASSET_MODE='exact'
-OUTPUT_MUTABLE_TAG_PROBE_FAILURE="$FIXTURE/output-mutable-tag-probe-failure.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_MUTABLE_TAG_PROBE_FAILURE" 2>&1
-STATUS=$?
-set -e
-
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
-  echo 'Mutable cleanup unexpectedly reported success when tag absence could not be verified.' >&2
-  exit 1
-fi
-
-grep -Fq 'Release promotion failed: unable to verify mutable release tag cleanup; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
-if grep -Fq 'published release was not immutable and was removed' "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"; then
-  cat "$OUTPUT_MUTABLE_TAG_PROBE_FAILURE"
-  echo 'Ambiguous tag cleanup was incorrectly reported as confirmed removal.' >&2
-  exit 1
-fi
-grep -Fq 'gh release delete ' "$LOG"
-
-# An explicit mutable result remains safely auto-cleaned, preserving the existing fail-closed contract.
+# A plain explicit mutable result is also preserved for operator reconciliation.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -1221,12 +1124,14 @@ if [[ "$STATUS" -eq 0 ]]; then
   exit 1
 fi
 
-grep -Fq 'Release promotion failed: published release was not immutable and was removed; enable repository release immutability before retrying' "$OUTPUT_MUTABLE"
-grep -Fq 'gh release delete ' "$LOG"
-if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" ]]; then
+grep -Fq 'Release promotion failed: published release is mutable; no automatic remote cleanup was attempted; manual reconciliation required for v0.1.0 (captured release ID 101)' "$OUTPUT_MUTABLE"
+! grep -Fq 'gh release delete ' "$LOG"
+! grep -Fq 'gh api --method DELETE' "$LOG"
+! grep -Fq 'git push ' "$LOG"
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
   cat "$OUTPUT_MUTABLE"
   cat "$LOG"
-  echo 'Explicitly mutable release was not removed.' >&2
+  echo 'Explicitly mutable public Release/tag was not preserved for manual reconciliation.' >&2
   exit 1
 fi
 
