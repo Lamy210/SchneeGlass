@@ -335,6 +335,9 @@ EOF
             elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$draft_reads" -ge 2 ]]; then
               printf 'unknown\n'
             elif [[ -f "$STATE/release-public" ]]; then
+              if [[ "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
               printf 'false\n'
             else
               printf 'true\n'
@@ -411,6 +414,18 @@ EOF
                 ;;
               malformed-before-publication)
                 if [[ "$identity_reads" -eq 2 ]]; then
+                  printf 'not-an-id\n'
+                  exit 0
+                fi
+                ;;
+              query-failure-after-publication)
+                if [[ "$identity_reads" -ge 3 ]]; then
+                  printf '101\n'
+                  exit 42
+                fi
+                ;;
+              malformed-after-publication)
+                if [[ "$identity_reads" -ge 3 ]]; then
                   printf 'not-an-id\n'
                   exit 0
                 fi
@@ -1286,6 +1301,74 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+
+# The same-tag public Release can be replaced after publication while retaining
+# identical target/assets/tag provenance. Object identity must therefore be re-certified.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-publication'
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_PUBLIC_ID_REPLACED="$FIXTURE/output-public-release-identity-replaced.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLIC_ID_REPLACED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_PUBLIC_ID_REPLACED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the public Release object was replaced.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: published release identity does not match run-created Release; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_PUBLIC_ID_REPLACED"; then
+    cat "$OUTPUT_PUBLIC_ID_REPLACED"
+    echo 'Published Release identity replacement did not fail with the expected provenance error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release delete ' "$LOG" || grep -Fq 'gh api --method DELETE' "$LOG"; then
+    echo 'Published Release identity mismatch triggered destructive cleanup.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
+    echo 'Replacement public Release did not survive identity mismatch handling.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# Post-publication Release identity enumeration must preserve probe failures.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='query-failure-after-publication'
+OUTPUT_PUBLIC_ID_QUERY_FAILURE="$FIXTURE/output-public-release-identity-query-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLIC_ID_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_PUBLIC_ID_QUERY_FAILURE"
+  echo 'Release publication unexpectedly succeeded when published identity enumeration failed.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  grep -Fq 'Release promotion failed: unable to verify published release identity; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_PUBLIC_ID_QUERY_FAILURE"
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# Malformed post-publication Release IDs are not positive identity proof.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='malformed-after-publication'
+OUTPUT_PUBLIC_ID_MALFORMED="$FIXTURE/output-public-release-identity-malformed.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLIC_ID_MALFORMED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_PUBLIC_ID_MALFORMED"
+  echo 'Release publication unexpectedly succeeded with a malformed published Release identity.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  grep -Fq 'Release promotion failed: published release identity is invalid; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_PUBLIC_ID_MALFORMED"
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Even with an unchanged Release target, the actual remote tag must resolve to the exact
 # candidate commit. A different tag commit is ambiguous after publication and must remain.

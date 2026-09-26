@@ -274,6 +274,7 @@ Publication captures the run-created Draft identity after Draft creation succeed
 8. re-read the immutable public Release and require the same exact three-asset set
 9. re-read the public Release `targetCommitish` and require the exact candidate SHA
 10. resolve the final remote release tag and require it to point to the exact candidate SHA
+11. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
 
 If publication reports `isImmutable=false`, the workflow fails without deleting or editing the remote Release or tag. It emits manual-reconciliation guidance containing the target tag and captured Release ID so an operator can inspect the exact public state before taking any corrective action. Automatic deletion is intentionally prohibited because the mutable-state proof and a later destructive delete cannot be made atomic; the same tag/Release may change between those operations. Pre-existing tag/Release names are still rejected before creation.
 

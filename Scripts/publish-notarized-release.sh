@@ -544,6 +544,17 @@ IFS=$'\t' read -r PUBLISHED_TAG_SHA PUBLISHED_TAG_REF <<< "$PUBLISHED_TAG_LINE"
 [[ "$PUBLISHED_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "published release tag does not resolve to candidate source commit; publication state is ambiguous and requires manual reconciliation"
 
+if ! PUBLISHED_RELEASE_ID="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json databaseId \
+  --jq '.databaseId')"; then
+  fail "unable to verify published release identity; publication state is ambiguous and requires manual reconciliation"
+fi
+[[ "$PUBLISHED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "published release identity is invalid; publication state is ambiguous and requires manual reconciliation"
+[[ "$PUBLISHED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "published release identity does not match run-created Release; publication state is ambiguous and requires manual reconciliation"
+
 CREATED_RELEASE=false
 trap - EXIT
 rm -rf "$CANDIDATE_DIR"
