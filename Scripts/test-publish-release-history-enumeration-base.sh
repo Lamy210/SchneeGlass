@@ -61,7 +61,7 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "${GH_FIXTURE_STATE:?}/release-public" || -f "${GH_FIXTURE_STATE:?}/release-created" ]]; then
+    if [[ -f "${GH_FIXTURE_STATE:?}/release-tag" ]]; then
       printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
       exit 0
     fi
@@ -98,7 +98,23 @@ case "${1:-}" in
     esac
     ;;
   push)
-    exit 0
+    [[ "${2:-}" == '--force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567' ]]
+    [[ "${3:-}" == 'origin' ]]
+    [[ "${4:-}" == ':refs/tags/v0.1.0' ]]
+    case "${GH_FIXTURE_TAG_DELETE_MODE:-success}" in
+      success)
+        rm -f "${GH_FIXTURE_STATE:?}/release-tag"
+        exit 0
+        ;;
+      failure)
+        echo 'fixture: conditional tag cleanup unavailable' >&2
+        exit 42
+        ;;
+      *)
+        echo "unexpected tag delete fixture mode: ${GH_FIXTURE_TAG_DELETE_MODE:-}" >&2
+        exit 92
+        ;;
+    esac
     ;;
   *)
     echo "unexpected git command: $*" >&2
@@ -129,12 +145,17 @@ shift || true
 
 case "$COMMAND" in
   api)
+    METHOD='GET'
     ENDPOINT=''
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
           shift
+          ;;
+        --method)
+          METHOD="$2"
+          shift 2
           ;;
         --jq)
           JQ="$2"
@@ -150,6 +171,32 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'DELETE' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          touch "$STATE/cleanup-attempted"
+          case "${GH_FIXTURE_DELETE_MODE:-success}" in
+            success)
+              rm -f "$STATE/release-created" "$STATE/release-public"
+              exit 0
+              ;;
+            failure)
+              echo 'fixture: release ID cleanup unavailable' >&2
+              exit 42
+              ;;
+            *)
+              echo "unexpected delete fixture mode: ${GH_FIXTURE_DELETE_MODE:-}" >&2
+              exit 106
+              ;;
+          esac
+          ;;
+        *)
+          echo "unexpected gh api delete endpoint: $ENDPOINT" >&2
+          exit 107
+          ;;
+      esac
+    fi
 
     case "$ENDPOINT" in
       repos/example/SchneeGlass/actions/runs/123)
@@ -375,6 +422,7 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
+        touch "$STATE/release-tag"
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -421,7 +469,7 @@ EOF
         touch "$STATE/cleanup-attempted"
         case "${GH_FIXTURE_DELETE_MODE:-success}" in
           success)
-            rm -f "$STATE/release-created" "$STATE/release-public"
+            rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-tag"
             ;;
           failure)
             echo 'fixture: mutable Draft cleanup delete unavailable' >&2
