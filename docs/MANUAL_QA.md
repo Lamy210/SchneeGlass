@@ -248,6 +248,7 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] 同一tag / Releaseが事前に存在しない
 - [ ] asset無しDraftの作成時、run-owned Release `databaseId`を同じCreate Release API responseからcaptureしており、後続tag lookupをownership sourceにしていない
 - [ ] asset無しDraftの作成後、Draft targetがQA済みcandidate SHAと一致する
+- [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`はcapture済みrun-owned Release IDへ直接uploadされ、tag lookupをupload targetに使っていない
 - [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`のDraft upload/asset validation PASS
 - [ ] 公開前に失敗した場合、run-created Draft/tagは自動削除されず、tagとcaptured Release IDを含むmanual-reconciliation guidanceが出る
 - [ ] 公開後`isImmutable=true`
