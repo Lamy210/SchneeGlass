@@ -928,7 +928,7 @@ if [[ "$STATUS" -eq 0 ]]; then
   exit 1
 fi
 
-ASSET_VIEW_LINE="$(grep -nF -- '--json assets ' "$LOG" | tail -n 1 | cut -d: -f1)"
+ASSET_VIEW_LINE="$(grep -nF -- 'repos/example/SchneeGlass/releases/101 --jq .assets\[\].name' "$LOG" | tail -n 1 | cut -d: -f1)"
 FINAL_MAIN_FETCH_LINE="$(grep -nF 'git fetch origin main --force ' "$LOG" | tail -n 1 | cut -d: -f1)"
 if [[ -z "$ASSET_VIEW_LINE" || -z "$FINAL_MAIN_FETCH_LINE" \
   || "$FINAL_MAIN_FETCH_LINE" -le "$ASSET_VIEW_LINE" ]]; then
