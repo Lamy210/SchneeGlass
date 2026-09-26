@@ -346,6 +346,78 @@ case "$COMMAND" in
     fi
 
     case "$ENDPOINT" in
+      repos/example/SchneeGlass/releases/101)
+        [[ "$METHOD" == 'GET' ]]
+        case "$JQ" in
+          .id)
+            printf '101\n'
+            ;;
+          .draft)
+            if [[ -f "$STATE/release-public" ]]; then printf 'false\n'; else printf 'true\n'; fi
+            ;;
+          .prerelease)
+            printf 'false\n'
+            ;;
+          .target_commitish)
+            printf '%s\n' '0123456789abcdef0123456789abcdef01234567'
+            ;;
+          '.assets[].name')
+            case "$ASSET_MODE" in
+              exact)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              extra-before)
+                if [[ ! -f "$STATE/release-public" ]]; then
+                  if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                    touch "$STATE/release-public"
+                  fi
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              extra-after)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                if [[ -f "$STATE/release-public" ]]; then
+                  printf '%s\n' 'unexpected.txt'
+                fi
+                ;;
+              *)
+                echo "unexpected run-owned asset fixture mode: $ASSET_MODE" >&2
+                exit 119
+                ;;
+            esac
+            ;;
+          .immutable)
+            case "$RELEASE_VERIFY_MODE" in
+              success)
+                if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
+              mutable)
+                printf 'false\n'
+                if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' && -f "$STATE/release-public" ]]; then
+                  touch "$STATE/replacement-public-release"
+                fi
+                ;;
+              failure)
+                if [[ -f "$STATE/release-public" ]]; then
+                  echo 'fixture: published release immutability read unavailable' >&2
+                  exit 42
+                fi
+                printf 'false\n'
+                ;;
+              *)
+                echo "unexpected run-owned release verification fixture mode: $RELEASE_VERIFY_MODE" >&2
+                exit 120
+                ;;
+            esac
+            ;;
+          *)
+            echo "unexpected run-owned release jq: $JQ" >&2
+            exit 118
+            ;;
+        esac
+        ;;
       repos/example/SchneeGlass/actions/runs/123)
         case "$JQ" in
           .name) printf '%s\n' 'Production Release Candidate' ;;
