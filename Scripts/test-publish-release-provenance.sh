@@ -184,6 +184,49 @@ case "$COMMAND" in
       esac
     done
 
+    if [[ "$METHOD" == 'POST' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases)
+          [[ "$JQ" == '.id' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 3 ]]
+          [[ "${RAW_FIELDS[0]}" == 'tag_name=v0.1.0' ]]
+          [[ "${RAW_FIELDS[1]}" == "target_commitish=$CANDIDATE_SHA" ]]
+          [[ "${RAW_FIELDS[2]}" == 'name=SchneeGlass 0.1.0' ]]
+          [[ "${#FIELDS[@]}" -eq 3 ]]
+          [[ "${FIELDS[0]}" == 'draft=true' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${FIELDS[2]}" == 'generate_release_notes=true' ]]
+          touch "$STATE/release-created"
+          touch "$STATE/release-tag"
+          printf '101\n' > "$STATE/release-id"
+          case "${GH_FIXTURE_CREATE_MODE:-success}" in
+            success)
+              printf '101\n'
+              ;;
+            failure-after-create)
+              echo 'fixture: create response unavailable after remote Draft creation' >&2
+              exit 42
+              ;;
+            malformed-id)
+              printf 'not-an-id\n'
+              ;;
+            *)
+              echo "unexpected create fixture mode: ${GH_FIXTURE_CREATE_MODE:-}" >&2
+              exit 110
+              ;;
+          esac
+          if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
+            printf '202\n' > "$STATE/release-id"
+          fi
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api post endpoint: $ENDPOINT" >&2
+          exit 109
+          ;;
+      esac
+    fi
+
     if [[ "$METHOD" == 'PATCH' ]]; then
       case "$ENDPOINT" in
         repos/example/SchneeGlass/releases/101)
@@ -200,6 +243,18 @@ case "$COMMAND" in
             echo 'fixture: run-owned release ID no longer exists' >&2
             exit 1
           fi
+          rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-public"
+          exit 0
+          ;;
+        repos/example/SchneeGlass/releases/202)
+          [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]
+          [[ "${#FIELDS[@]}" -eq 2 ]]
+          [[ "${FIELDS[0]}" == 'draft=false' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
+          [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
+          [[ -f "$STATE/release-id" && "$(cat "$STATE/release-id")" == '202' ]]
           rm -f "$STATE/release-prerelease"
           touch "$STATE/release-public"
           exit 0
@@ -556,6 +611,9 @@ EOF
         touch "$STATE/release-created"
         touch "$STATE/release-tag"
         printf '101\n' > "$STATE/release-id"
+        if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
+          printf '202\n' > "$STATE/release-id"
+        fi
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -637,6 +695,76 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# A successful tag-addressed create followed by a separate tag lookup cannot prove
+# which Release object was created by this run. Replace ID 101 with same-tag ID 202
+# immediately after create returns. The workflow must not adopt or publish ID 202.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-create-before-capture'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_CREATE_CAPTURE_RACE="$FIXTURE/output-replacement-after-create-before-capture.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_CAPTURE_RACE" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  echo 'Same-tag replacement was adopted as the run-owned Draft after create.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'repos/example/SchneeGlass/releases/202' "$LOG"; then
+  echo 'Replacement Release ID 202 reached an ID-addressed workflow mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh release create ' "$LOG"; then
+  echo 'Draft creation still relies on a tag-addressed command without an atomic returned Release ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if ! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases' "$LOG"; then
+  echo 'Draft creation did not use the Release create API that returns the object ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# A failed create response is ambiguous because the remote Draft may already exist.
+# The workflow must fail closed, preserve remote state, and require reconciliation.
+reset_case
+export GH_FIXTURE_CREATE_MODE='failure-after-create'
+OUTPUT_CREATE_RESPONSE_FAILURE="$FIXTURE/output-create-response-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_RESPONSE_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to create draft release and capture its identity; remote state may be ambiguous and requires manual reconciliation' "$OUTPUT_CREATE_RESPONSE_FAILURE"
+if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE ' "$LOG"; then
+  echo 'Ambiguous Draft creation failure reached a remote Release mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" || ! -f "$GH_FIXTURE_STATE/release-id" ]]; then
+  echo 'Ambiguous remote Draft state was not preserved after create response failure.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_CREATE_MODE='success'
+
+# A successful create response with a malformed identity cannot establish ownership.
+reset_case
+export GH_FIXTURE_CREATE_MODE='malformed-id'
+OUTPUT_CREATE_ID_MALFORMED="$FIXTURE/output-create-id-malformed.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_ID_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: created draft release identity is invalid' "$OUTPUT_CREATE_ID_MALFORMED"
+if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE ' "$LOG"; then
+  echo 'Malformed create-response identity reached a remote Release mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Draft state was not preserved after malformed create-response identity.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_CREATE_MODE='success'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not

@@ -282,24 +282,34 @@ case "$EXISTING_RELEASE_MATCH_STATUS" in
     ;;
 esac
 
-# Create the draft without assets first. Only a successful create establishes ownership
-# for cleanup, avoiding deletion of a concurrently-created release on create failure.
-gh release create "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --target "$RUN_HEAD_SHA" \
-  --title "SchneeGlass ${RELEASE_VERSION}" \
-  --generate-notes \
-  --draft
+# Capture object identity from the same successful create response. A follow-up
+# tag lookup cannot establish which Release object this run actually created.
+if ! CREATED_RELEASE_ID="$(gh api --method POST \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  "repos/$GITHUB_REPOSITORY/releases" \
+  -f tag_name="$TAG" \
+  -f target_commitish="$RUN_HEAD_SHA" \
+  -f name="SchneeGlass ${RELEASE_VERSION}" \
+  -F draft=true \
+  -F prerelease=false \
+  -F generate_release_notes=true \
+  --jq '.id')"; then
+  fail "unable to create draft release and capture its identity; remote state may be ambiguous and requires manual reconciliation"
+fi
 CREATED_RELEASE=true
+[[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "created draft release identity is invalid"
 
-if ! CREATED_RELEASE_ID="$(gh release view "$TAG" \
+if ! OBSERVED_CREATED_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json databaseId \
   --jq '.databaseId')"; then
-  fail "unable to capture created draft release identity"
+  fail "unable to verify created draft release identity"
 fi
-[[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
-  || fail "created draft release identity is invalid"
+[[ "$OBSERVED_CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "observed created draft release identity is invalid"
+[[ "$OBSERVED_CREATED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "created draft release identity changed immediately after creation"
 
 IS_DRAFT="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \

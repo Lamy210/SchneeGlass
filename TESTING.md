@@ -574,6 +574,7 @@ SHA256SUMS exactly one entry
 SHA256SUMS exact literal candidate archive filename
 SHA256 self-check of that exact archive
 candidate commit exactly matches freshly fetched current main before Draft creation
+Draft creation captures the run-owned Release databaseId from the same successful Create Release API response; a later tag lookup is verification only and cannot become the ownership source
 public Release build-number history
 pre-existing tag / release absence, with API enumeration and exact Release-name match probe failures distinguished from confirmed absence
 draft target SHA / assets

@@ -264,7 +264,7 @@ Before creating a Release it revalidates:
 
 Publication captures the run-created Draft identity after Draft creation succeeds:
 
-1. create an asset-free Draft Release targeting the exact candidate SHA and capture its run-owned `databaseId`
+1. create an asset-free Draft Release through the Releases API, targeting the exact candidate SHA, and capture its run-owned `databaseId` from that same create response (never from a follow-up tag lookup)
 2. verify `targetCommitish` equals that candidate SHA
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names

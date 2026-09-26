@@ -183,6 +183,30 @@ case "$COMMAND" in
       esac
     done
 
+    if [[ "$METHOD" == 'POST' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases)
+          [[ "$JQ" == '.id' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 3 ]]
+          [[ "${RAW_FIELDS[0]}" == 'tag_name=v0.1.0' ]]
+          [[ "${RAW_FIELDS[1]}" == 'target_commitish=0123456789abcdef0123456789abcdef01234567' ]]
+          [[ "${RAW_FIELDS[2]}" == 'name=SchneeGlass 0.1.0' ]]
+          [[ "${#FIELDS[@]}" -eq 3 ]]
+          [[ "${FIELDS[0]}" == 'draft=true' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${FIELDS[2]}" == 'generate_release_notes=true' ]]
+          touch "$STATE/release-created"
+          touch "$STATE/release-tag"
+          printf '101\n'
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api post endpoint: $ENDPOINT" >&2
+          exit 109
+          ;;
+      esac
+    fi
+
     if [[ "$METHOD" == 'PATCH' ]]; then
       case "$ENDPOINT" in
         repos/example/SchneeGlass/releases/101)
@@ -617,7 +641,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: failed to enumerate public release history' "$OUTPUT"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 
 # A successful enumeration with zero public releases is still the valid first-release path.
 : > "$LOG"
@@ -631,7 +655,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 
 grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
-grep -Fq 'gh release create ' "$LOG"
+grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 
 # Public release history can change while the Draft is prepared. A higher build
 # appearing after the initial empty-history check must be re-read and reject this
@@ -773,7 +797,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: unable to determine whether release tag already exists: v0.1.0' "$OUTPUT_TAG_PROBE_FAILURE"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 
 # A positively observed pre-existing tag remains an immediate blocker.
 : > "$LOG"
@@ -795,7 +819,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: release tag already exists: v0.1.0' "$OUTPUT_TAG_EXISTS"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 export GH_FIXTURE_TAG_PROBE_MODE='absent'
 
 # A failed GitHub Release-name probe is not proof that no Draft/public Release already
@@ -820,7 +844,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_PROBE_FAILURE"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 
 # A successful Release-name enumeration is not sufficient if exact membership cannot be
 # evaluated. A grep/probe error must remain ambiguous and stop before Draft creation.
@@ -845,7 +869,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 "$REAL_GREP" -Fq 'Release promotion failed: unable to determine whether GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_MATCH_PROBE_FAILURE"
-if "$REAL_GREP" -Fq 'gh release create ' "$LOG"; then
+if "$REAL_GREP" -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"; then
   cat "$LOG"
   echo 'Ambiguous Release-name membership reached Draft creation.' >&2
   exit 1
@@ -872,7 +896,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: GitHub Release already exists: v0.1.0' "$OUTPUT_RELEASE_EXISTS"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 export GH_FIXTURE_RELEASE_PROBE_MODE='absent'
 
 # A candidate that is only an ancestor of current main is stale. Publication must stop
@@ -899,7 +923,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: candidate source commit does not match current main' "$OUTPUT_STALE"
-! grep -Fq 'gh release create ' "$LOG"
+! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 
 # An unexpected Draft asset must stop publication and preserve the run-owned Draft/tag for manual reconciliation.
