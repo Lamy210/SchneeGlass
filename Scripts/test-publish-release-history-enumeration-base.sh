@@ -124,6 +124,95 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/git"
 
+cat > "$FIXTURE/bin/curl" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG="${GH_FIXTURE_LOG:?}"
+STATE="${GH_FIXTURE_STATE:?}"
+
+printf 'curl ' >> "$LOG"
+for arg in "$@"; do
+  if [[ "$arg" == Authorization:\ Bearer\ * ]]; then
+    printf '%q ' 'Authorization: Bearer ***' >> "$LOG"
+  else
+    printf '%q ' "$arg" >> "$LOG"
+  fi
+done
+printf '\n' >> "$LOG"
+
+METHOD=''
+URL=''
+BODY=''
+CONTENT_TYPE=''
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --fail-with-body|--silent|--show-error|--location)
+      shift
+      ;;
+    --request)
+      METHOD="$2"
+      shift 2
+      ;;
+    --header)
+      case "$2" in
+        'Accept: application/vnd.github+json'|'Authorization: Bearer fixture-token'|'X-GitHub-Api-Version: 2026-03-10')
+          ;;
+        'Content-Type: '*)
+          CONTENT_TYPE="${2#Content-Type: }"
+          ;;
+        *)
+          echo "unexpected curl header: $2" >&2
+          exit 111
+          ;;
+      esac
+      shift 2
+      ;;
+    --data-binary)
+      BODY="$2"
+      shift 2
+      ;;
+    https://uploads.github.com/*)
+      URL="$1"
+      shift
+      ;;
+    *)
+      echo "unexpected curl argument: $1" >&2
+      exit 112
+      ;;
+  esac
+done
+
+[[ "$METHOD" == 'POST' ]]
+[[ "$BODY" == @* ]]
+[[ -f "${BODY#@}" ]]
+[[ -f "$STATE/release-created" ]]
+
+if [[ "$URL" =~ ^https://uploads\.github\.com/repos/example/SchneeGlass/releases/101/assets\?name=(.+)$ ]]; then
+  ASSET_NAME="${BASH_REMATCH[1]}"
+else
+  echo "unexpected release asset upload URL: $URL" >&2
+  exit 113
+fi
+
+case "$ASSET_NAME" in
+  SchneeGlass-0.1.0.zip)
+    [[ "$CONTENT_TYPE" == 'application/zip' ]]
+    ;;
+  SHA256SUMS|RELEASE_EVIDENCE.txt)
+    [[ "$CONTENT_TYPE" == 'text/plain' ]]
+    ;;
+  *)
+    echo "unexpected release asset name: $ASSET_NAME" >&2
+    exit 114
+    ;;
+esac
+
+printf '%s\n' "$ASSET_NAME" >> "$STATE/asset-upload-names"
+exit 0
+SHIM
+chmod +x "$FIXTURE/bin/curl"
+
 cat > "$FIXTURE/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
