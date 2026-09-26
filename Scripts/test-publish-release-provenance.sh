@@ -818,7 +818,7 @@ else
     echo 'Replacement Draft did not fail with the expected identity error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Replacement Draft reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -905,7 +905,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release identity before publication' "$OUTPUT_IDENTITY_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 reset_case
 export GH_FIXTURE_IDENTITY_MODE='malformed-before-publication'
@@ -916,7 +916,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: draft release identity is invalid before publication' "$OUTPUT_IDENTITY_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Draft assets can change after the initial exact-set check. Missing assets must
@@ -941,7 +941,7 @@ else
     echo 'Missing Draft asset did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Missing Draft asset reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -968,7 +968,7 @@ else
     echo 'Unexpected Draft asset did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Unexpected Draft asset reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -985,7 +985,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # The Draft can be published by another administrator after final asset
@@ -1012,7 +1012,7 @@ else
     echo 'Concurrent Draft publication did not fail at the final pre-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Concurrent Draft publication reached this workflow Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1042,7 +1042,7 @@ else
     echo 'Draft target drift did not fail at the final pre-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Draft target drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1062,7 +1062,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release state before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # A malformed Draft state is not positive proof of ownership/state.
 reset_case
@@ -1077,7 +1077,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_INVALID"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_DRAFT_MODE='exact'
 
 # Final Draft-target enumeration must preserve command failure even with plausible output.
@@ -1093,7 +1093,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release target before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Non-SHA target values must also fail before publication.
 reset_case
@@ -1108,7 +1108,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: draft release target returned an invalid commit SHA before publication' "$OUTPUT_TARGET_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_TARGET_MODE='exact'
 
 # A stable Draft can be changed into a prerelease during the final Draft window.
@@ -1135,7 +1135,7 @@ else
     echo 'Prerelease drift did not fail at the final stable-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Prerelease drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1178,7 +1178,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify prerelease state before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed prerelease state is not positive proof of a stable release.
 reset_case
@@ -1190,7 +1190,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: prerelease state is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 
 # Release immutability can drift after earlier governance checks. A disabled
@@ -1217,7 +1217,7 @@ else
     echo 'Disabled release immutability did not fail at the final publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Disabled release immutability reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1234,7 +1234,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify release immutability before publication' "$OUTPUT_IMMUTABILITY_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed API responses are not positive proof that immutability is enabled.
 reset_case
@@ -1246,7 +1246,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release immutability response is malformed before publication' "$OUTPUT_IMMUTABILITY_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_IMMUTABILITY_MODE='enabled'
 
 # Governance can drift while Draft preparation is in progress even when current main
@@ -1271,7 +1271,7 @@ else
     echo 'Governance drift did not fail with the expected final-certification error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Governance drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1300,7 +1300,7 @@ else
     echo 'Retargeted Draft tag did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Retargeted Draft tag reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1327,7 +1327,7 @@ else
     echo 'Missing Draft tag did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Missing Draft tag reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1346,7 +1346,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release tag returned an invalid remote ref set before publication' "$OUTPUT_TAG_AMBIGUOUS"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed tag provenance must also fail before publication.
 reset_case
@@ -1360,7 +1360,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release tag returned an invalid remote ref before publication' "$OUTPUT_TAG_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_TAG_MODE='exact'
 
 # The Draft target can be correct and still change after publication. The final public
