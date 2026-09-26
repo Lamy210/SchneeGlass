@@ -321,6 +321,9 @@ EOF
           isDraft)
             if [[ -f "$STATE/release-public" ]]; then printf 'false\n'; else printf 'true\n'; fi
             ;;
+          isPrerelease)
+            printf 'false\n'
+            ;;
           targetCommitish) printf '%s\n' '0123456789abcdef0123456789abcdef01234567' ;;
           assets)
             case "$ASSET_MODE" in
