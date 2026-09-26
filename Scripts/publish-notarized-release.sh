@@ -477,6 +477,8 @@ fi
 [[ "$PREPUBLICATION_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
   || fail "draft release identity changed before publication"
 
+# Address the mutation by the captured object identity so a same-tag replacement
+# cannot redirect this run's Draft -> public transition after the final ID proof.
 if ! gh api --method PATCH \
   -H 'X-GitHub-Api-Version: 2026-03-10' \
   "repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID" \
