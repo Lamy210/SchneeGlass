@@ -1161,7 +1161,7 @@ else
     echo 'Publication mutation did not atomically clear prerelease classification.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if ! grep -Fq -- '--prerelease=false' "$LOG"; then
+  if ! grep -Fq -- '-F prerelease=false' "$LOG"; then
     echo 'Publication mutation did not explicitly force prerelease=false.' >&2
     FAILURES=$((FAILURES + 1))
   fi
