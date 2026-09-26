@@ -274,6 +274,9 @@ EOF
           '') exit 0 ;;
           isDraft)
             draft_reads="$(awk '/--json isDraft/ { count += 1 } END { print count + 0 }' "$LOG")"
+            if [[ "$IDENTITY_MODE" == 'replace-after-cleanup-identity' && "$ASSET_MODE" == 'extra-before-publication' && "$draft_reads" -ge 2 ]]; then
+              printf '202\n' > "$STATE/release-id"
+            fi
             if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$draft_reads" -ge 2 ]]; then
               printf 'true\n'
               exit 42
@@ -321,6 +324,18 @@ EOF
                 ;;
               cleanup-malformed)
                 if [[ "$identity_reads" -ge 2 ]]; then
+                  printf 'not-an-id\n'
+                  exit 0
+                fi
+                ;;
+              final-cleanup-query-failure)
+                if [[ "$identity_reads" -ge 3 ]]; then
+                  printf '101\n'
+                  exit 42
+                fi
+                ;;
+              final-cleanup-malformed)
+                if [[ "$identity_reads" -ge 3 ]]; then
                   printf 'not-an-id\n'
                   exit 0
                 fi
@@ -515,6 +530,53 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-i
   echo 'Replacement Draft identity did not survive failed run cleanup.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Cleanup ownership must also remain valid after cleanup state probes. Replacing
+# the same-tag Draft after the first identity proof but before delete must never
+# authorize deletion based on stale identity.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-cleanup-identity'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_IDENTITY_CLEANUP_RACE="$FIXTURE/output-replacement-after-cleanup-identity.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_CLEANUP_RACE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_IDENTITY_CLEANUP_RACE"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  echo 'Replacement Draft created after cleanup identity proof was deleted.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
+  echo 'Replacement Draft identity did not survive the cleanup identity race.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# The final delete-boundary identity probe must itself fail closed.
+for identity_mode in final-cleanup-query-failure final-cleanup-malformed; do
+  reset_case
+  export GH_FIXTURE_IDENTITY_MODE="$identity_mode"
+  export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+  OUTPUT_FINAL_CLEANUP_PROBE="$FIXTURE/output-$identity_mode.log"
+  set +e
+  bash Scripts/publish-notarized-release.sh >"$OUTPUT_FINAL_CLEANUP_PROBE" 2>&1
+  STATUS=$?
+  set -e
+  [[ "$STATUS" -ne 0 ]]
+  if grep -Fq 'gh release delete ' "$LOG"; then
+    echo "Final cleanup identity mode $identity_mode reached destructive release deletion." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '101' ]]; then
+    echo "Run-owned Draft did not survive final cleanup identity mode $identity_mode." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+done
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
 
