@@ -149,6 +149,8 @@ case "$COMMAND" in
     METHOD='GET'
     ENDPOINT=''
     JQ=''
+    FIELDS=()
+    RAW_FIELDS=()
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
@@ -162,6 +164,14 @@ case "$COMMAND" in
           JQ="$2"
           shift 2
           ;;
+        -F|--field)
+          FIELDS+=("$2")
+          shift 2
+          ;;
+        -f|--raw-field)
+          RAW_FIELDS+=("$2")
+          shift 2
+          ;;
         -H|--header)
           shift 2
           ;;
@@ -172,6 +182,25 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'PATCH' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          [[ "${#FIELDS[@]}" -eq 2 ]]
+          [[ "${FIELDS[0]}" == 'draft=false' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
+          [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
+          [[ -f "$STATE/release-created" ]]
+          touch "$STATE/release-public"
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api patch endpoint: $ENDPOINT" >&2
+          exit 108
+          ;;
+      esac
+    fi
 
     if [[ "$METHOD" == 'DELETE' ]]; then
       case "$ENDPOINT" in
@@ -628,7 +657,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release build history validation failed: current build 1 must be greater than published maximum 2' "$OUTPUT_HISTORY_ADVANCED"
-if grep -Fq 'gh release edit ' "$LOG"; then
+if grep -Fq 'gh api --method PATCH ' "$LOG"; then
   echo 'Stale build reached the Draft-to-public mutation after public history advanced.' >&2
   exit 1
 fi
@@ -654,7 +683,7 @@ export GH_FIXTURE_HISTORY_MODE='empty'
 
 # If main advances after the initial freshness check while the Draft is prepared, the
 # candidate is stale at publication time. A final pre-publication check must stop before
-# gh release edit and leave the run-owned Draft/tag for manual reconciliation.
+# the ID-addressed publication mutation and leave the run-owned Draft/tag for manual reconciliation.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -678,7 +707,7 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: candidate source commit does not match current main before publication' "$OUTPUT_MAIN_ADVANCED"
-if grep -Fq 'gh release edit ' "$LOG"; then
+if grep -Fq 'gh api --method PATCH ' "$LOG"; then
   echo 'Stale candidate reached the publication command after main advanced during Draft preparation.' >&2
   exit 1
 fi
@@ -894,7 +923,7 @@ if [[ "$STATUS" -eq 0 ]]; then
   FAILURES=$((FAILURES + 1))
 else
   grep -Fq 'Release promotion failed: draft release asset set does not exactly match expected public assets' "$OUTPUT_EXTRA_BEFORE"
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Draft asset mismatch reached the publication command.' >&2
     FAILURES=$((FAILURES + 1))
   fi
