@@ -323,6 +323,15 @@ fi
 CREATED_RELEASE=true
 [[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
   || fail "created draft release identity is invalid"
+RUN_OWNED_RELEASE_API="repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID"
+
+if ! RUN_OWNED_RELEASE_ID="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.id')"; then
+  fail "unable to verify run-owned draft release identity"
+fi
+[[ "$RUN_OWNED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "run-owned draft release identity is invalid"
+[[ "$RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned draft release identity does not match create response"
 
 if ! OBSERVED_CREATED_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -335,16 +344,14 @@ fi
 [[ "$OBSERVED_CREATED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
   || fail "created draft release identity changed immediately after creation"
 
-IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"
+if ! IS_DRAFT="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.draft')"; then
+  fail "unable to verify run-owned draft release state after creation"
+fi
 [[ "$IS_DRAFT" == 'true' ]] || fail "release was not created as draft"
 
-RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"
+if ! RELEASE_TARGET="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.target_commitish')"; then
+  fail "unable to verify run-owned draft release target after creation"
+fi
 [[ "$RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target mismatch: expected $RUN_HEAD_SHA, got $RELEASE_TARGET"
 
@@ -352,11 +359,8 @@ upload_release_asset_by_id "$ARCHIVE" "$ARCHIVE_NAME" 'application/zip'
 upload_release_asset_by_id "$CHECKSUMS" 'SHA256SUMS' 'text/plain'
 upload_release_asset_by_id "$EVIDENCE" 'RELEASE_EVIDENCE.txt' 'text/plain'
 
-if ! ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to enumerate draft release assets"
+if ! ASSET_NAMES="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.assets[].name')"; then
+  fail "unable to enumerate run-owned draft release assets"
 fi
 release_asset_set_is_exact "$ASSET_NAMES" \
   || fail "draft release asset set does not exactly match expected public assets"
@@ -409,40 +413,28 @@ read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <
 [[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "release tag no longer resolves to candidate source commit before publication"
 
-if ! PREPUBLICATION_ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to enumerate draft release assets before publication"
+if ! PREPUBLICATION_ASSET_NAMES="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.assets[].name')"; then
+  fail "unable to enumerate run-owned draft release assets before publication"
 fi
 release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
   || fail "draft release asset set changed before publication"
 
-if ! PREPUBLICATION_IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"; then
-  fail "unable to verify draft release state before publication"
+if ! PREPUBLICATION_IS_DRAFT="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.draft')"; then
+  fail "unable to verify run-owned draft release state before publication"
 fi
 [[ "$PREPUBLICATION_IS_DRAFT" == 'true' ]] \
   || fail "release is no longer a Draft before publication"
 
-if ! PREPUBLICATION_RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"; then
-  fail "unable to verify draft release target before publication"
+if ! PREPUBLICATION_RELEASE_TARGET="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.target_commitish')"; then
+  fail "unable to verify run-owned draft release target before publication"
 fi
 [[ "$PREPUBLICATION_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]] \
   || fail "draft release target returned an invalid commit SHA before publication"
 [[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target changed before publication"
 
-if ! PREPUBLICATION_IS_PRERELEASE="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isPrerelease \
-  --jq '.isPrerelease')"; then
-  fail "unable to verify prerelease state before publication"
+if ! PREPUBLICATION_IS_PRERELEASE="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.prerelease')"; then
+  fail "unable to verify run-owned prerelease state before publication"
 fi
 case "$PREPUBLICATION_IS_PRERELEASE" in
   false)
@@ -498,6 +490,14 @@ done < "$FINAL_PUBLISHED_TAGS"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
 
+if ! PREPUBLICATION_RUN_OWNED_RELEASE_ID="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.id')"; then
+  fail "unable to verify run-owned draft release identity before publication"
+fi
+[[ "$PREPUBLICATION_RUN_OWNED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "run-owned draft release identity is invalid before publication"
+[[ "$PREPUBLICATION_RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned draft release identity changed before publication"
+
 if ! PREPUBLICATION_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json databaseId \
@@ -522,11 +522,8 @@ if ! gh api --method PATCH \
 fi
 PUBLICATION_COMMAND_SUCCEEDED=true
 
-if ! IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"; then
-  fail "unable to verify published release draft state; publication state is ambiguous and requires manual reconciliation"
+if ! IS_DRAFT="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.draft')"; then
+  fail "unable to verify run-owned published release draft state; publication state is ambiguous and requires manual reconciliation"
 fi
 
 if [[ "$IS_DRAFT" != 'false' ]]; then
@@ -537,11 +534,8 @@ if [[ "$IS_DRAFT" != 'false' ]]; then
   fail "published release returned invalid draft state; publication state is ambiguous and requires manual reconciliation"
 fi
 
-if ! IS_IMMUTABLE="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isImmutable \
-  --jq '.isImmutable')"; then
-  fail "unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation"
+if ! IS_IMMUTABLE="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.immutable')"; then
+  fail "unable to verify run-owned published release immutability; publication state is ambiguous and requires manual reconciliation"
 fi
 
 if [[ "$IS_IMMUTABLE" == 'false' ]]; then
@@ -551,20 +545,14 @@ fi
 [[ "$IS_IMMUTABLE" == 'true' ]] \
   || fail "published release returned invalid immutability state; publication state is ambiguous and requires manual reconciliation"
 
-if ! PUBLISHED_ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to verify published release assets; publication state is ambiguous and requires manual reconciliation"
+if ! PUBLISHED_ASSET_NAMES="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.assets[].name')"; then
+  fail "unable to verify run-owned published release assets; publication state is ambiguous and requires manual reconciliation"
 fi
 release_asset_set_is_exact "$PUBLISHED_ASSET_NAMES" \
   || fail "published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation"
 
-if ! PUBLISHED_RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"; then
-  fail "unable to verify published release target; publication state is ambiguous and requires manual reconciliation"
+if ! PUBLISHED_RELEASE_TARGET="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.target_commitish')"; then
+  fail "unable to verify run-owned published release target; publication state is ambiguous and requires manual reconciliation"
 fi
 [[ "$PUBLISHED_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "published release target does not match candidate source commit; publication state is ambiguous and requires manual reconciliation"
@@ -581,6 +569,14 @@ IFS=$'\t' read -r PUBLISHED_TAG_SHA PUBLISHED_TAG_REF <<< "$PUBLISHED_TAG_LINE"
   || fail "published release tag returned an invalid remote ref; publication state is ambiguous and requires manual reconciliation"
 [[ "$PUBLISHED_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "published release tag does not resolve to candidate source commit; publication state is ambiguous and requires manual reconciliation"
+
+if ! PUBLISHED_RUN_OWNED_RELEASE_ID="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.id')"; then
+  fail "unable to verify run-owned published release identity; publication state is ambiguous and requires manual reconciliation"
+fi
+[[ "$PUBLISHED_RUN_OWNED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "run-owned published release identity is invalid; publication state is ambiguous and requires manual reconciliation"
+[[ "$PUBLISHED_RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned published release identity does not match create response; publication state is ambiguous and requires manual reconciliation"
 
 if ! PUBLISHED_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
