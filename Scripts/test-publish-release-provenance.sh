@@ -110,6 +110,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
+DRAFT_MODE="${GH_FIXTURE_DRAFT_MODE:-exact}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 printf 'gh ' >> "$LOG"
@@ -251,7 +252,10 @@ EOF
             if [[ -f "$STATE/release-public" ]]; then printf 'false\n'; else printf 'true\n'; fi
             ;;
           targetCommitish)
-            if [[ "$TARGET_MODE" == 'change-after' && -f "$STATE/release-public" ]]; then
+            target_reads="$(awk '/--json targetCommitish/ { count += 1 } END { print count + 0 }' "$LOG")"
+            if [[ "$TARGET_MODE" == 'change-before-publication' && "$target_reads" -ge 2 ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            elif [[ "$TARGET_MODE" == 'change-after' && -f "$STATE/release-public" ]]; then
               printf '%s\n' "$OTHER_SHA"
             else
               printf '%s\n' "$CANDIDATE_SHA"
@@ -262,6 +266,9 @@ EOF
             case "$ASSET_MODE" in
               exact)
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                if [[ "$DRAFT_MODE" == 'publish-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  touch "$STATE/release-public"
+                fi
                 ;;
               missing-before-publication)
                 if [[ "$asset_reads" -le 1 ]]; then
@@ -353,6 +360,7 @@ FAILURES=0
 # Control: unchanged target and exact tag commit remains a valid publication.
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='exact'
 export GH_FIXTURE_TAG_MODE='exact'
 export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EXACT="$FIXTURE/output-exact.log"
@@ -435,6 +443,67 @@ set -e
 grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
 ! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
+
+# The Draft can be published by another administrator after final asset
+# enumeration but before this workflow performs Draft -> public. The workflow must
+# detect that ownership/state transition before issuing its own release edit.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_DRAFT_MODE='publish-before-publication'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_DRAFT_PUBLISHED="$FIXTURE/output-draft-published-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_PUBLISHED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_DRAFT_PUBLISHED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the Draft became public concurrently.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_PUBLISHED"; then
+    cat "$OUTPUT_DRAFT_PUBLISHED"
+    echo 'Concurrent Draft publication did not fail at the final pre-publication boundary.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Concurrent Draft publication reached this workflow Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_DRAFT_MODE='exact'
+
+# The Draft target can also drift after its creation-time target check. That
+# mismatch must be rejected before the immutable publication boundary.
+reset_case
+export GH_FIXTURE_TARGET_MODE='change-before-publication'
+export GH_FIXTURE_DRAFT_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_TARGET_BEFORE="$FIXTURE/output-target-changed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TARGET_BEFORE" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_TARGET_BEFORE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after the Draft target changed.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: draft release target changed before publication' "$OUTPUT_TARGET_BEFORE"; then
+    cat "$OUTPUT_TARGET_BEFORE"
+    echo 'Draft target drift did not fail at the final pre-publication boundary.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Draft target drift reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_TARGET_MODE='exact'
 
 # Governance can drift while Draft preparation is in progress even when current main
 # remains unchanged. Publication must re-read governance immediately before Draft -> public.
