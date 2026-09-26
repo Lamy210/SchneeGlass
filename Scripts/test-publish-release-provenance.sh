@@ -447,6 +447,9 @@ EOF
         touch "$STATE/release-public"
         ;;
       delete)
+        if [[ "$IDENTITY_MODE" == 'replace-at-delete' ]]; then
+          printf '202\n' > "$STATE/release-id"
+        fi
         rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
         ;;
       download)
@@ -553,6 +556,28 @@ fi
 if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
   echo 'Replacement Draft identity did not survive the cleanup identity race.' >&2
   FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Tag-addressed deletion can retarget after the final identity proof. Replace the
+# same-tag Draft exactly when the destructive delete command resolves its target;
+# the replacement must survive.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-at-delete'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_IDENTITY_AT_DELETE="$FIXTURE/output-replacement-at-delete.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_AT_DELETE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_IDENTITY_AT_DELETE"
+if grep -Fq 'gh release delete ' "$LOG"; then
+  if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
+    echo 'Tag-addressed cleanup deleted the same-tag replacement at the destructive boundary.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
