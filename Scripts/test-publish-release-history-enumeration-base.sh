@@ -130,6 +130,7 @@ set -euo pipefail
 
 LOG="${GH_FIXTURE_LOG:?}"
 STATE="${GH_FIXTURE_STATE:?}"
+MAIN_RACE_MODE="${GH_FIXTURE_MAIN_RACE_MODE:-none}"
 
 printf 'curl ' >> "$LOG"
 for arg in "$@"; do
@@ -209,6 +210,9 @@ case "$ASSET_NAME" in
 esac
 
 printf '%s\n' "$ASSET_NAME" >> "$STATE/asset-upload-names"
+if [[ "$MAIN_RACE_MODE" == 'advance-after-upload' && "$ASSET_NAME" == 'RELEASE_EVIDENCE.txt' ]]; then
+  touch "$STATE/main-advanced"
+fi
 exit 0
 SHIM
 chmod +x "$FIXTURE/bin/curl"
