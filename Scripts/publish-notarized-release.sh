@@ -140,11 +140,21 @@ cleanup() {
         return
       fi
 
-      if ! gh release delete "$TAG" \
-        --repo "$GITHUB_REPOSITORY" \
-        --cleanup-tag \
-        --yes >/dev/null 2>&1; then
-        echo "Release cleanup failed for $TAG: unable to delete run-owned mutable Draft/tag; manual reconciliation required." >&2
+      if ! gh api \
+        --method DELETE \
+        -H 'X-GitHub-Api-Version: 2026-03-10' \
+        "repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID" \
+        >/dev/null 2>&1; then
+        echo "Release cleanup failed for $TAG: unable to delete run-owned mutable Draft by release ID; manual reconciliation required." >&2
+        return
+      fi
+
+      if ! git push \
+        --force-with-lease="refs/tags/$TAG:$RUN_HEAD_SHA" \
+        origin \
+        ":refs/tags/$TAG" \
+        >/dev/null 2>&1; then
+        echo "Release cleanup partially completed for $TAG: Release was deleted but tag lease cleanup failed; manual reconciliation required." >&2
       fi
       return
     fi
