@@ -553,6 +553,9 @@ EOF
               printf '%s\n' "$OTHER_SHA"
             else
               printf '%s\n' "$CANDIDATE_SHA"
+              if [[ "$IDENTITY_MODE" == 'replace-before-asset-upload' && "$target_reads" -eq 1 ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
             fi
             ;;
           assets)
@@ -617,6 +620,9 @@ EOF
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
+        if [[ -f "$STATE/release-id" ]]; then
+          cat "$STATE/release-id" > "$STATE/asset-upload-release-id"
+        fi
         ;;
       edit)
         [[ -f "$STATE/release-created" ]]
@@ -765,6 +771,32 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_CREATE_MODE='success'
+
+# A same-tag replacement can still occur after initial identity/target verification
+# but before the tag-addressed asset upload. The workflow must never write the signed
+# candidate assets to replacement Release ID 202.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-before-asset-upload'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_ASSET_UPLOAD_RACE="$FIXTURE/output-replacement-before-asset-upload.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_UPLOAD_RACE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+if [[ -f "$GH_FIXTURE_STATE/asset-upload-release-id" && "$(cat "$GH_FIXTURE_STATE/asset-upload-release-id")" == '202' ]]; then
+  echo 'Signed candidate assets were uploaded to replacement Release ID 202.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh release upload ' "$LOG"; then
+  echo 'Draft asset upload still uses a tag-addressed release command.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if ! grep -Fq 'uploads.github.com/repos/example/SchneeGlass/releases/101/assets' "$LOG"; then
+  echo 'Draft asset upload did not target the captured run-owned Release ID 101.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
