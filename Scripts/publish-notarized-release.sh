@@ -368,6 +368,36 @@ jq -e 'type == "object" and has("enabled") and (.enabled | type == "boolean")' \
 jq -e '.enabled == true' "$PREPUBLICATION_IMMUTABILITY_JSON" >/dev/null \
   || fail "release immutability is not enabled before publication"
 
+FINAL_PUBLISHED_TAGS="$CANDIDATE_DIR/final-published-release-tags.txt"
+FINAL_HISTORY_DIR="$CANDIDATE_DIR/final-published-build-history"
+rm -rf "$FINAL_HISTORY_DIR"
+mkdir -p "$FINAL_HISTORY_DIR"
+
+if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+  --jq '.[] | select(.draft == false) | .tag_name' \
+  > "$FINAL_PUBLISHED_TAGS"; then
+  fail "failed to enumerate public release history before publication"
+fi
+
+FINAL_HISTORY_INDEX=0
+while IFS= read -r PUBLISHED_TAG; do
+  [[ -n "$PUBLISHED_TAG" ]] || continue
+  FINAL_HISTORY_INDEX=$((FINAL_HISTORY_INDEX + 1))
+  FINAL_RELEASE_HISTORY_DIR="$FINAL_HISTORY_DIR/$FINAL_HISTORY_INDEX"
+  mkdir -p "$FINAL_RELEASE_HISTORY_DIR"
+
+  gh release download "$PUBLISHED_TAG" \
+    --repo "$GITHUB_REPOSITORY" \
+    --pattern 'RELEASE_EVIDENCE.txt' \
+    --dir "$FINAL_RELEASE_HISTORY_DIR" \
+    || fail "public release $PUBLISHED_TAG is missing readable RELEASE_EVIDENCE.txt before publication"
+
+  test -f "$FINAL_RELEASE_HISTORY_DIR/RELEASE_EVIDENCE.txt" \
+    || fail "public release $PUBLISHED_TAG did not yield RELEASE_EVIDENCE.txt before publication"
+done < "$FINAL_PUBLISHED_TAGS"
+
+bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \

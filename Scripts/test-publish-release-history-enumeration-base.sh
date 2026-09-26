@@ -184,6 +184,18 @@ case "$COMMAND" in
               empty)
                 exit 0
                 ;;
+              concurrent-new-release)
+                history_reads=0
+                if [[ -f "$STATE/history-read-count" ]]; then
+                  read -r history_reads < "$STATE/history-read-count"
+                fi
+                history_reads=$((history_reads + 1))
+                printf '%s\n' "$history_reads" > "$STATE/history-read-count"
+                if [[ "$history_reads" -eq 1 ]]; then
+                  exit 0
+                fi
+                printf '%s\n' 'v0.0.9'
+                ;;
               *)
                 echo "unexpected release history fixture mode: $HISTORY_MODE" >&2
                 exit 93
@@ -369,8 +381,35 @@ EOF
         touch "$STATE/release-public"
         ;;
       download)
-        echo 'historical release download is not expected in this fixture' >&2
-        exit 98
+        TAG="${1:-}"
+        shift || true
+        DIR=''
+        while [[ "$#" -gt 0 ]]; do
+          case "$1" in
+            --repo|--pattern)
+              shift 2
+              ;;
+            --dir)
+              DIR="$2"
+              shift 2
+              ;;
+            *)
+              echo "unexpected historical release download argument: $1" >&2
+              exit 98
+              ;;
+          esac
+        done
+        [[ -n "$DIR" ]] || { echo 'historical release download dir is required' >&2; exit 98; }
+        if [[ "$HISTORY_MODE" == 'concurrent-new-release' && "$TAG" == 'v0.0.9' ]]; then
+          mkdir -p "$DIR"
+          cat > "$DIR/RELEASE_EVIDENCE.txt" <<'EOF'
+schema_version=1
+bundle_build=2
+EOF
+        else
+          echo "historical release download is not expected in this fixture: $TAG" >&2
+          exit 98
+        fi
         ;;
       delete)
         touch "$STATE/cleanup-attempted"
@@ -501,6 +540,54 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_EMPTY" 2>&1
 grep -Fq 'Release build history OK: first public release, current build=1' "$OUTPUT_EMPTY"
 grep -Fq 'Published immutable release v0.1.0 from candidate run 123' "$OUTPUT_EMPTY"
 grep -Fq 'gh release create ' "$LOG"
+
+# Public release history can change while the Draft is prepared. A higher build
+# appearing after the initial empty-history check must be re-read and reject this
+# lower candidate before Draft -> public.
+: > "$LOG"
+rm -rf "$GH_FIXTURE_STATE"
+mkdir -p "$GH_FIXTURE_STATE"
+export GH_FIXTURE_HISTORY_MODE='concurrent-new-release'
+export GH_FIXTURE_RELEASE_VERIFY_MODE='success'
+export GH_FIXTURE_ASSET_MODE='exact'
+export GH_FIXTURE_CLEANUP_RACE_MODE='none'
+OUTPUT_HISTORY_ADVANCED="$FIXTURE/output-history-advanced-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_HISTORY_ADVANCED" 2>&1
+STATUS=$?
+set -e
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_HISTORY_ADVANCED"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a candidate after public build history advanced.' >&2
+  exit 1
+fi
+
+grep -Fq 'Release build history validation failed: current build 1 must be greater than published maximum 2' "$OUTPUT_HISTORY_ADVANCED"
+if grep -Fq 'gh release edit ' "$LOG"; then
+  echo 'Stale build reached the Draft-to-public mutation after public history advanced.' >&2
+  exit 1
+fi
+HISTORY_ENUMERATION_COUNT=''
+HISTORY_ENUMERATION_STATUS=0
+set +e
+HISTORY_ENUMERATION_COUNT="$(grep -Fc 'select\(.draft\ ==\ false\)' "$LOG")"
+HISTORY_ENUMERATION_STATUS=$?
+set -e
+[[ "$HISTORY_ENUMERATION_STATUS" -eq 0 ]] || {
+  echo "Unable to count public release-history enumerations (grep status $HISTORY_ENUMERATION_STATUS)." >&2
+  exit 1
+}
+[[ "$HISTORY_ENUMERATION_COUNT" =~ ^[0-9]+$ ]] || {
+  echo "Public release-history enumeration count is not numeric: $HISTORY_ENUMERATION_COUNT" >&2
+  exit 1
+}
+[[ "$HISTORY_ENUMERATION_COUNT" -eq 2 ]] || {
+  echo "Expected two public release-history enumerations, found $HISTORY_ENUMERATION_COUNT." >&2
+  exit 1
+}
+export GH_FIXTURE_HISTORY_MODE='empty'
 
 # If main advances after the initial freshness check while the Draft is prepared, the
 # candidate is stale at publication time. A final pre-publication check must stop before
