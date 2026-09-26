@@ -123,6 +123,23 @@ cleanup() {
     fi
 
     if [[ "$CLEANUP_IS_DRAFT" == 'true' && "$CLEANUP_IS_IMMUTABLE" == 'false' ]]; then
+      FINAL_CLEANUP_RELEASE_ID=''
+      if ! FINAL_CLEANUP_RELEASE_ID="$(gh release view "$TAG" \
+        --repo "$GITHUB_REPOSITORY" \
+        --json databaseId \
+        --jq '.databaseId' 2>/dev/null)"; then
+        echo "Release cleanup skipped for $TAG: final release identity is unavailable; manual reconciliation required." >&2
+        return
+      fi
+      if [[ ! "$FINAL_CLEANUP_RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Release cleanup skipped for $TAG: final release identity is invalid; manual reconciliation required." >&2
+        return
+      fi
+      if [[ "$FINAL_CLEANUP_RELEASE_ID" != "$CREATED_RELEASE_ID" ]]; then
+        echo "Release cleanup skipped for $TAG: final release identity changed; manual reconciliation required." >&2
+        return
+      fi
+
       if ! gh release delete "$TAG" \
         --repo "$GITHUB_REPOSITORY" \
         --cleanup-tag \
