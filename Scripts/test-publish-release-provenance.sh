@@ -328,6 +328,18 @@ EOF
                   exit 0
                 fi
                 ;;
+              final-cleanup-query-failure)
+                if [[ "$identity_reads" -ge 3 ]]; then
+                  printf '101\n'
+                  exit 42
+                fi
+                ;;
+              final-cleanup-malformed)
+                if [[ "$identity_reads" -ge 3 ]]; then
+                  printf 'not-an-id\n'
+                  exit 0
+                fi
+                ;;
               query-failure-before-publication)
                 if [[ "$identity_reads" -eq 2 ]]; then
                   printf '101\n'
@@ -542,6 +554,29 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-i
   echo 'Replacement Draft identity did not survive the cleanup identity race.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# The final delete-boundary identity probe must itself fail closed.
+for identity_mode in final-cleanup-query-failure final-cleanup-malformed; do
+  reset_case
+  export GH_FIXTURE_IDENTITY_MODE="$identity_mode"
+  export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+  OUTPUT_FINAL_CLEANUP_PROBE="$FIXTURE/output-$identity_mode.log"
+  set +e
+  bash Scripts/publish-notarized-release.sh >"$OUTPUT_FINAL_CLEANUP_PROBE" 2>&1
+  STATUS=$?
+  set -e
+  [[ "$STATUS" -ne 0 ]]
+  if grep -Fq 'gh release delete ' "$LOG"; then
+    echo "Final cleanup identity mode $identity_mode reached destructive release deletion." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '101' ]]; then
+    echo "Run-owned Draft did not survive final cleanup identity mode $identity_mode." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+done
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
 
