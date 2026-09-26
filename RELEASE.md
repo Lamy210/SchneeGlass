@@ -266,7 +266,7 @@ Publication captures the run-created Draft identity after Draft creation succeed
 
 1. create an asset-free Draft Release through the Releases API, targeting the exact candidate SHA, and capture its run-owned `databaseId` from that same create response (never from a follow-up tag lookup)
 2. verify `targetCommitish` equals that candidate SHA
-3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
+3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt` as raw binary bodies to the captured run-owned Release `databaseId`; never resolve the upload target by tag
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
 5. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
 6. re-certify final Draft state, target, stable classification, repository immutability/governance, public build history, tag provenance, and exact equality with the captured run-owned `databaseId`

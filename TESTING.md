@@ -578,6 +578,7 @@ Draft creation captures the run-owned Release databaseId from the same successfu
 public Release build-number history
 pre-existing tag / release absence, with API enumeration and exact Release-name match probe failures distinguished from confirmed absence
 draft target SHA / assets
+Draft asset mutation addresses the captured run-owned Release databaseId directly; upload failures fail closed without tag fallback or replacement-target writes
 candidate commit still exactly matches re-fetched current main after Draft asset validation
 published release isImmutable == true
 Draft -> public mutation addresses the captured run-created Release databaseId directly and fails closed if that API mutation fails
