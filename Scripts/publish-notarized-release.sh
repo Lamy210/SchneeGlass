@@ -355,6 +355,23 @@ fi
 [[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target changed before publication"
 
+if ! PREPUBLICATION_IS_PRERELEASE="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json isPrerelease \
+  --jq '.isPrerelease')"; then
+  fail "unable to verify prerelease state before publication"
+fi
+case "$PREPUBLICATION_IS_PRERELEASE" in
+  false)
+    ;;
+  true)
+    fail "release became a prerelease before stable publication"
+    ;;
+  *)
+    fail "prerelease state is malformed before publication"
+    ;;
+esac
+
 PREPUBLICATION_IMMUTABILITY_JSON="$CANDIDATE_DIR/prepublication-immutable-releases.json"
 if ! gh api \
   -H 'X-GitHub-Api-Version: 2026-03-10' \
