@@ -645,7 +645,7 @@ export GH_FIXTURE_HISTORY_MODE='empty'
 
 # If main advances after the initial freshness check while the Draft is prepared, the
 # candidate is stale at publication time. A final pre-publication check must stop before
-# gh release edit and clean up the run-owned mutable Draft.
+# gh release edit and leave the run-owned Draft/tag for manual reconciliation.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -673,10 +673,12 @@ if grep -Fq 'gh release edit ' "$LOG"; then
   echo 'Stale candidate reached the publication command after main advanced during Draft preparation.' >&2
   exit 1
 fi
-grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
-grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"
-if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
-  echo 'Run-owned mutable Draft/tag was not cleaned up after final main freshness failure.' >&2
+! grep -Fq 'gh api --method DELETE' "$LOG"
+! grep -Fq 'git push --force-with-lease=' "$LOG"
+grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_MAIN_ADVANCED"
+grep -Fq 'manual reconciliation required' "$OUTPUT_MAIN_ADVANCED"
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Run-owned Draft/tag did not survive final main freshness failure.' >&2
   exit 1
 fi
 if ! assert_main_fetch_count 2; then
@@ -862,7 +864,7 @@ grep -Fq 'Release promotion failed: candidate source commit does not match curre
 ! grep -Fq 'gh release create ' "$LOG"
 export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 
-# An unexpected Draft asset must stop publication and clean up the run-owned Draft.
+# An unexpected Draft asset must stop publication and preserve the run-owned Draft/tag for manual reconciliation.
 FAILURES=0
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
@@ -887,19 +889,24 @@ else
     echo 'Draft asset mismatch reached the publication command.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if ! grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
-    echo 'Run-owned Draft was not deleted by Release ID after a pre-publication asset mismatch.' >&2
+  if grep -Fq 'gh api --method DELETE' "$LOG"; then
+    echo 'Draft asset mismatch reached destructive Release cleanup.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if ! grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"; then
-    echo 'Run-owned Draft tag was not deleted under an expected-SHA lease.' >&2
+  if grep -Fq 'git push --force-with-lease=' "$LOG"; then
+    echo 'Draft asset mismatch reached destructive tag cleanup.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_EXTRA_BEFORE"
+  grep -Fq 'manual reconciliation required' "$OUTPUT_EXTRA_BEFORE"
+  if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+    echo 'Run-owned Draft/tag did not survive pre-publication asset mismatch.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
 
-# If a positively-owned mutable Draft cleanup delete fails, the original publication
-# failure must remain, but the operator must also be told that manual reconciliation is
-# required. The Draft state intentionally remains to model the failed delete.
+# Pre-publication cleanup must remain non-destructive even when a synthetic
+# destructive delete path is configured to fail. That path must never be invoked.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -911,30 +918,31 @@ export GH_FIXTURE_GREP_MODE='normal'
 export GH_FIXTURE_DELETE_MODE='failure'
 export GH_FIXTURE_ASSET_MODE='extra-before'
 export GH_FIXTURE_CLEANUP_RACE_MODE='none'
-OUTPUT_CLEANUP_DELETE_FAILURE="$FIXTURE/output-cleanup-delete-failure.log"
+OUTPUT_NO_DELETE="$FIXTURE/output-prepublication-no-delete.log"
 set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_CLEANUP_DELETE_FAILURE" 2>&1
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_NO_DELETE" 2>&1
 STATUS=$?
 set -e
 
 if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_CLEANUP_DELETE_FAILURE"
+  cat "$OUTPUT_NO_DELETE"
   cat "$LOG"
-  echo 'Release publication unexpectedly succeeded after Draft asset mismatch and cleanup delete failure.' >&2
+  echo 'Release publication unexpectedly succeeded after Draft asset mismatch.' >&2
   exit 1
 fi
 
-"$REAL_GREP" -Fq   'Release promotion failed: draft release asset set does not exactly match expected public assets'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
-"$REAL_GREP" -Fq   'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft by release ID; manual reconciliation required'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
-"$REAL_GREP" -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
-if "$REAL_GREP" -Fq 'git push --force-with-lease=' "$LOG"; then
-  echo 'Tag cleanup was attempted after Release-ID deletion failed.' >&2
+"$REAL_GREP" -Fq 'Release promotion failed: draft release asset set does not exactly match expected public assets' "$OUTPUT_NO_DELETE"
+"$REAL_GREP" -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_NO_DELETE"
+"$REAL_GREP" -Fq 'manual reconciliation required' "$OUTPUT_NO_DELETE"
+if "$REAL_GREP" -Fq 'gh api --method DELETE' "$LOG"   || "$REAL_GREP" -Fq 'git push --force-with-lease=' "$LOG"; then
+  cat "$LOG"
+  echo 'Pre-publication failure reached destructive remote cleanup.' >&2
   exit 1
 fi
 if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
-  cat "$OUTPUT_CLEANUP_DELETE_FAILURE"
+  cat "$OUTPUT_NO_DELETE"
   cat "$LOG"
-  echo 'Fixture did not preserve the Draft after simulated cleanup delete failure.' >&2
+  echo 'Run-owned Draft/tag did not survive non-destructive pre-publication cleanup.' >&2
   exit 1
 fi
 export GH_FIXTURE_DELETE_MODE='success'

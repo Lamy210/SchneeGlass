@@ -262,7 +262,7 @@ Before creating a Release it revalidates:
 - target tag absence is positively established (`git ls-remote --exit-code` status 2); an unavailable/failed tag probe fails closed
 - target GitHub Release absence is positively established by a fail-closed paginated API enumeration; an unavailable Release probe fails closed
 
-Publication establishes cleanup ownership only after Draft creation succeeds:
+Publication captures the run-created Draft identity after Draft creation succeeds:
 
 1. create an asset-free Draft Release targeting the exact candidate SHA
 2. verify `targetCommitish` equals that candidate SHA
@@ -277,7 +277,7 @@ Publication establishes cleanup ownership only after Draft creation succeeds:
 
 If publication reports `isImmutable=false`, the workflow removes the mutable Release and tag that the current run created and fails. Cleanup is considered confirmed only after a fail-closed GitHub Releases enumeration succeeds, exact target-tag membership returns the confirmed no-match status, and `git ls-remote --exit-code` returns status 2 for the tag. Enumeration success alone is not absence proof: an exact-match probe error remains ambiguous. If either post-delete absence check is unavailable, invalid, or still reports the object, publication fails as ambiguous and requires manual reconciliation instead of claiming successful removal. It must not leave a mutable public Release as the official production artifact. Pre-existing tag/Release names are rejected before creation and are never cleanup targets.
 
-Before this run's own publication command succeeds, automatic EXIT cleanup is allowed only when the live object is positively revalidated as both `isDraft=true` and `isImmutable=false`. If either state read is unavailable/invalid, or the Release is already public/immutable, cleanup becomes non-destructive and requires manual reconciliation. Absence of proof is never treated as authority to delete a Release or tag. If the positively-authorized cleanup delete itself fails, the original publication failure remains authoritative and the run must additionally report that the mutable Draft/tag may remain and requires manual reconciliation.
+Before this run's own publication command succeeds, EXIT cleanup is intentionally non-destructive. It removes only local temporary release data; it may perform read-only diagnostics, but it never deletes or edits a remote GitHub Release or tag. Any failure after this run creates a Draft emits manual-reconciliation guidance containing the target tag and the captured Release ID (or explicitly reports that the ID was unavailable if identity capture itself failed). The operator must inspect and reconcile that remote state before retrying. This avoids relying on a non-atomic gap between "still a mutable Draft" proof and an unconditional Release DELETE.
 
 If final public asset or provenance verification is unavailable or inconsistent after publication, the workflow fails without destructive cleanup and requires manual reconciliation because the public state may already be immutable.
 

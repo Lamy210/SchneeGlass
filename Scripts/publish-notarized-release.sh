@@ -81,11 +81,23 @@ release_asset_set_is_exact() {
     && "$evidence_count" -eq 1 ]]
 }
 
+cleanup_guidance() {
+  local reason="$1"
+  local release_id="${CREATED_RELEASE_ID:-unavailable}"
+
+  echo "Release cleanup is non-destructive for $TAG (release ID $release_id): $reason; no remote Release/tag cleanup was attempted; manual reconciliation required." >&2
+}
+
 cleanup() {
   set +e
   rm -rf "$CANDIDATE_DIR"
 
   if [[ "$CREATED_RELEASE" == 'true' && "$PUBLICATION_COMMAND_SUCCEEDED" != 'true' ]]; then
+    if [[ -z "$CREATED_RELEASE_ID" ]]; then
+      cleanup_guidance "Draft creation succeeded but its Release identity was not captured"
+      return
+    fi
+
     CLEANUP_RELEASE_ID=''
     CLEANUP_IS_DRAFT=''
     CLEANUP_IS_IMMUTABLE=''
@@ -94,15 +106,15 @@ cleanup() {
       --repo "$GITHUB_REPOSITORY" \
       --json databaseId \
       --jq '.databaseId' 2>/dev/null)"; then
-      echo "Release cleanup skipped for $TAG: release identity is unavailable; manual reconciliation required." >&2
+      cleanup_guidance "release identity is unavailable"
       return
     fi
     if [[ ! "$CLEANUP_RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
-      echo "Release cleanup skipped for $TAG: release identity is invalid; manual reconciliation required." >&2
+      cleanup_guidance "release identity is invalid"
       return
     fi
     if [[ "$CLEANUP_RELEASE_ID" != "$CREATED_RELEASE_ID" ]]; then
-      echo "Release cleanup skipped for $TAG: release identity changed; manual reconciliation required." >&2
+      cleanup_guidance "release identity changed"
       return
     fi
 
@@ -110,7 +122,7 @@ cleanup() {
       --repo "$GITHUB_REPOSITORY" \
       --json isDraft \
       --jq '.isDraft' 2>/dev/null)"; then
-      echo "Release cleanup skipped for $TAG: draft state is unavailable; manual reconciliation required." >&2
+      cleanup_guidance "draft state is unavailable"
       return
     fi
 
@@ -118,7 +130,7 @@ cleanup() {
       --repo "$GITHUB_REPOSITORY" \
       --json isImmutable \
       --jq '.isImmutable' 2>/dev/null)"; then
-      echo "Release cleanup skipped for $TAG: immutability state is unavailable; manual reconciliation required." >&2
+      cleanup_guidance "immutability state is unavailable"
       return
     fi
 
@@ -128,44 +140,29 @@ cleanup() {
         --repo "$GITHUB_REPOSITORY" \
         --json databaseId \
         --jq '.databaseId' 2>/dev/null)"; then
-        echo "Release cleanup skipped for $TAG: final release identity is unavailable; manual reconciliation required." >&2
+        cleanup_guidance "final release identity is unavailable"
         return
       fi
       if [[ ! "$FINAL_CLEANUP_RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
-        echo "Release cleanup skipped for $TAG: final release identity is invalid; manual reconciliation required." >&2
+        cleanup_guidance "final release identity is invalid"
         return
       fi
       if [[ "$FINAL_CLEANUP_RELEASE_ID" != "$CREATED_RELEASE_ID" ]]; then
-        echo "Release cleanup skipped for $TAG: final release identity changed; manual reconciliation required." >&2
+        cleanup_guidance "final release identity changed"
         return
       fi
 
-      if ! gh api \
-        --method DELETE \
-        -H 'X-GitHub-Api-Version: 2026-03-10' \
-        "repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID" \
-        >/dev/null 2>&1; then
-        echo "Release cleanup failed for $TAG: unable to delete run-owned mutable Draft by release ID; manual reconciliation required." >&2
-        return
-      fi
-
-      if ! git push \
-        --force-with-lease="refs/tags/$TAG:$RUN_HEAD_SHA" \
-        origin \
-        ":refs/tags/$TAG" \
-        >/dev/null 2>&1; then
-        echo "Release cleanup partially completed for $TAG: Release was deleted but tag lease cleanup failed; manual reconciliation required." >&2
-      fi
+      cleanup_guidance "remote state may change after validation"
       return
     fi
 
     if [[ "$CLEANUP_IS_DRAFT" != 'false' && "$CLEANUP_IS_DRAFT" != 'true' ]] \
       || [[ "$CLEANUP_IS_IMMUTABLE" != 'false' && "$CLEANUP_IS_IMMUTABLE" != 'true' ]]; then
-      echo "Release cleanup skipped for $TAG: release state is invalid; manual reconciliation required." >&2
+      cleanup_guidance "release state is invalid"
       return
     fi
 
-    echo "Release cleanup skipped for $TAG: release is no longer a mutable Draft; manual reconciliation required." >&2
+    cleanup_guidance "release is no longer a mutable Draft"
   fi
 }
 trap cleanup EXIT
@@ -293,6 +290,7 @@ gh release create "$TAG" \
   --title "SchneeGlass ${RELEASE_VERSION}" \
   --generate-notes \
   --draft
+CREATED_RELEASE=true
 
 if ! CREATED_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -302,7 +300,6 @@ if ! CREATED_RELEASE_ID="$(gh release view "$TAG" \
 fi
 [[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
   || fail "created draft release identity is invalid"
-CREATED_RELEASE=true
 
 IS_DRAFT="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
