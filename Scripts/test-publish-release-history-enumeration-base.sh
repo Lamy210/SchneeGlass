@@ -324,6 +324,9 @@ EOF
           isPrerelease)
             printf 'false\n'
             ;;
+          databaseId)
+            printf '101\n'
+            ;;
           targetCommitish) printf '%s\n' '0123456789abcdef0123456789abcdef01234567' ;;
           assets)
             case "$ASSET_MODE" in
