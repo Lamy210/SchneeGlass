@@ -199,7 +199,22 @@ case "$COMMAND" in
           touch "$STATE/release-created"
           touch "$STATE/release-tag"
           printf '101\n' > "$STATE/release-id"
-          printf '101\n'
+          case "${GH_FIXTURE_CREATE_MODE:-success}" in
+            success)
+              printf '101\n'
+              ;;
+            failure-after-create)
+              echo 'fixture: create response unavailable after remote Draft creation' >&2
+              exit 42
+              ;;
+            malformed-id)
+              printf 'not-an-id\n'
+              ;;
+            *)
+              echo "unexpected create fixture mode: ${GH_FIXTURE_CREATE_MODE:-}" >&2
+              exit 110
+              ;;
+          esac
           if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
             printf '202\n' > "$STATE/release-id"
           fi
@@ -709,6 +724,47 @@ if ! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/e
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# A failed create response is ambiguous because the remote Draft may already exist.
+# The workflow must fail closed, preserve remote state, and require reconciliation.
+reset_case
+export GH_FIXTURE_CREATE_MODE='failure-after-create'
+OUTPUT_CREATE_RESPONSE_FAILURE="$FIXTURE/output-create-response-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_RESPONSE_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to create draft release and capture its identity; remote state may be ambiguous and requires manual reconciliation' "$OUTPUT_CREATE_RESPONSE_FAILURE"
+if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE ' "$LOG"; then
+  echo 'Ambiguous Draft creation failure reached a remote Release mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" || ! -f "$GH_FIXTURE_STATE/release-id" ]]; then
+  echo 'Ambiguous remote Draft state was not preserved after create response failure.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_CREATE_MODE='success'
+
+# A successful create response with a malformed identity cannot establish ownership.
+reset_case
+export GH_FIXTURE_CREATE_MODE='malformed-id'
+OUTPUT_CREATE_ID_MALFORMED="$FIXTURE/output-create-id-malformed.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_CREATE_ID_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: created draft release identity is invalid' "$OUTPUT_CREATE_ID_MALFORMED"
+if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE ' "$LOG"; then
+  echo 'Malformed create-response identity reached a remote Release mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Draft state was not preserved after malformed create-response identity.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_CREATE_MODE='success'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
