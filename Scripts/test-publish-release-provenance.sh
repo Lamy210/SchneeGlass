@@ -123,6 +123,128 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/git"
 
+cat > "$FIXTURE/bin/curl" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG="${GH_FIXTURE_LOG:?}"
+STATE="${GH_FIXTURE_STATE:?}"
+UPLOAD_MODE="${GH_FIXTURE_UPLOAD_MODE:-success}"
+
+printf 'curl ' >> "$LOG"
+for arg in "$@"; do
+  if [[ "$arg" == Authorization:\ Bearer\ * ]]; then
+    printf '%q ' 'Authorization: Bearer ***' >> "$LOG"
+  else
+    printf '%q ' "$arg" >> "$LOG"
+  fi
+done
+printf '\n' >> "$LOG"
+
+METHOD=''
+URL=''
+BODY=''
+CONTENT_TYPE=''
+ACCEPT_OK=false
+AUTH_OK=false
+API_VERSION_OK=false
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --fail-with-body|--silent|--show-error|--location)
+      shift
+      ;;
+    --request)
+      METHOD="$2"
+      shift 2
+      ;;
+    --header)
+      case "$2" in
+        'Accept: application/vnd.github+json')
+          ACCEPT_OK=true
+          ;;
+        'Authorization: Bearer fixture-token')
+          AUTH_OK=true
+          ;;
+        'X-GitHub-Api-Version: 2026-03-10')
+          API_VERSION_OK=true
+          ;;
+        'Content-Type: '*)
+          CONTENT_TYPE="${2#Content-Type: }"
+          ;;
+        *)
+          echo "unexpected curl header: $2" >&2
+          exit 111
+          ;;
+      esac
+      shift 2
+      ;;
+    --data-binary)
+      BODY="$2"
+      shift 2
+      ;;
+    https://uploads.github.com/*)
+      URL="$1"
+      shift
+      ;;
+    *)
+      echo "unexpected curl argument: $1" >&2
+      exit 112
+      ;;
+  esac
+done
+
+[[ "$METHOD" == 'POST' ]]
+[[ "$ACCEPT_OK" == true ]]
+[[ "$AUTH_OK" == true ]]
+[[ "$API_VERSION_OK" == true ]]
+[[ "$BODY" == @* ]]
+ASSET_PATH="${BODY#@}"
+[[ -f "$ASSET_PATH" ]]
+
+if [[ "$URL" =~ ^https://uploads\.github\.com/repos/example/SchneeGlass/releases/([0-9]+)/assets\?name=(.+)$ ]]; then
+  RELEASE_ID="${BASH_REMATCH[1]}"
+  ASSET_NAME="${BASH_REMATCH[2]}"
+else
+  echo "unexpected release asset upload URL: $URL" >&2
+  exit 113
+fi
+
+case "$ASSET_NAME" in
+  SchneeGlass-0.1.0.zip)
+    [[ "$CONTENT_TYPE" == 'application/zip' ]]
+    ;;
+  SHA256SUMS|RELEASE_EVIDENCE.txt)
+    [[ "$CONTENT_TYPE" == 'text/plain' ]]
+    ;;
+  *)
+    echo "unexpected release asset name: $ASSET_NAME" >&2
+    exit 114
+    ;;
+esac
+
+printf '%s\n' "$RELEASE_ID" >> "$STATE/asset-upload-attempt-release-ids"
+
+if [[ "$UPLOAD_MODE" == 'failure' ]]; then
+  echo 'fixture: release asset upload unavailable' >&2
+  exit 42
+fi
+[[ "$UPLOAD_MODE" == 'success' ]] || {
+  echo "unexpected asset upload fixture mode: $UPLOAD_MODE" >&2
+  exit 115
+}
+
+if [[ ! -f "$STATE/release-id" || "$(cat "$STATE/release-id")" != "$RELEASE_ID" ]]; then
+  echo "fixture: target Release ID $RELEASE_ID no longer exists" >&2
+  exit 1
+fi
+
+printf '%s\n' "$RELEASE_ID" >> "$STATE/asset-upload-release-ids"
+printf '%s\n' "$ASSET_NAME" >> "$STATE/asset-upload-names"
+exit 0
+SHIM
+chmod +x "$FIXTURE/bin/curl"
+
 cat > "$FIXTURE/bin/gh" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -788,6 +910,10 @@ if [[ -f "$GH_FIXTURE_STATE/asset-upload-release-id" && "$(cat "$GH_FIXTURE_STAT
   echo 'Signed candidate assets were uploaded to replacement Release ID 202.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+if [[ -f "$GH_FIXTURE_STATE/asset-upload-release-ids" ]] && grep -Fxq '202' "$GH_FIXTURE_STATE/asset-upload-release-ids"; then
+  echo 'ID-addressed uploader wrote signed candidate assets to replacement Release ID 202.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
 if grep -Fq 'gh release upload ' "$LOG"; then
   echo 'Draft asset upload still uses a tag-addressed release command.' >&2
   FAILURES=$((FAILURES + 1))
@@ -797,6 +923,27 @@ if ! grep -Fq 'uploads.github.com/repos/example/SchneeGlass/releases/101/assets'
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# A transport/API failure during ID-addressed upload leaves potentially partial state
+# on the run-owned Draft and must fail closed without falling back to the tag.
+reset_case
+export GH_FIXTURE_UPLOAD_MODE='failure'
+OUTPUT_ASSET_UPLOAD_FAILURE="$FIXTURE/output-asset-upload-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_UPLOAD_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to upload release asset SchneeGlass-0.1.0.zip to run-owned Release ID 101; remote state may be ambiguous and requires manual reconciliation' "$OUTPUT_ASSET_UPLOAD_FAILURE"
+if grep -Fq 'gh release upload ' "$LOG" || grep -Fq 'repos/example/SchneeGlass/releases/202' "$LOG"; then
+  echo 'Failed ID-addressed asset upload fell back to a tag/replacement Release.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '101' ]]; then
+  echo 'Run-owned Draft state was not preserved after asset upload failure.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_UPLOAD_MODE='success'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
