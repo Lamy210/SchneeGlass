@@ -549,7 +549,7 @@ EOF
             elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$draft_reads" -ge 2 ]]; then
               printf 'unknown\n'
             elif [[ -f "$STATE/release-public" ]]; then
-              if [[ "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+              if [[ "$IDENTITY_MODE" == 'replace-after-publication' || "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
                 printf '202\n' > "$STATE/release-id"
               fi
               printf 'false\n'
@@ -655,6 +655,13 @@ EOF
                   exit 0
                 fi
                 ;;
+              flip-flop-tag-verification)
+                if [[ "$identity_reads" -eq 2 || "$identity_reads" -eq 3 ]]; then
+                  printf '101\n' > "$STATE/release-id"
+                  printf '101\n'
+                  exit 0
+                fi
+                ;;
             esac
             if [[ -f "$STATE/release-id" ]]; then
               cat "$STATE/release-id"
@@ -692,6 +699,10 @@ EOF
                   touch "$STATE/release-prerelease"
                 fi
                 if [[ "$IDENTITY_MODE" == 'replace-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  printf '202\n' > "$STATE/release-id"
+                fi
+                if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' && "$asset_reads" -eq 2 ]]; then
+                  touch "$STATE/run-owned-invalid"
                   printf '202\n' > "$STATE/release-id"
                 fi
                 ;;
@@ -944,6 +955,32 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_UPLOAD_MODE='success'
+
+# Tag-addressed state verification can be satisfied by a transient replacement and
+# then flip back to the run-owned ID for the continuity check. Model ID 101 as
+# invalid once the flip begins while replacement ID 202 keeps valid visible state.
+# The workflow must verify ID 101 directly and fail before publication.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='flip-flop-tag-verification'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_VERIFICATION_FLIP_FLOP="$FIXTURE/output-tag-verification-flip-flop.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_VERIFICATION_FLIP_FLOP" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  echo 'Tag-addressed verification accepted a replacement flip-flop around the run-owned Release.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
+  echo 'Run-owned Release reached publication after its own state became invalid.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if ! grep -Fq 'gh api repos/example/SchneeGlass/releases/101' "$LOG"; then
+  echo 'Run-owned Release state was not verified directly by captured Release ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
