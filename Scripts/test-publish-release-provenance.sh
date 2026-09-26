@@ -311,22 +311,38 @@ EOF
             esac
             ;;
           databaseId)
+            identity_reads="$(awk '/--json databaseId/ { count += 1 } END { print count + 0 }' "$LOG")"
             case "$IDENTITY_MODE" in
-              query-failure)
-                printf '101\n'
-                exit 42
-                ;;
-              malformed)
-                printf 'not-an-id\n'
-                ;;
-              *)
-                if [[ -f "$STATE/release-id" ]]; then
-                  cat "$STATE/release-id"
-                else
+              cleanup-query-failure)
+                if [[ "$identity_reads" -ge 2 ]]; then
                   printf '101\n'
+                  exit 42
+                fi
+                ;;
+              cleanup-malformed)
+                if [[ "$identity_reads" -ge 2 ]]; then
+                  printf 'not-an-id\n'
+                  exit 0
+                fi
+                ;;
+              query-failure-before-publication)
+                if [[ "$identity_reads" -eq 2 ]]; then
+                  printf '101\n'
+                  exit 42
+                fi
+                ;;
+              malformed-before-publication)
+                if [[ "$identity_reads" -eq 2 ]]; then
+                  printf 'not-an-id\n'
+                  exit 0
                 fi
                 ;;
             esac
+            if [[ -f "$STATE/release-id" ]]; then
+              cat "$STATE/release-id"
+            else
+              printf '101\n'
+            fi
             ;;
           targetCommitish)
             target_reads="$(awk '/--json targetCommitish/ { count += 1 } END { print count + 0 }' "$LOG")"
@@ -528,6 +544,50 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# Cleanup identity enumeration must itself fail closed without destructive action.
+for identity_mode in cleanup-query-failure cleanup-malformed; do
+  reset_case
+  export GH_FIXTURE_IDENTITY_MODE="$identity_mode"
+  export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+  OUTPUT_IDENTITY_CLEANUP_PROBE="$FIXTURE/output-$identity_mode.log"
+  set +e
+  bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_CLEANUP_PROBE" 2>&1
+  STATUS=$?
+  set -e
+  [[ "$STATUS" -ne 0 ]]
+  if grep -Fq 'gh release delete ' "$LOG"; then
+    echo "Cleanup identity mode $identity_mode reached destructive release deletion." >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Final publication identity enumeration must preserve command failures and reject
+# malformed IDs before Draft -> public.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='query-failure-before-publication'
+OUTPUT_IDENTITY_QUERY_FAILURE="$FIXTURE/output-identity-query-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_QUERY_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to verify draft release identity before publication' "$OUTPUT_IDENTITY_QUERY_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='malformed-before-publication'
+OUTPUT_IDENTITY_MALFORMED="$FIXTURE/output-identity-malformed-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_MALFORMED" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release identity is invalid before publication' "$OUTPUT_IDENTITY_MALFORMED"
+! grep -Fq 'gh release edit ' "$LOG"
 export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Draft assets can change after the initial exact-set check. Missing assets must
