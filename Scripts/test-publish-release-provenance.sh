@@ -150,6 +150,8 @@ case "$COMMAND" in
     METHOD='GET'
     ENDPOINT=''
     JQ=''
+    FIELDS=()
+    RAW_FIELDS=()
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
@@ -163,6 +165,14 @@ case "$COMMAND" in
           JQ="$2"
           shift 2
           ;;
+        -F|--field)
+          FIELDS+=("$2")
+          shift 2
+          ;;
+        -f|--raw-field)
+          RAW_FIELDS+=("$2")
+          shift 2
+          ;;
         -H|--header)
           shift 2
           ;;
@@ -173,6 +183,33 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'PATCH' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          [[ "${#FIELDS[@]}" -eq 2 ]]
+          [[ "${FIELDS[0]}" == 'draft=false' ]]
+          [[ "${FIELDS[1]}" == 'prerelease=false' ]]
+          [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
+          [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
+          if [[ "${GH_FIXTURE_PUBLISH_MODE:-success}" == 'failure' ]]; then
+            echo 'fixture: release publication unavailable' >&2
+            exit 42
+          fi
+          if [[ ! -f "$STATE/release-id" || "$(cat "$STATE/release-id")" != '101' ]]; then
+            echo 'fixture: run-owned release ID no longer exists' >&2
+            exit 1
+          fi
+          rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-public"
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api patch endpoint: $ENDPOINT" >&2
+          exit 108
+          ;;
+      esac
+    fi
 
     if [[ "$METHOD" == 'DELETE' ]]; then
       case "$ENDPOINT" in
@@ -415,6 +452,17 @@ EOF
               malformed-before-publication)
                 if [[ "$identity_reads" -eq 2 ]]; then
                   printf 'not-an-id\n'
+                  exit 0
+                fi
+                ;;
+              replace-after-final-prepublication-identity)
+                if [[ "$identity_reads" -eq 2 ]]; then
+                  if [[ -f "$STATE/release-id" ]]; then
+                    cat "$STATE/release-id"
+                  else
+                    printf '101\n'
+                  fi
+                  printf '202\n' > "$STATE/release-id"
                   exit 0
                 fi
                 ;;
@@ -770,12 +818,56 @@ else
     echo 'Replacement Draft did not fail with the expected identity error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Replacement Draft reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# The final pre-publication identity proof cannot safely authorize a later
+# tag-addressed mutation. Replace ID 101 with same-tag Draft ID 202 immediately
+# after the proof; this workflow must never publish the replacement.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-after-final-prepublication-identity'
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_REPLACED_AT_MUTATION="$FIXTURE/output-replaced-at-publication-mutation.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_REPLACED_AT_MUTATION" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+if grep -Fq 'gh release edit ' "$LOG"; then
+  echo 'Same-tag replacement reached tag-addressed Draft-to-public mutation.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ -f "$GH_FIXTURE_STATE/release-public" && "$(cat "$GH_FIXTURE_STATE/release-id")" == '202' ]]; then
+  echo 'Replacement Release ID 202 was made public before identity mismatch detection.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
+  :
+else
+  echo 'Publication mutation did not target the captured run-owned Release ID 101.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
+# The ID-addressed publication API itself must fail closed without claiming success.
+reset_case
+export GH_FIXTURE_PUBLISH_MODE='failure'
+OUTPUT_PUBLICATION_API_FAILURE="$FIXTURE/output-publication-api-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLICATION_API_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to publish run-owned Release by identity; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_PUBLICATION_API_FAILURE"
+grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+[[ ! -f "$GH_FIXTURE_STATE/release-public" ]]
+export GH_FIXTURE_PUBLISH_MODE='success'
 
 # Cleanup identity enumeration must itself fail closed without destructive action.
 for identity_mode in cleanup-query-failure cleanup-malformed; do
@@ -813,7 +905,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release identity before publication' "$OUTPUT_IDENTITY_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 reset_case
 export GH_FIXTURE_IDENTITY_MODE='malformed-before-publication'
@@ -824,7 +916,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: draft release identity is invalid before publication' "$OUTPUT_IDENTITY_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_IDENTITY_MODE='stable'
 
 # Draft assets can change after the initial exact-set check. Missing assets must
@@ -849,7 +941,7 @@ else
     echo 'Missing Draft asset did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Missing Draft asset reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -876,7 +968,7 @@ else
     echo 'Unexpected Draft asset did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Unexpected Draft asset reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -893,7 +985,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # The Draft can be published by another administrator after final asset
@@ -920,7 +1012,7 @@ else
     echo 'Concurrent Draft publication did not fail at the final pre-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Concurrent Draft publication reached this workflow Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -950,7 +1042,7 @@ else
     echo 'Draft target drift did not fail at the final pre-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Draft target drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -970,7 +1062,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release state before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # A malformed Draft state is not positive proof of ownership/state.
 reset_case
@@ -985,7 +1077,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_INVALID"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_DRAFT_MODE='exact'
 
 # Final Draft-target enumeration must preserve command failure even with plausible output.
@@ -1001,7 +1093,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify draft release target before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Non-SHA target values must also fail before publication.
 reset_case
@@ -1016,7 +1108,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: draft release target returned an invalid commit SHA before publication' "$OUTPUT_TARGET_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_TARGET_MODE='exact'
 
 # A stable Draft can be changed into a prerelease during the final Draft window.
@@ -1043,7 +1135,7 @@ else
     echo 'Prerelease drift did not fail at the final stable-publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Prerelease drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1069,7 +1161,7 @@ else
     echo 'Publication mutation did not atomically clear prerelease classification.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if ! grep -Fq -- '--prerelease=false' "$LOG"; then
+  if ! grep -Fq -- '-F prerelease=false' "$LOG"; then
     echo 'Publication mutation did not explicitly force prerelease=false.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1086,7 +1178,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify prerelease state before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed prerelease state is not positive proof of a stable release.
 reset_case
@@ -1098,7 +1190,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: prerelease state is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 
 # Release immutability can drift after earlier governance checks. A disabled
@@ -1125,7 +1217,7 @@ else
     echo 'Disabled release immutability did not fail at the final publication boundary.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Disabled release immutability reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1142,7 +1234,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: unable to verify release immutability before publication' "$OUTPUT_IMMUTABILITY_QUERY_FAILURE"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed API responses are not positive proof that immutability is enabled.
 reset_case
@@ -1154,7 +1246,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release immutability response is malformed before publication' "$OUTPUT_IMMUTABILITY_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_IMMUTABILITY_MODE='enabled'
 
 # Governance can drift while Draft preparation is in progress even when current main
@@ -1179,7 +1271,7 @@ else
     echo 'Governance drift did not fail with the expected final-certification error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Governance drift reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1208,7 +1300,7 @@ else
     echo 'Retargeted Draft tag did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Retargeted Draft tag reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1235,7 +1327,7 @@ else
     echo 'Missing Draft tag did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh release edit ' "$LOG"; then
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
     echo 'Missing Draft tag reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
@@ -1254,7 +1346,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release tag returned an invalid remote ref set before publication' "$OUTPUT_TAG_AMBIGUOUS"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed tag provenance must also fail before publication.
 reset_case
@@ -1268,7 +1360,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release promotion failed: release tag returned an invalid remote ref before publication' "$OUTPUT_TAG_MALFORMED"
-! grep -Fq 'gh release edit ' "$LOG"
+! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_TAG_MODE='exact'
 
 # The Draft target can be correct and still change after publication. The final public

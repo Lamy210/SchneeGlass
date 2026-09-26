@@ -264,17 +264,18 @@ Before creating a Release it revalidates:
 
 Publication captures the run-created Draft identity after Draft creation succeeds:
 
-1. create an asset-free Draft Release targeting the exact candidate SHA
+1. create an asset-free Draft Release targeting the exact candidate SHA and capture its run-owned `databaseId`
 2. verify `targetCommitish` equals that candidate SHA
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
 5. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
-6. publish
-7. require `isImmutable=true`
-8. re-read the immutable public Release and require the same exact three-asset set
-9. re-read the public Release `targetCommitish` and require the exact candidate SHA
-10. resolve the final remote release tag and require it to point to the exact candidate SHA
-11. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
+6. re-certify final Draft state, target, stable classification, repository immutability/governance, public build history, tag provenance, and exact equality with the captured run-owned `databaseId`
+7. publish that exact Draft by the captured `databaseId` (not by tag), forcing `draft=false`, `prerelease=false`, and `make_latest=true`
+8. require the resulting public Release to report `isDraft=false` and `isImmutable=true`
+9. re-read the immutable public Release and require the same exact three-asset set
+10. re-read the public Release `targetCommitish` and require the exact candidate SHA
+11. resolve the final remote release tag and require it to point to the exact candidate SHA
+12. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
 
 If publication reports `isImmutable=false`, the workflow fails without deleting or editing the remote Release or tag. It emits manual-reconciliation guidance containing the target tag and captured Release ID so an operator can inspect the exact public state before taking any corrective action. Automatic deletion is intentionally prohibited because the mutable-state proof and a later destructive delete cannot be made atomic; the same tag/Release may change between those operations. Pre-existing tag/Release names are still rejected before creation.
 
