@@ -110,6 +110,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TARGET_MODE="${GH_FIXTURE_TARGET_MODE:-exact}"
+ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
@@ -257,7 +258,38 @@ EOF
             fi
             ;;
           assets)
-            printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+            asset_reads="$(grep -Fc -- '--json assets' "$LOG")"
+            case "$ASSET_MODE" in
+              exact)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              missing-before-publication)
+                if [[ "$asset_reads" -le 1 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS'
+                fi
+                ;;
+              extra-before-publication)
+                if [[ "$asset_reads" -le 1 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.bin'
+                fi
+                ;;
+              enumeration-failure-before-publication)
+                if [[ "$asset_reads" -le 1 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip'
+                  exit 42
+                fi
+                ;;
+              *)
+                echo "unexpected asset fixture mode: $ASSET_MODE" >&2
+                exit 104
+                ;;
+            esac
             ;;
           isImmutable)
             if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
@@ -322,6 +354,7 @@ FAILURES=0
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
 export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EXACT="$FIXTURE/output-exact.log"
 set +e
 bash Scripts/publish-notarized-release.sh >"$OUTPUT_EXACT" 2>&1
@@ -333,6 +366,75 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# Draft assets can change after the initial exact-set check. Missing assets must
+# be rejected before Draft -> public, not only by post-publication verification.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='missing-before-publication'
+OUTPUT_ASSET_MISSING="$FIXTURE/output-asset-missing-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_MISSING" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_ASSET_MISSING"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after a Draft asset disappeared.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_ASSET_MISSING"; then
+    cat "$OUTPUT_ASSET_MISSING"
+    echo 'Missing Draft asset did not fail with the expected pre-publication error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Missing Draft asset reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# Unexpected assets added during the Draft window must fail at the same boundary.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_ASSET_EXTRA="$FIXTURE/output-asset-extra-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_EXTRA" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_ASSET_EXTRA"
+  cat "$LOG"
+  echo 'Release publication unexpectedly succeeded after an unexpected Draft asset appeared.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_ASSET_EXTRA"; then
+    cat "$OUTPUT_ASSET_EXTRA"
+    echo 'Unexpected Draft asset did not fail with the expected pre-publication error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh release edit ' "$LOG"; then
+    echo 'Unexpected Draft asset reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+# Asset enumeration itself must also fail closed at the final Draft boundary.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='enumeration-failure-before-publication'
+OUTPUT_ASSET_ENUMERATION_FAILURE="$FIXTURE/output-asset-enumeration-failure-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_ENUMERATION_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
+! grep -Fq 'gh release edit ' "$LOG"
+export GH_FIXTURE_ASSET_MODE='exact'
 
 # Governance can drift while Draft preparation is in progress even when current main
 # remains unchanged. Publication must re-read governance immediately before Draft -> public.

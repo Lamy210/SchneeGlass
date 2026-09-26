@@ -326,6 +326,15 @@ read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <
 [[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "release tag no longer resolves to candidate source commit before publication"
 
+if ! PREPUBLICATION_ASSET_NAMES="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json assets \
+  --jq '.assets[].name')"; then
+  fail "unable to enumerate draft release assets before publication"
+fi
+release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
+  || fail "draft release asset set changed before publication"
+
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --draft=false \
