@@ -53,6 +53,7 @@ RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 CANDIDATE_DIR="$RUNNER_TEMP/SchneeGlassReleasePromotion"
 HISTORY_DIR="$CANDIDATE_DIR/published-build-history"
 CREATED_RELEASE=false
+CREATED_RELEASE_ID=''
 PUBLICATION_COMMAND_SUCCEEDED=false
 
 release_asset_set_is_exact() {
@@ -85,8 +86,25 @@ cleanup() {
   rm -rf "$CANDIDATE_DIR"
 
   if [[ "$CREATED_RELEASE" == 'true' && "$PUBLICATION_COMMAND_SUCCEEDED" != 'true' ]]; then
+    CLEANUP_RELEASE_ID=''
     CLEANUP_IS_DRAFT=''
     CLEANUP_IS_IMMUTABLE=''
+
+    if ! CLEANUP_RELEASE_ID="$(gh release view "$TAG" \
+      --repo "$GITHUB_REPOSITORY" \
+      --json databaseId \
+      --jq '.databaseId' 2>/dev/null)"; then
+      echo "Release cleanup skipped for $TAG: release identity is unavailable; manual reconciliation required." >&2
+      return
+    fi
+    if [[ ! "$CLEANUP_RELEASE_ID" =~ ^[1-9][0-9]*$ ]]; then
+      echo "Release cleanup skipped for $TAG: release identity is invalid; manual reconciliation required." >&2
+      return
+    fi
+    if [[ "$CLEANUP_RELEASE_ID" != "$CREATED_RELEASE_ID" ]]; then
+      echo "Release cleanup skipped for $TAG: release identity changed; manual reconciliation required." >&2
+      return
+    fi
 
     if ! CLEANUP_IS_DRAFT="$(gh release view "$TAG" \
       --repo "$GITHUB_REPOSITORY" \
@@ -248,6 +266,15 @@ gh release create "$TAG" \
   --title "SchneeGlass ${RELEASE_VERSION}" \
   --generate-notes \
   --draft
+
+if ! CREATED_RELEASE_ID="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json databaseId \
+  --jq '.databaseId')"; then
+  fail "unable to capture created draft release identity"
+fi
+[[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "created draft release identity is invalid"
 CREATED_RELEASE=true
 
 IS_DRAFT="$(gh release view "$TAG" \
@@ -414,6 +441,17 @@ while IFS= read -r PUBLISHED_TAG; do
 done < "$FINAL_PUBLISHED_TAGS"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
+
+if ! PREPUBLICATION_RELEASE_ID="$(gh release view "$TAG" \
+  --repo "$GITHUB_REPOSITORY" \
+  --json databaseId \
+  --jq '.databaseId')"; then
+  fail "unable to verify draft release identity before publication"
+fi
+[[ "$PREPUBLICATION_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "draft release identity is invalid before publication"
+[[ "$PREPUBLICATION_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "draft release identity changed before publication"
 
 gh release edit "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
