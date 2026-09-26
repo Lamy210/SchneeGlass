@@ -61,7 +61,7 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "${GH_FIXTURE_STATE:?}/release-public" || -f "${GH_FIXTURE_STATE:?}/release-created" ]]; then
+    if [[ -f "${GH_FIXTURE_STATE:?}/release-tag" ]]; then
       printf '%s\trefs/tags/v0.1.0\n' '0123456789abcdef0123456789abcdef01234567'
       exit 0
     fi
@@ -98,7 +98,23 @@ case "${1:-}" in
     esac
     ;;
   push)
-    exit 0
+    [[ "${2:-}" == '--force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567' ]]
+    [[ "${3:-}" == 'origin' ]]
+    [[ "${4:-}" == ':refs/tags/v0.1.0' ]]
+    case "${GH_FIXTURE_TAG_DELETE_MODE:-success}" in
+      success)
+        rm -f "${GH_FIXTURE_STATE:?}/release-tag"
+        exit 0
+        ;;
+      failure)
+        echo 'fixture: conditional tag cleanup unavailable' >&2
+        exit 42
+        ;;
+      *)
+        echo "unexpected tag delete fixture mode: ${GH_FIXTURE_TAG_DELETE_MODE:-}" >&2
+        exit 92
+        ;;
+    esac
     ;;
   *)
     echo "unexpected git command: $*" >&2
@@ -129,12 +145,17 @@ shift || true
 
 case "$COMMAND" in
   api)
+    METHOD='GET'
     ENDPOINT=''
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
           shift
+          ;;
+        --method)
+          METHOD="$2"
+          shift 2
           ;;
         --jq)
           JQ="$2"
@@ -150,6 +171,32 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'DELETE' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          touch "$STATE/cleanup-attempted"
+          case "${GH_FIXTURE_DELETE_MODE:-success}" in
+            success)
+              rm -f "$STATE/release-created" "$STATE/release-public"
+              exit 0
+              ;;
+            failure)
+              echo 'fixture: release ID cleanup unavailable' >&2
+              exit 42
+              ;;
+            *)
+              echo "unexpected delete fixture mode: ${GH_FIXTURE_DELETE_MODE:-}" >&2
+              exit 106
+              ;;
+          esac
+          ;;
+        *)
+          echo "unexpected gh api delete endpoint: $ENDPOINT" >&2
+          exit 107
+          ;;
+      esac
+    fi
 
     case "$ENDPOINT" in
       repos/example/SchneeGlass/actions/runs/123)
@@ -375,6 +422,7 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
+        touch "$STATE/release-tag"
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -421,7 +469,7 @@ EOF
         touch "$STATE/cleanup-attempted"
         case "${GH_FIXTURE_DELETE_MODE:-success}" in
           success)
-            rm -f "$STATE/release-created" "$STATE/release-public"
+            rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-tag"
             ;;
           failure)
             echo 'fixture: mutable Draft cleanup delete unavailable' >&2
@@ -625,9 +673,10 @@ if grep -Fq 'gh release edit ' "$LOG"; then
   echo 'Stale candidate reached the publication command after main advanced during Draft preparation.' >&2
   exit 1
 fi
-grep -Fq 'gh release delete ' "$LOG"
-if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" ]]; then
-  echo 'Run-owned mutable Draft was not cleaned up after final main freshness failure.' >&2
+grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"
+if [[ -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-public" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Run-owned mutable Draft/tag was not cleaned up after final main freshness failure.' >&2
   exit 1
 fi
 if ! assert_main_fetch_count 2; then
@@ -838,8 +887,12 @@ else
     echo 'Draft asset mismatch reached the publication command.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if ! grep -Fq 'gh release delete ' "$LOG"; then
-    echo 'Run-owned Draft was not cleaned up after a pre-publication asset mismatch.' >&2
+  if ! grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
+    echo 'Run-owned Draft was not deleted by Release ID after a pre-publication asset mismatch.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if ! grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"; then
+    echo 'Run-owned Draft tag was not deleted under an expected-SHA lease.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
@@ -872,9 +925,13 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 "$REAL_GREP" -Fq   'Release promotion failed: draft release asset set does not exactly match expected public assets'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
-"$REAL_GREP" -Fq   'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft/tag; manual reconciliation required'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
-"$REAL_GREP" -Fq 'gh release delete ' "$LOG"
-if [[ ! -f "$GH_FIXTURE_STATE/release-created" ]]; then
+"$REAL_GREP" -Fq   'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft by release ID; manual reconciliation required'   "$OUTPUT_CLEANUP_DELETE_FAILURE"
+"$REAL_GREP" -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+if "$REAL_GREP" -Fq 'git push --force-with-lease=' "$LOG"; then
+  echo 'Tag cleanup was attempted after Release-ID deletion failed.' >&2
+  exit 1
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
   cat "$OUTPUT_CLEANUP_DELETE_FAILURE"
   cat "$LOG"
   echo 'Fixture did not preserve the Draft after simulated cleanup delete failure.' >&2
@@ -906,7 +963,8 @@ if [[ "$STATUS" -eq 0 ]]; then
 fi
 
 grep -Fq 'Release promotion failed: draft release asset set does not exactly match expected public assets' "$OUTPUT_CLEANUP_AMBIGUOUS"
-if grep -Fq 'gh release delete ' "$LOG"; then
+if grep -Fq 'gh release delete ' "$LOG" \
+  || grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
   cat "$OUTPUT_CLEANUP_AMBIGUOUS"
   cat "$LOG"
   echo 'Ambiguous pre-publication cleanup state triggered destructive release cleanup.' >&2

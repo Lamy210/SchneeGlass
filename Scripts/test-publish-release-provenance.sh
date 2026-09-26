@@ -27,6 +27,7 @@ STATE="${GH_FIXTURE_STATE:?}"
 CANDIDATE_SHA="${GH_FIXTURE_CANDIDATE_SHA:?}"
 OTHER_SHA="${GH_FIXTURE_OTHER_SHA:?}"
 TAG_MODE="${GH_FIXTURE_TAG_MODE:-exact}"
+TAG_CLEANUP_MODE="${GH_FIXTURE_TAG_CLEANUP_MODE:-success}"
 printf 'git ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -56,7 +57,7 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "$STATE/release-created" ]]; then
+    if [[ -f "$STATE/release-tag" ]]; then
       case "$TAG_MODE" in
         exact)
           printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
@@ -91,7 +92,28 @@ case "${1:-}" in
     exit 2
     ;;
   push)
-    exit 0
+    [[ "${2:-}" == "--force-with-lease=refs/tags/v0.1.0:$CANDIDATE_SHA" ]]
+    [[ "${3:-}" == 'origin' ]]
+    [[ "${4:-}" == ':refs/tags/v0.1.0' ]]
+    case "$TAG_CLEANUP_MODE" in
+      success)
+        rm -f "$STATE/release-tag"
+        exit 0
+        ;;
+      failure)
+        echo 'fixture: conditional tag cleanup unavailable' >&2
+        exit 42
+        ;;
+      retarget)
+        printf '%s\n' "$OTHER_SHA" > "$STATE/release-tag"
+        echo 'fixture: tag lease rejected after retarget' >&2
+        exit 1
+        ;;
+      *)
+        echo "unexpected tag cleanup fixture mode: $TAG_CLEANUP_MODE" >&2
+        exit 92
+        ;;
+    esac
     ;;
   *)
     echo "unexpected git command: $*" >&2
@@ -125,12 +147,17 @@ shift || true
 
 case "$COMMAND" in
   api)
+    METHOD='GET'
     ENDPOINT=''
     JQ=''
     while [[ "$#" -gt 0 ]]; do
       case "$1" in
         --paginate|--slurp)
           shift
+          ;;
+        --method)
+          METHOD="$2"
+          shift 2
           ;;
         --jq)
           JQ="$2"
@@ -146,6 +173,31 @@ case "$COMMAND" in
           ;;
       esac
     done
+
+    if [[ "$METHOD" == 'DELETE' ]]; then
+      case "$ENDPOINT" in
+        repos/example/SchneeGlass/releases/101)
+          touch "$STATE/cleanup-attempted"
+          if [[ "$IDENTITY_MODE" == 'replace-at-delete' ]]; then
+            printf '202\n' > "$STATE/release-id"
+          fi
+          if [[ "${GH_FIXTURE_DELETE_MODE:-success}" == 'failure' ]]; then
+            echo 'fixture: release ID cleanup unavailable' >&2
+            exit 42
+          fi
+          if [[ ! -f "$STATE/release-id" || "$(cat "$STATE/release-id")" != '101' ]]; then
+            echo 'fixture: run-owned release ID no longer exists' >&2
+            exit 1
+          fi
+          rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
+          exit 0
+          ;;
+        *)
+          echo "unexpected gh api delete endpoint: $ENDPOINT" >&2
+          exit 107
+          ;;
+      esac
+    fi
 
     case "$ENDPOINT" in
       repos/example/SchneeGlass/actions/runs/123)
@@ -428,6 +480,7 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
+        touch "$STATE/release-tag"
         printf '101\n' > "$STATE/release-id"
         ;;
       upload)
@@ -447,7 +500,7 @@ EOF
         touch "$STATE/release-public"
         ;;
       delete)
-        rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id"
+        rm -f "$STATE/release-created" "$STATE/release-public" "$STATE/release-id" "$STATE/release-tag"
         ;;
       download)
         echo 'historical release download is not expected in this fixture' >&2
@@ -496,6 +549,8 @@ export GH_FIXTURE_DRAFT_MODE='exact'
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_TAG_CLEANUP_MODE='success'
+export GH_FIXTURE_DELETE_MODE='success'
 export GH_FIXTURE_ASSET_MODE='exact'
 OUTPUT_EXACT="$FIXTURE/output-exact.log"
 set +e
@@ -555,6 +610,83 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-i
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Tag-addressed deletion can retarget after the final identity proof. Replace the
+# same-tag Draft exactly when the destructive delete command resolves its target;
+# the replacement must survive.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='replace-at-delete'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_IDENTITY_AT_DELETE="$FIXTURE/output-replacement-at-delete.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_IDENTITY_AT_DELETE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_IDENTITY_AT_DELETE"
+grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+! grep -Fq 'gh release delete ' "$LOG"
+! grep -Fq 'git push --force-with-lease=' "$LOG"
+if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
+  echo 'Release-ID cleanup did not preserve the same-tag replacement at the destructive boundary.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Normal pre-publication cleanup must delete the exact run-owned Release object and
+# then delete only the candidate tag under an explicit expected-SHA lease.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_DELETE_MODE='success'
+export GH_FIXTURE_TAG_CLEANUP_MODE='success'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_ID_CLEANUP_SUCCESS="$FIXTURE/output-id-cleanup-success.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ID_CLEANUP_SUCCESS" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'gh api --method DELETE -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"
+grep -Fq 'git push --force-with-lease=refs/tags/v0.1.0:0123456789abcdef0123456789abcdef01234567 origin :refs/tags/v0.1.0' "$LOG"
+[[ ! -f "$GH_FIXTURE_STATE/release-created" ]]
+[[ ! -f "$GH_FIXTURE_STATE/release-tag" ]]
+
+# If object-ID deletion fails, tag deletion must not even be attempted.
+reset_case
+export GH_FIXTURE_DELETE_MODE='failure'
+export GH_FIXTURE_TAG_CLEANUP_MODE='success'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_ID_DELETE_FAILURE="$FIXTURE/output-id-delete-failure.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ID_DELETE_FAILURE" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release cleanup failed for v0.1.0: unable to delete run-owned mutable Draft by release ID; manual reconciliation required.' "$OUTPUT_ID_DELETE_FAILURE"
+! grep -Fq 'git push --force-with-lease=' "$LOG"
+[[ -f "$GH_FIXTURE_STATE/release-created" ]]
+[[ -f "$GH_FIXTURE_STATE/release-tag" ]]
+export GH_FIXTURE_DELETE_MODE='success'
+
+# If conditional tag deletion fails or the tag is retargeted, the already-deleted
+# Release must stay deleted while the tag remains for manual reconciliation.
+for tag_cleanup_mode in failure retarget; do
+  reset_case
+  export GH_FIXTURE_TAG_CLEANUP_MODE="$tag_cleanup_mode"
+  export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+  OUTPUT_TAG_CLEANUP="$FIXTURE/output-tag-cleanup-$tag_cleanup_mode.log"
+  set +e
+  bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_CLEANUP" 2>&1
+  STATUS=$?
+  set -e
+  [[ "$STATUS" -ne 0 ]]
+  grep -Fq 'Release cleanup partially completed for v0.1.0: Release was deleted but tag lease cleanup failed; manual reconciliation required.' "$OUTPUT_TAG_CLEANUP"
+  [[ ! -f "$GH_FIXTURE_STATE/release-created" ]]
+  [[ -f "$GH_FIXTURE_STATE/release-tag" ]]
+done
+export GH_FIXTURE_TAG_CLEANUP_MODE='success'
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # The final delete-boundary identity probe must itself fail closed.
