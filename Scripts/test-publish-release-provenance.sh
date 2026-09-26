@@ -392,6 +392,17 @@ EOF
                   exit 0
                 fi
                 ;;
+              publish-after-final-cleanup-identity)
+                if [[ "$identity_reads" -ge 3 && "$ASSET_MODE" == 'extra-before-publication' ]]; then
+                  if [[ -f "$STATE/release-id" ]]; then
+                    cat "$STATE/release-id"
+                  else
+                    printf '101\n'
+                  fi
+                  touch "$STATE/release-public"
+                  exit 0
+                fi
+                ;;
               query-failure-before-publication)
                 if [[ "$identity_reads" -eq 2 ]]; then
                   printf '101\n'
@@ -607,6 +618,42 @@ if grep -Fq 'gh release delete ' "$LOG"; then
 fi
 if [[ ! -f "$GH_FIXTURE_STATE/release-id" || "$(cat "$GH_FIXTURE_STATE/release-id")" != '202' ]]; then
   echo 'Replacement Draft identity did not survive the cleanup identity race.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# There is no atomic GitHub precondition tying Release DELETE to "still a mutable
+# Draft". Reproduce the remaining race: the final cleanup identity proof returns
+# the run-owned ID, then that same Release becomes public before destructive cleanup.
+# Pre-publication EXIT handling must never delete the Release or tag in this state.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='publish-after-final-cleanup-identity'
+export GH_FIXTURE_ASSET_MODE='extra-before-publication'
+OUTPUT_PUBLIC_AFTER_FINAL_ID="$FIXTURE/output-public-after-final-cleanup-identity.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLIC_AFTER_FINAL_ID" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Release promotion failed: draft release asset set changed before publication' "$OUTPUT_PUBLIC_AFTER_FINAL_ID"
+grep -Fq 'manual reconciliation required' "$OUTPUT_PUBLIC_AFTER_FINAL_ID"
+grep -Fq 'v0.1.0' "$OUTPUT_PUBLIC_AFTER_FINAL_ID"
+grep -Fq 'release ID 101' "$OUTPUT_PUBLIC_AFTER_FINAL_ID"
+if grep -Fq 'gh api --method DELETE' "$LOG"; then
+  echo 'Public Release race reached destructive Release-ID cleanup.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'git push --force-with-lease=' "$LOG"; then
+  echo 'Public Release race reached destructive tag cleanup.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-public" ]]; then
+  echo 'Public Release did not survive the pre-publication cleanup race.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if [[ ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Release tag did not survive the pre-publication cleanup race.' >&2
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_IDENTITY_MODE='stable'
