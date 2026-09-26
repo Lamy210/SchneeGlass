@@ -292,6 +292,10 @@ EOF
               change-before-publication)
                 if [[ -f "$STATE/release-prerelease" ]]; then printf 'true\n'; else printf 'false\n'; fi
                 ;;
+              change-after-final-check)
+                printf 'false\n'
+                touch "$STATE/release-prerelease"
+                ;;
               query-failure-before-publication)
                 printf 'false\n'
                 exit 42
@@ -374,6 +378,15 @@ EOF
         ;;
       edit)
         [[ -f "$STATE/release-created" ]]
+        FORCE_STABLE=false
+        for arg in "$@"; do
+          if [[ "$arg" == '--prerelease=false' ]]; then
+            FORCE_STABLE=true
+          fi
+        done
+        if [[ "$FORCE_STABLE" == true ]]; then
+          rm -f "$STATE/release-prerelease"
+        fi
         touch "$STATE/release-public"
         ;;
       delete)
@@ -659,6 +672,33 @@ else
     FAILURES=$((FAILURES + 1))
   fi
 fi
+
+# Even after a successful final classification read, another administrator can
+# flip the mutable Draft before the publish mutation. The mutation itself must
+# explicitly force stable classification so this race cannot persist.
+reset_case
+export GH_FIXTURE_PRERELEASE_MODE='change-after-final-check'
+OUTPUT_PRERELEASE_AFTER_CHECK="$FIXTURE/output-prerelease-after-final-check.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_AFTER_CHECK" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -ne 0 ]]; then
+  cat "$OUTPUT_PRERELEASE_AFTER_CHECK"
+  cat "$LOG"
+  echo 'Stable publication failed while exercising post-check prerelease race.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if [[ -f "$GH_FIXTURE_STATE/release-prerelease" ]]; then
+    echo 'Publication mutation did not atomically clear prerelease classification.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if ! grep -Fq -- '--prerelease=false' "$LOG"; then
+    echo 'Publication mutation did not explicitly force prerelease=false.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_PRERELEASE_MODE='stable'
 
 # The final prerelease probe itself must preserve command failure.
 reset_case
