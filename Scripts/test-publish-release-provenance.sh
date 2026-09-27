@@ -446,13 +446,15 @@ case "$COMMAND" in
                     "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
                   ;;
                 missing-before-publication)
-                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"}]'
+                  snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"}]' \
+                    "$snapshot_archive_digest" "$snapshot_checksums_digest")"
                   ;;
                 extra-before-publication)
                   if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
                     printf '202\n' > "$STATE/release-id"
                   fi
-                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.bin"}]'
+                  snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"},{"name":"unexpected.bin","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"}]' \
+                    "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
                   ;;
                 enumeration-failure-before-publication)
                   echo 'fixture: run-owned release snapshot unavailable while enumerating assets' >&2
