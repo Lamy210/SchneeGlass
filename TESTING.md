@@ -518,7 +518,8 @@ Credential-free pathでは次をCIで固定します。
 production release preflight
 Production Release Candidate pull_request.paths enumeration / exact membership failureをfail-closed
 production signing secrets / credential-adjacent variables are referenced exactly once and only in the signing build step
-encoded signing secrets are unset after decode and the PKCS#12 password is unset immediately after keychain import, before later build/notarization subprocesses
+signing secrets are copied to explicitly non-exported private shell variables and original exported names are unset before the first external subprocess; only credential-input validation gets command-scoped re-exposure
+encoded private signing copies are unset after decode and the private PKCS#12 password is unset immediately after keychain import, before later build/notarization subprocesses
 signing/evidence helper shell syntax
 credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない

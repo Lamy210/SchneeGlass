@@ -272,11 +272,15 @@ $RUNNER_TEMP/AuthKey.p8
 Production jobは概ね次の順序を守る。
 
 ```text
-encoded credential input contract validation
+GitHub Actions step envから3 secretをprivate shell variableへcopy
   ↓
-release metadata / credential-free production preflight
+private copyのexport属性を除去し、元のexport済みsecret名を外部command実行前にunset
   ↓
-P12 / p8を$RUNNER_TEMPへdecode
+credential input validatorにだけcommand-scoped environmentとして3 secretを再露出
+  ↓
+release metadata / credential-free production preflight（signing secret envなし）
+  ↓
+P12 / p8を$RUNNER_TEMPへprivate copyからdecode
   ↓
 encoded base64 secret 2種をenvironmentからunset
   ↓
@@ -303,7 +307,7 @@ notarization / stapling / Gatekeeper
 always cleanup
 ```
 
-validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。encoded base64 secretはdecode成功後に、P12 passwordはtemporary keychainへのimport成功後にenvironmentから削除し、それ以降のbuild/sign/notarization subprocessへ継承しない。さらに`EXIT` cleanupは最初に3 secretをenvironmentから削除してからkeychain/file cleanup subprocessを起動するため、decoded validationやimport途中のfail-closed経路でもcredentialをcleanup子プロセスへ継承しない。
+validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。workflowから渡された3 secretの元environment名はscript entry直後に消去し、credential input validatorにだけcommand-scopedで再露出する。以後はnon-exportのprivate shell copyだけを保持し、encoded private copyはdecode成功後、private P12 passwordはtemporary keychainへのimport成功後に消去する。さらに`EXIT` cleanupは元environment名とprivate copyの両方を最初に消去してからkeychain/file cleanup subprocessを起動するため、early failureでもcredentialをcleanup子プロセスへ継承しない。
 
 `security find-identity`で`Developer ID Application` identityが0件または複数で曖昧な場合はReleaseを停止する。
 
