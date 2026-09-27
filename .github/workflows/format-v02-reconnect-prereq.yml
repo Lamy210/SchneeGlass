@@ -27,6 +27,19 @@ jobs:
           xcrun swift-format format --in-place \
             App/CompositionRoot.swift \
             Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift")
+          text = path.read_text()
+          old = "    stateTasks.values.forEach { $0.cancel() }"
+          new = "    for task in stateTasks.values {\n      task.cancel()\n    }"
+          if old not in text:
+              raise SystemExit("expected forEach formatting-debt anchor not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          xcrun swift-format format --in-place \
+            Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
           xcrun swift-format lint --strict \
             App/CompositionRoot.swift \
             Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
