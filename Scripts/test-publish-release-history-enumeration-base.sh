@@ -346,6 +346,136 @@ case "$COMMAND" in
     fi
 
     case "$ENDPOINT" in
+      repos/example/SchneeGlass/releases/101)
+        [[ "$METHOD" == 'GET' ]]
+        case "$JQ" in
+          '')
+            snapshot_reads="$(grep -Fxc -- 'gh api repos/example/SchneeGlass/releases/101 ' "$LOG" || true)"
+            [[ "$snapshot_reads" =~ ^[0-9]+$ && "$snapshot_reads" -ge 1 ]] || {
+              echo "invalid run-owned snapshot read count: $snapshot_reads" >&2
+              exit 121
+            }
+
+            snapshot_draft=true
+            snapshot_immutable=false
+            snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"}]'
+
+            if [[ "$snapshot_reads" -eq 1 ]]; then
+              case "$ASSET_MODE" in
+                exact|extra-after)
+                  ;;
+                extra-before)
+                  if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                    touch "$STATE/release-public"
+                    snapshot_draft=false
+                  fi
+                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.txt"}]'
+                  ;;
+                *)
+                  echo "unexpected run-owned snapshot asset mode: $ASSET_MODE" >&2
+                  exit 122
+                  ;;
+              esac
+            else
+              snapshot_draft=false
+              case "$RELEASE_VERIFY_MODE" in
+                success)
+                  snapshot_immutable=true
+                  ;;
+                mutable)
+                  snapshot_immutable=false
+                  ;;
+                failure)
+                  echo 'fixture: published release snapshot unavailable' >&2
+                  exit 42
+                  ;;
+                *)
+                  echo "unexpected run-owned snapshot verification mode: $RELEASE_VERIFY_MODE" >&2
+                  exit 123
+                  ;;
+              esac
+
+              if [[ "$ASSET_MODE" == 'extra-after' ]]; then
+                snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.txt"}]'
+              fi
+            fi
+
+            printf '{"id":101,"draft":%s,"prerelease":false,"target_commitish":"0123456789abcdef0123456789abcdef01234567","immutable":%s,"assets":%s}\n' \
+              "$snapshot_draft" "$snapshot_immutable" "$snapshot_assets"
+
+            if [[ "$snapshot_reads" -ge 2 && "$RELEASE_VERIFY_MODE" == 'mutable' && "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' ]]; then
+              touch "$STATE/replacement-public-release"
+            fi
+            ;;
+          .id)
+            printf '101\n'
+            ;;
+          .draft)
+            if [[ -f "$STATE/release-public" ]]; then printf 'false\n'; else printf 'true\n'; fi
+            ;;
+          .prerelease)
+            printf 'false\n'
+            ;;
+          .target_commitish)
+            printf '%s\n' '0123456789abcdef0123456789abcdef01234567'
+            ;;
+          '.assets[].name')
+            case "$ASSET_MODE" in
+              exact)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              extra-before)
+                if [[ ! -f "$STATE/release-public" ]]; then
+                  if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                    touch "$STATE/release-public"
+                  fi
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              extra-after)
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                if [[ -f "$STATE/release-public" ]]; then
+                  printf '%s\n' 'unexpected.txt'
+                fi
+                ;;
+              *)
+                echo "unexpected run-owned asset fixture mode: $ASSET_MODE" >&2
+                exit 119
+                ;;
+            esac
+            ;;
+          .immutable)
+            case "$RELEASE_VERIFY_MODE" in
+              success)
+                if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
+              mutable)
+                printf 'false\n'
+                if [[ "$MUTABLE_CLEANUP_RACE_MODE" == 'replace-after-immutability' && -f "$STATE/release-public" ]]; then
+                  touch "$STATE/replacement-public-release"
+                fi
+                ;;
+              failure)
+                if [[ -f "$STATE/release-public" ]]; then
+                  echo 'fixture: published release immutability read unavailable' >&2
+                  exit 42
+                fi
+                printf 'false\n'
+                ;;
+              *)
+                echo "unexpected run-owned release verification fixture mode: $RELEASE_VERIFY_MODE" >&2
+                exit 120
+                ;;
+            esac
+            ;;
+          *)
+            echo "unexpected run-owned release jq: $JQ" >&2
+            exit 118
+            ;;
+        esac
+        ;;
       repos/example/SchneeGlass/actions/runs/123)
         case "$JQ" in
           .name) printf '%s\n' 'Production Release Candidate' ;;
@@ -856,8 +986,8 @@ if [[ "$STATUS" -eq 0 ]]; then
   exit 1
 fi
 
-ASSET_VIEW_LINE="$(grep -nF -- '--json assets ' "$LOG" | tail -n 1 | cut -d: -f1)"
-FINAL_MAIN_FETCH_LINE="$(grep -nF 'git fetch origin main --force ' "$LOG" | tail -n 1 | cut -d: -f1)"
+ASSET_VIEW_LINE="$(grep -nF -- 'repos/example/SchneeGlass/releases/101 --jq .assets\[\].name' "$LOG" | head -n 1 | cut -d: -f1 || true)"
+FINAL_MAIN_FETCH_LINE="$(grep -nF 'git fetch origin main --force ' "$LOG" | tail -n 1 | cut -d: -f1 || true)"
 if [[ -z "$ASSET_VIEW_LINE" || -z "$FINAL_MAIN_FETCH_LINE" \
   || "$FINAL_MAIN_FETCH_LINE" -le "$ASSET_VIEW_LINE" ]]; then
   cat "$LOG"
@@ -1211,7 +1341,7 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
   exit 1
 fi
 
-grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+grep -Fq 'Release promotion failed: unable to fetch run-owned published release snapshot; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
 
 # Post-publication mutable cleanup has the same non-atomic destructive boundary:
 # after isImmutable=false is observed, the same tag can resolve to changed/replacement

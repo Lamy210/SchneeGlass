@@ -323,6 +323,15 @@ fi
 CREATED_RELEASE=true
 [[ "$CREATED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
   || fail "created draft release identity is invalid"
+RUN_OWNED_RELEASE_API="repos/$GITHUB_REPOSITORY/releases/$CREATED_RELEASE_ID"
+
+if ! RUN_OWNED_RELEASE_ID="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.id')"; then
+  fail "unable to verify run-owned draft release identity"
+fi
+[[ "$RUN_OWNED_RELEASE_ID" =~ ^[1-9][0-9]*$ ]] \
+  || fail "run-owned draft release identity is invalid"
+[[ "$RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned draft release identity does not match create response"
 
 if ! OBSERVED_CREATED_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -335,16 +344,14 @@ fi
 [[ "$OBSERVED_CREATED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
   || fail "created draft release identity changed immediately after creation"
 
-IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"
+if ! IS_DRAFT="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.draft')"; then
+  fail "unable to verify run-owned draft release state after creation"
+fi
 [[ "$IS_DRAFT" == 'true' ]] || fail "release was not created as draft"
 
-RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"
+if ! RELEASE_TARGET="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.target_commitish')"; then
+  fail "unable to verify run-owned draft release target after creation"
+fi
 [[ "$RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "draft release target mismatch: expected $RUN_HEAD_SHA, got $RELEASE_TARGET"
 
@@ -352,11 +359,8 @@ upload_release_asset_by_id "$ARCHIVE" "$ARCHIVE_NAME" 'application/zip'
 upload_release_asset_by_id "$CHECKSUMS" 'SHA256SUMS' 'text/plain'
 upload_release_asset_by_id "$EVIDENCE" 'RELEASE_EVIDENCE.txt' 'text/plain'
 
-if ! ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to enumerate draft release assets"
+if ! ASSET_NAMES="$(gh api "$RUN_OWNED_RELEASE_API" --jq '.assets[].name')"; then
+  fail "unable to enumerate run-owned draft release assets"
 fi
 release_asset_set_is_exact "$ASSET_NAMES" \
   || fail "draft release asset set does not exactly match expected public assets"
@@ -409,52 +413,6 @@ read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <
 [[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "release tag no longer resolves to candidate source commit before publication"
 
-if ! PREPUBLICATION_ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to enumerate draft release assets before publication"
-fi
-release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
-  || fail "draft release asset set changed before publication"
-
-if ! PREPUBLICATION_IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"; then
-  fail "unable to verify draft release state before publication"
-fi
-[[ "$PREPUBLICATION_IS_DRAFT" == 'true' ]] \
-  || fail "release is no longer a Draft before publication"
-
-if ! PREPUBLICATION_RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"; then
-  fail "unable to verify draft release target before publication"
-fi
-[[ "$PREPUBLICATION_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]] \
-  || fail "draft release target returned an invalid commit SHA before publication"
-[[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
-  || fail "draft release target changed before publication"
-
-if ! PREPUBLICATION_IS_PRERELEASE="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isPrerelease \
-  --jq '.isPrerelease')"; then
-  fail "unable to verify prerelease state before publication"
-fi
-case "$PREPUBLICATION_IS_PRERELEASE" in
-  false)
-    ;;
-  true)
-    fail "release became a prerelease before stable publication"
-    ;;
-  *)
-    fail "prerelease state is malformed before publication"
-    ;;
-esac
-
 PREPUBLICATION_IMMUTABILITY_JSON="$CANDIDATE_DIR/prepublication-immutable-releases.json"
 if ! gh api \
   -H 'X-GitHub-Api-Version: 2026-03-10' \
@@ -498,6 +456,39 @@ done < "$FINAL_PUBLISHED_TAGS"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
 
+PREPUBLICATION_RUN_OWNED_RELEASE_JSON="$CANDIDATE_DIR/prepublication-run-owned-release.json"
+if ! gh api "$RUN_OWNED_RELEASE_API" > "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON"; then
+  fail "unable to fetch run-owned draft release snapshot before publication"
+fi
+jq -e '
+  type == "object" and
+  (.id | type == "number" and . > 0 and . == floor) and
+  (.draft | type == "boolean") and
+  (.prerelease | type == "boolean") and
+  (.target_commitish | type == "string") and
+  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string")))
+' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON" >/dev/null \
+  || fail "run-owned draft release snapshot is malformed before publication"
+
+PREPUBLICATION_RUN_OWNED_RELEASE_ID="$(jq -r '.id | tostring' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON")"
+PREPUBLICATION_IS_DRAFT="$(jq -r '.draft' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON")"
+PREPUBLICATION_IS_PRERELEASE="$(jq -r '.prerelease' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON")"
+PREPUBLICATION_RELEASE_TARGET="$(jq -r '.target_commitish' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON")"
+PREPUBLICATION_ASSET_NAMES="$(jq -r '.assets[].name' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON")"
+
+[[ "$PREPUBLICATION_RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned draft release identity changed before publication"
+[[ "$PREPUBLICATION_IS_DRAFT" == 'true' ]] \
+  || fail "release is no longer a Draft before publication"
+[[ "$PREPUBLICATION_IS_PRERELEASE" == 'false' ]] \
+  || fail "release became a prerelease before stable publication"
+[[ "$PREPUBLICATION_RELEASE_TARGET" =~ ^[0-9a-f]{40}$ ]] \
+  || fail "draft release target returned an invalid commit SHA before publication"
+[[ "$PREPUBLICATION_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
+  || fail "draft release target changed before publication"
+release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
+  || fail "draft release asset set changed before publication"
+
 if ! PREPUBLICATION_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
   --json databaseId \
@@ -522,12 +513,28 @@ if ! gh api --method PATCH \
 fi
 PUBLICATION_COMMAND_SUCCEEDED=true
 
-if ! IS_DRAFT="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isDraft \
-  --jq '.isDraft')"; then
-  fail "unable to verify published release draft state; publication state is ambiguous and requires manual reconciliation"
+PUBLISHED_RUN_OWNED_RELEASE_JSON="$CANDIDATE_DIR/published-run-owned-release.json"
+if ! gh api "$RUN_OWNED_RELEASE_API" > "$PUBLISHED_RUN_OWNED_RELEASE_JSON"; then
+  fail "unable to fetch run-owned published release snapshot; publication state is ambiguous and requires manual reconciliation"
 fi
+jq -e '
+  type == "object" and
+  (.id | type == "number" and . > 0 and . == floor) and
+  (.draft | type == "boolean") and
+  (.immutable | type == "boolean") and
+  (.target_commitish | type == "string") and
+  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string")))
+' "$PUBLISHED_RUN_OWNED_RELEASE_JSON" >/dev/null \
+  || fail "run-owned published release snapshot is malformed; publication state is ambiguous and requires manual reconciliation"
+
+PUBLISHED_RUN_OWNED_RELEASE_ID="$(jq -r '.id | tostring' "$PUBLISHED_RUN_OWNED_RELEASE_JSON")"
+IS_DRAFT="$(jq -r '.draft' "$PUBLISHED_RUN_OWNED_RELEASE_JSON")"
+IS_IMMUTABLE="$(jq -r '.immutable' "$PUBLISHED_RUN_OWNED_RELEASE_JSON")"
+PUBLISHED_RELEASE_TARGET="$(jq -r '.target_commitish' "$PUBLISHED_RUN_OWNED_RELEASE_JSON")"
+PUBLISHED_ASSET_NAMES="$(jq -r '.assets[].name' "$PUBLISHED_RUN_OWNED_RELEASE_JSON")"
+
+[[ "$PUBLISHED_RUN_OWNED_RELEASE_ID" == "$CREATED_RELEASE_ID" ]] \
+  || fail "run-owned published release identity does not match create response; publication state is ambiguous and requires manual reconciliation"
 
 if [[ "$IS_DRAFT" != 'false' ]]; then
   if [[ "$IS_DRAFT" == 'true' ]]; then
@@ -537,35 +544,14 @@ if [[ "$IS_DRAFT" != 'false' ]]; then
   fail "published release returned invalid draft state; publication state is ambiguous and requires manual reconciliation"
 fi
 
-if ! IS_IMMUTABLE="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json isImmutable \
-  --jq '.isImmutable')"; then
-  fail "unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation"
-fi
-
 if [[ "$IS_IMMUTABLE" == 'false' ]]; then
   fail "published release is mutable; no automatic remote cleanup was attempted; manual reconciliation required for $TAG (captured release ID $CREATED_RELEASE_ID); enable repository release immutability before retrying"
 fi
 
 [[ "$IS_IMMUTABLE" == 'true' ]] \
   || fail "published release returned invalid immutability state; publication state is ambiguous and requires manual reconciliation"
-
-if ! PUBLISHED_ASSET_NAMES="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json assets \
-  --jq '.assets[].name')"; then
-  fail "unable to verify published release assets; publication state is ambiguous and requires manual reconciliation"
-fi
 release_asset_set_is_exact "$PUBLISHED_ASSET_NAMES" \
   || fail "published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation"
-
-if ! PUBLISHED_RELEASE_TARGET="$(gh release view "$TAG" \
-  --repo "$GITHUB_REPOSITORY" \
-  --json targetCommitish \
-  --jq '.targetCommitish')"; then
-  fail "unable to verify published release target; publication state is ambiguous and requires manual reconciliation"
-fi
 [[ "$PUBLISHED_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "published release target does not match candidate source commit; publication state is ambiguous and requires manual reconciliation"
 

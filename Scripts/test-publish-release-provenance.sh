@@ -414,6 +414,264 @@ case "$COMMAND" in
     fi
 
     case "$ENDPOINT" in
+      repos/example/SchneeGlass/releases/101)
+        [[ "$METHOD" == 'GET' ]]
+        case "$JQ" in
+          '')
+            direct_snapshot_reads="$(grep -Fxc -- 'gh api repos/example/SchneeGlass/releases/101 ' "$LOG" || true)"
+            [[ "$direct_snapshot_reads" =~ ^[0-9]+$ && "$direct_snapshot_reads" -ge 1 ]] || {
+              echo "invalid run-owned snapshot read count: $direct_snapshot_reads" >&2
+              exit 119
+            }
+
+            snapshot_id=101
+            snapshot_draft=true
+            snapshot_prerelease=false
+            snapshot_target="$CANDIDATE_SHA"
+            snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"}]'
+            snapshot_immutable=false
+
+            if [[ "$direct_snapshot_reads" -eq 1 ]]; then
+              case "$ASSET_MODE" in
+                exact)
+                  ;;
+                missing-before-publication)
+                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"}]'
+                  ;;
+                extra-before-publication)
+                  if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.bin"}]'
+                  ;;
+                enumeration-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while enumerating assets' >&2
+                  exit 42
+                  ;;
+                *)
+                  echo "unexpected snapshot asset fixture mode: $ASSET_MODE" >&2
+                  exit 120
+                  ;;
+              esac
+
+              case "$DRAFT_MODE" in
+                exact)
+                  ;;
+                publish-before-publication)
+                  touch "$STATE/release-public"
+                  snapshot_draft=false
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading draft state' >&2
+                  exit 42
+                  ;;
+                invalid-before-publication)
+                  snapshot_draft='"unknown"'
+                  ;;
+                *)
+                  echo "unexpected snapshot draft fixture mode: $DRAFT_MODE" >&2
+                  exit 121
+                  ;;
+              esac
+
+              case "$PRERELEASE_MODE" in
+                stable)
+                  ;;
+                change-before-publication)
+                  touch "$STATE/release-prerelease"
+                  snapshot_prerelease=true
+                  ;;
+                change-after-final-check)
+                  snapshot_prerelease=false
+                  touch "$STATE/release-prerelease"
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading prerelease state' >&2
+                  exit 42
+                  ;;
+                malformed-before-publication)
+                  snapshot_prerelease='"unknown"'
+                  ;;
+                *)
+                  echo "unexpected snapshot prerelease fixture mode: $PRERELEASE_MODE" >&2
+                  exit 122
+                  ;;
+              esac
+
+              case "$TARGET_MODE" in
+                exact)
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading target' >&2
+                  exit 42
+                  ;;
+                malformed-before-publication)
+                  snapshot_target='main'
+                  ;;
+                change-before-publication)
+                  snapshot_target="$OTHER_SHA"
+                  ;;
+                change-after)
+                  ;;
+                *)
+                  echo "unexpected snapshot target fixture mode: $TARGET_MODE" >&2
+                  exit 123
+                  ;;
+              esac
+
+              if [[ "$IDENTITY_MODE" == 'replace-before-publication' ]]; then
+                printf '202\n' > "$STATE/release-id"
+                echo 'fixture: run-owned release ID 101 no longer exists before publication' >&2
+                exit 1
+              fi
+              if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
+                touch "$STATE/run-owned-invalid"
+                printf '202\n' > "$STATE/release-id"
+                snapshot_target="$OTHER_SHA"
+              fi
+            else
+              snapshot_draft=false
+              snapshot_immutable=true
+              if [[ "$TARGET_MODE" == 'change-after' ]]; then
+                snapshot_target="$OTHER_SHA"
+              fi
+            fi
+
+            printf '{"id":%s,"draft":%s,"prerelease":%s,"target_commitish":"%s","immutable":%s,"assets":%s}\n' \
+              "$snapshot_id" "$snapshot_draft" "$snapshot_prerelease" "$snapshot_target" "$snapshot_immutable" "$snapshot_assets"
+
+            if [[ "$direct_snapshot_reads" -ge 2 && "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+              printf '202\n' > "$STATE/release-id"
+            fi
+            ;;
+          .id)
+            if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' && -f "$STATE/release-id" && "$(cat "$STATE/release-id")" != '101' ]]; then
+              echo 'fixture: run-owned release ID 101 no longer exists' >&2
+              exit 1
+            fi
+            printf '101\n'
+            ;;
+          .draft)
+            direct_draft_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .draft' "$LOG")"
+            if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$direct_draft_reads" -eq 2 ]]; then
+              printf 'true\n'
+              exit 42
+            elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$direct_draft_reads" -eq 2 ]]; then
+              printf 'unknown\n'
+            elif [[ -f "$STATE/release-public" ]]; then
+              if [[ "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
+              printf 'false\n'
+            else
+              printf 'true\n'
+            fi
+            ;;
+          .prerelease)
+            case "$PRERELEASE_MODE" in
+              stable)
+                printf 'false\n'
+                ;;
+              change-before-publication)
+                if [[ -f "$STATE/release-prerelease" ]]; then printf 'true\n'; else printf 'false\n'; fi
+                ;;
+              change-after-final-check)
+                printf 'false\n'
+                touch "$STATE/release-prerelease"
+                ;;
+              query-failure-before-publication)
+                printf 'false\n'
+                exit 42
+                ;;
+              malformed-before-publication)
+                printf 'unknown\n'
+                ;;
+              *)
+                echo "unexpected run-owned prerelease fixture mode: $PRERELEASE_MODE" >&2
+                exit 116
+                ;;
+            esac
+            ;;
+          .target_commitish)
+            direct_target_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .target_commitish' "$LOG")"
+            if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' && -f "$STATE/run-owned-invalid" ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            elif [[ "$TARGET_MODE" == 'query-failure-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf '%s\n' "$CANDIDATE_SHA"
+              exit 42
+            elif [[ "$TARGET_MODE" == 'malformed-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf 'main\n'
+            elif [[ "$TARGET_MODE" == 'change-before-publication' && "$direct_target_reads" -eq 2 ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            elif [[ "$TARGET_MODE" == 'change-after' && -f "$STATE/release-public" ]]; then
+              printf '%s\n' "$OTHER_SHA"
+            else
+              printf '%s\n' "$CANDIDATE_SHA"
+              if [[ "$IDENTITY_MODE" == 'replace-before-asset-upload' && "$direct_target_reads" -eq 1 ]]; then
+                printf '202\n' > "$STATE/release-id"
+              fi
+            fi
+            ;;
+          '.assets[].name')
+            direct_asset_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .assets\[\].name' "$LOG")"
+            case "$ASSET_MODE" in
+              exact)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  if [[ "$DRAFT_MODE" == 'publish-before-publication' ]]; then
+                    touch "$STATE/release-public"
+                  fi
+                  if [[ "$PRERELEASE_MODE" == 'change-before-publication' ]]; then
+                    touch "$STATE/release-prerelease"
+                  fi
+                  if [[ "$IDENTITY_MODE" == 'replace-before-publication' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
+                    touch "$STATE/run-owned-invalid"
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                fi
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              missing-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              extra-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.bin'
+                else
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                fi
+                ;;
+              enumeration-failure-before-publication)
+                if [[ "$direct_asset_reads" -eq 2 ]]; then
+                  printf '%s\n' 'SchneeGlass-0.1.0.zip'
+                  exit 42
+                fi
+                printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
+                ;;
+              *)
+                echo "unexpected run-owned asset fixture mode: $ASSET_MODE" >&2
+                exit 117
+                ;;
+            esac
+            ;;
+          .immutable)
+            if [[ -f "$STATE/release-public" ]]; then printf 'true\n'; else printf 'false\n'; fi
+            ;;
+          *)
+            echo "unexpected run-owned release jq: $JQ" >&2
+            exit 118
+            ;;
+        esac
+        ;;
       repos/example/SchneeGlass/actions/runs/123)
         case "$JQ" in
           .name) printf '%s\n' 'Production Release Candidate' ;;
@@ -540,7 +798,7 @@ EOF
           '') exit 0 ;;
           isDraft)
             draft_reads="$(awk '/--json isDraft/ { count += 1 } END { print count + 0 }' "$LOG")"
-            if [[ "$IDENTITY_MODE" == 'replace-after-cleanup-identity' && "$ASSET_MODE" == 'extra-before-publication' && "$draft_reads" -ge 2 ]]; then
+            if [[ "$IDENTITY_MODE" == 'replace-after-cleanup-identity' && "$ASSET_MODE" == 'extra-before-publication' && "$draft_reads" -ge 1 ]]; then
               printf '202\n' > "$STATE/release-id"
             fi
             if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$draft_reads" -ge 2 ]]; then
@@ -549,7 +807,7 @@ EOF
             elif [[ "$DRAFT_MODE" == 'invalid-before-publication' && "$draft_reads" -ge 2 ]]; then
               printf 'unknown\n'
             elif [[ -f "$STATE/release-public" ]]; then
-              if [[ "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+              if [[ "$IDENTITY_MODE" == 'replace-after-publication' || "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
                 printf '202\n' > "$STATE/release-id"
               fi
               printf 'false\n'
@@ -655,6 +913,13 @@ EOF
                   exit 0
                 fi
                 ;;
+              flip-flop-tag-verification)
+                if [[ "$identity_reads" -eq 2 || "$identity_reads" -eq 3 ]]; then
+                  printf '101\n' > "$STATE/release-id"
+                  printf '101\n'
+                  exit 0
+                fi
+                ;;
             esac
             if [[ -f "$STATE/release-id" ]]; then
               cat "$STATE/release-id"
@@ -692,6 +957,10 @@ EOF
                   touch "$STATE/release-prerelease"
                 fi
                 if [[ "$IDENTITY_MODE" == 'replace-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  printf '202\n' > "$STATE/release-id"
+                fi
+                if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' && "$asset_reads" -eq 2 ]]; then
+                  touch "$STATE/run-owned-invalid"
                   printf '202\n' > "$STATE/release-id"
                 fi
                 ;;
@@ -945,6 +1214,32 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
 fi
 export GH_FIXTURE_UPLOAD_MODE='success'
 
+# Tag-addressed state verification can be satisfied by a transient replacement and
+# then flip back to the run-owned ID for the continuity check. Model ID 101 as
+# invalid once the flip begins while replacement ID 202 keeps valid visible state.
+# The workflow must verify ID 101 directly and fail before publication.
+reset_case
+export GH_FIXTURE_IDENTITY_MODE='flip-flop-tag-verification'
+export GH_FIXTURE_ASSET_MODE='exact'
+OUTPUT_VERIFICATION_FLIP_FLOP="$FIXTURE/output-tag-verification-flip-flop.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_VERIFICATION_FLIP_FLOP" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  echo 'Tag-addressed verification accepted a replacement flip-flop around the run-owned Release.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'gh api --method PATCH -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases/101' "$LOG"; then
+  echo 'Run-owned Release reached publication after its own state became invalid.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if ! grep -Fq 'gh api repos/example/SchneeGlass/releases/101' "$LOG"; then
+  echo 'Run-owned Release state was not verified directly by captured Release ID.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+export GH_FIXTURE_IDENTITY_MODE='stable'
+
 # Cleanup ownership must be tied to the exact Release object created by this run.
 # If that Draft is replaced before a later asset failure, the replacement must not
 # be deleted merely because it is also a mutable Draft with the same tag.
@@ -1120,7 +1415,7 @@ if [[ "$STATUS" -eq 0 ]]; then
   echo 'Release publication unexpectedly succeeded after the run-owned Draft was replaced.' >&2
   FAILURES=$((FAILURES + 1))
 else
-  if ! grep -Fq 'Release promotion failed: draft release identity changed before publication' "$OUTPUT_IDENTITY_PUBLICATION"; then
+  if ! grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_IDENTITY_PUBLICATION"; then
     cat "$OUTPUT_IDENTITY_PUBLICATION"
     echo 'Replacement Draft did not fail with the expected identity error.' >&2
     FAILURES=$((FAILURES + 1))
@@ -1291,7 +1586,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_ENUMERATION_FAILURE" 2
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
@@ -1368,7 +1663,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_QUERY_FAILURE" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify draft release state before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # A malformed Draft state is not positive proof of ownership/state.
@@ -1383,7 +1678,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_INVALID" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_INVALID"
+grep -Fq 'Release promotion failed: run-owned draft release snapshot is malformed before publication' "$OUTPUT_DRAFT_INVALID"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_DRAFT_MODE='exact'
 
@@ -1399,7 +1694,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_TARGET_QUERY_FAILURE" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify draft release target before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Non-SHA target values must also fail before publication.
@@ -1484,7 +1779,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_QUERY_FAILURE" 2>
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify prerelease state before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed prerelease state is not positive proof of a stable release.
@@ -1496,7 +1791,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_MALFORMED" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: prerelease state is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
+grep -Fq 'Release promotion failed: run-owned draft release snapshot is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 
