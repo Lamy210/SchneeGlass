@@ -417,6 +417,133 @@ case "$COMMAND" in
       repos/example/SchneeGlass/releases/101)
         [[ "$METHOD" == 'GET' ]]
         case "$JQ" in
+          '')
+            direct_snapshot_reads="$(grep -Fxc -- 'gh api repos/example/SchneeGlass/releases/101 ' "$LOG" || true)"
+            [[ "$direct_snapshot_reads" =~ ^[0-9]+$ && "$direct_snapshot_reads" -ge 1 ]] || {
+              echo "invalid run-owned snapshot read count: $direct_snapshot_reads" >&2
+              exit 119
+            }
+
+            snapshot_id=101
+            snapshot_draft=true
+            snapshot_prerelease=false
+            snapshot_target="$CANDIDATE_SHA"
+            snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"}]'
+            snapshot_immutable=false
+
+            if [[ "$direct_snapshot_reads" -eq 1 ]]; then
+              case "$ASSET_MODE" in
+                exact)
+                  ;;
+                missing-before-publication)
+                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"}]'
+                  ;;
+                extra-before-publication)
+                  if [[ "$IDENTITY_MODE" == 'replace-before-cleanup' ]]; then
+                    printf '202\n' > "$STATE/release-id"
+                  fi
+                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.bin"}]'
+                  ;;
+                enumeration-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while enumerating assets' >&2
+                  exit 42
+                  ;;
+                *)
+                  echo "unexpected snapshot asset fixture mode: $ASSET_MODE" >&2
+                  exit 120
+                  ;;
+              esac
+
+              case "$DRAFT_MODE" in
+                exact)
+                  ;;
+                publish-before-publication)
+                  touch "$STATE/release-public"
+                  snapshot_draft=false
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading draft state' >&2
+                  exit 42
+                  ;;
+                invalid-before-publication)
+                  snapshot_draft='"unknown"'
+                  ;;
+                *)
+                  echo "unexpected snapshot draft fixture mode: $DRAFT_MODE" >&2
+                  exit 121
+                  ;;
+              esac
+
+              case "$PRERELEASE_MODE" in
+                stable)
+                  ;;
+                change-before-publication)
+                  touch "$STATE/release-prerelease"
+                  snapshot_prerelease=true
+                  ;;
+                change-after-final-check)
+                  snapshot_prerelease=false
+                  touch "$STATE/release-prerelease"
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading prerelease state' >&2
+                  exit 42
+                  ;;
+                malformed-before-publication)
+                  snapshot_prerelease='"unknown"'
+                  ;;
+                *)
+                  echo "unexpected snapshot prerelease fixture mode: $PRERELEASE_MODE" >&2
+                  exit 122
+                  ;;
+              esac
+
+              case "$TARGET_MODE" in
+                exact)
+                  ;;
+                query-failure-before-publication)
+                  echo 'fixture: run-owned release snapshot unavailable while reading target' >&2
+                  exit 42
+                  ;;
+                malformed-before-publication)
+                  snapshot_target='main'
+                  ;;
+                change-before-publication)
+                  snapshot_target="$OTHER_SHA"
+                  ;;
+                change-after)
+                  ;;
+                *)
+                  echo "unexpected snapshot target fixture mode: $TARGET_MODE" >&2
+                  exit 123
+                  ;;
+              esac
+
+              if [[ "$IDENTITY_MODE" == 'replace-before-publication' ]]; then
+                printf '202\n' > "$STATE/release-id"
+                echo 'fixture: run-owned release ID 101 no longer exists before publication' >&2
+                exit 1
+              fi
+              if [[ "$IDENTITY_MODE" == 'flip-flop-tag-verification' ]]; then
+                touch "$STATE/run-owned-invalid"
+                printf '202\n' > "$STATE/release-id"
+                snapshot_target="$OTHER_SHA"
+              fi
+            else
+              snapshot_draft=false
+              snapshot_immutable=true
+              if [[ "$TARGET_MODE" == 'change-after' ]]; then
+                snapshot_target="$OTHER_SHA"
+              fi
+            fi
+
+            printf '{"id":%s,"draft":%s,"prerelease":%s,"target_commitish":"%s","immutable":%s,"assets":%s}\n' \
+              "$snapshot_id" "$snapshot_draft" "$snapshot_prerelease" "$snapshot_target" "$snapshot_immutable" "$snapshot_assets"
+
+            if [[ "$direct_snapshot_reads" -ge 2 && "$IDENTITY_MODE" == 'replace-after-publication' ]]; then
+              printf '202\n' > "$STATE/release-id"
+            fi
+            ;;
           .id)
             if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' && -f "$STATE/release-id" && "$(cat "$STATE/release-id")" != '101' ]]; then
               echo 'fixture: run-owned release ID 101 no longer exists' >&2
