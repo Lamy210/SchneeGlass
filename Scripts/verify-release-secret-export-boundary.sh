@@ -41,6 +41,7 @@ line_of_exact() {
 CAPTURE_P12_LINE="$(line_of_exact "$SCRIPT" 'SIGNING_DEVELOPER_ID_P12_BASE64="${DEVELOPER_ID_P12_BASE64:-}"')"
 CAPTURE_PASSWORD_LINE="$(line_of_exact "$SCRIPT" 'SIGNING_DEVELOPER_ID_P12_PASSWORD="${DEVELOPER_ID_P12_PASSWORD:-}"')"
 CAPTURE_API_KEY_LINE="$(line_of_exact "$SCRIPT" 'SIGNING_APPSTORE_CONNECT_PRIVATE_KEY_BASE64="${APPSTORE_CONNECT_PRIVATE_KEY_BASE64:-}"')"
+PRIVATE_EXPORT_CLEAR_LINE="$(line_of_exact "$SCRIPT" 'export -n SIGNING_DEVELOPER_ID_P12_BASE64 SIGNING_DEVELOPER_ID_P12_PASSWORD SIGNING_APPSTORE_CONNECT_PRIVATE_KEY_BASE64')"
 CLEAR_EXPORTED_LINE="$(line_of_exact "$SCRIPT" 'unset DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD APPSTORE_CONNECT_PRIVATE_KEY_BASE64')"
 ROOT_LINE="$(line_of_exact "$SCRIPT" 'ROOT="$(git rev-parse --show-toplevel)"')"
 
@@ -59,8 +60,9 @@ CLEANUP_CLEAR_LINE="$(line_of_exact "$SCRIPT" '  unset DEVELOPER_ID_P12_BASE64 D
 CLEANUP_SECURITY_LINE="$(line_of_exact "$SCRIPT" '    security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1')"
 
 for capture_line in "$CAPTURE_P12_LINE" "$CAPTURE_PASSWORD_LINE" "$CAPTURE_API_KEY_LINE"; do
-  (( capture_line < CLEAR_EXPORTED_LINE ))     || fail "signing secrets must be captured before exported names are cleared"
+  (( capture_line < PRIVATE_EXPORT_CLEAR_LINE ))     || fail "signing secrets must be captured before private copies are de-exported"
 done
+(( PRIVATE_EXPORT_CLEAR_LINE < CLEAR_EXPORTED_LINE ))   || fail "private signing copies must be de-exported before original exported names are cleared"
 (( CLEAR_EXPORTED_LINE < ROOT_LINE ))   || fail "exported signing secrets must be cleared before the first git subprocess"
 
 (( CLEAR_EXPORTED_LINE < SCOPED_P12_LINE ))   || fail "credential validator exposure must be command-scoped after global secret clearing"
