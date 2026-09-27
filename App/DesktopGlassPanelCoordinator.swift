@@ -391,7 +391,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
-      canRevealConnectedFolder: model.canRevealConnectedFolder(glassID: glassID),
+      canRevealConnectedFolder:
+        Self.allowsConnectedFolderAction(for: entry)
+        && model.canRevealConnectedFolder(glassID: glassID),
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
@@ -532,6 +534,15 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return true
     }
     return false
+  }
+
+  private static func allowsConnectedFolderAction(for entry: GlassWorkspaceEntry) -> Bool {
+    switch entry.contentState {
+    case .loading, .ready, .empty:
+      return true
+    case .unavailable, .failed:
+      return false
+    }
   }
 
   private static func frame(for placement: GlassPlacement) -> NSRect {
