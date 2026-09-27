@@ -4,19 +4,34 @@ import SchneeGlassMacOSAdapter
 import SchneeGlassPresentation
 import SwiftUI
 
-private struct DesktopGlassPositionLockButton: View {
-  let isLocked: Bool
-  let onToggle: @MainActor () -> Void
+private struct DesktopGlassWindowControls: View {
+  let isPositionLocked: Bool
+  let keepsOnTop: Bool
+  let onTogglePositionLock: @MainActor () -> Void
+  let onToggleKeepOnTop: @MainActor () -> Void
 
   var body: some View {
-    Button(action: onToggle) {
-      Image(systemName: isLocked ? "lock.fill" : "lock.open")
-        .frame(width: 20, height: 20)
+    HStack(spacing: 6) {
+      Button(action: onTogglePositionLock) {
+        Image(systemName: isPositionLocked ? "lock.fill" : "lock.open")
+          .frame(width: 20, height: 20)
+      }
+      .help(isPositionLocked ? "Unlock Glass position" : "Lock Glass position")
+      .accessibilityLabel(
+        isPositionLocked ? "Unlock Glass position" : "Lock Glass position"
+      )
+
+      Button(action: onToggleKeepOnTop) {
+        Image(systemName: keepsOnTop ? "pin.fill" : "pin")
+          .frame(width: 20, height: 20)
+      }
+      .help(keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top")
+      .accessibilityLabel(
+        keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top"
+      )
     }
     .buttonStyle(.plain)
     .controlSize(.small)
-    .help(isLocked ? "Unlock Glass position" : "Lock Glass position")
-    .accessibilityLabel(isLocked ? "Unlock Glass position" : "Lock Glass position")
   }
 }
 
@@ -33,7 +48,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   private final class DesktopGlassPanel: NSPanel {
     let glassID: GlassID
     var suppressPlacementPersistence = false
-    var positionLockAccessoryController: NSTitlebarAccessoryViewController?
+    var windowControlsAccessoryController: NSTitlebarAccessoryViewController?
 
     init(glassID: GlassID, contentRect: NSRect) {
       self.glassID = glassID
@@ -279,7 +294,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     panel.contentView = NSHostingView(
       rootView: SchneeGlassDesktopGlassView(model: model, glassID: entry.id)
     )
-    configurePositionLockAccessory(for: panel)
+    configureWindowControlsAccessory(for: panel)
 
     panels[entry.id] = PanelRecord(panel: panel, persistenceTask: nil)
     if visibilityMode.presentsPanels {
@@ -327,7 +342,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       width: GlassPlacement.minimumWidth,
       height: GlassPlacement.minimumHeight
     )
-    panel.level = .normal
+    panel.level = windowPreferences.keepsOnTop(entry.id) ? .floating : .normal
 
     panel.standardWindowButton(.closeButton)?.isHidden = true
     panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -340,17 +355,20 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
   }
 
-  private func configurePositionLockAccessory(for panel: DesktopGlassPanel) {
+  private func configureWindowControlsAccessory(for panel: DesktopGlassPanel) {
     let glassID = panel.glassID
-    let isLocked = windowPreferences.isPositionLocked(for: glassID)
-    let rootView = DesktopGlassPositionLockButton(
-      isLocked: isLocked,
-      onToggle: { [weak self] in
+    let rootView = DesktopGlassWindowControls(
+      isPositionLocked: windowPreferences.isPositionLocked(for: glassID),
+      keepsOnTop: windowPreferences.keepsOnTop(glassID),
+      onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
+      },
+      onToggleKeepOnTop: { [weak self] in
+        self?.toggleKeepOnTop(for: glassID)
       }
     )
 
-    if let controller = panel.positionLockAccessoryController {
+    if let controller = panel.windowControlsAccessoryController {
       controller.view = NSHostingView(rootView: rootView)
       return
     }
@@ -359,7 +377,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     controller.layoutAttribute = .left
     controller.view = NSHostingView(rootView: rootView)
     panel.addTitlebarAccessoryViewController(controller)
-    panel.positionLockAccessoryController = controller
+    panel.windowControlsAccessoryController = controller
   }
 
   private func togglePositionLock(for glassID: GlassID) {
@@ -371,7 +389,18 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     windowPreferences.setPositionLocked(isLocked, for: glassID)
     panel.isMovable = !isLocked
     panel.isMovableByWindowBackground = !isLocked
-    configurePositionLockAccessory(for: panel)
+    configureWindowControlsAccessory(for: panel)
+  }
+
+  private func toggleKeepOnTop(for glassID: GlassID) {
+    guard let panel = panels[glassID]?.panel else {
+      return
+    }
+
+    let keepsOnTop = !windowPreferences.keepsOnTop(glassID)
+    windowPreferences.setKeepsOnTop(keepsOnTop, for: glassID)
+    panel.level = keepsOnTop ? .floating : .normal
+    configureWindowControlsAccessory(for: panel)
   }
 
   private func removePanel(glassID: GlassID) {
@@ -380,6 +409,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
     record.persistenceTask?.cancel()
     windowPreferences.removePositionLock(for: glassID)
+    windowPreferences.removeKeepOnTop(for: glassID)
     record.panel.delegate = nil
     record.panel.close()
   }
