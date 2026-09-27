@@ -94,8 +94,10 @@ public final class SchneeGlassWorkspaceModel {
   private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
   private let configurationRecoveryUseCase: ConfigurationRecoveryUseCase
   private let fileActionUseCase: WorkspaceFileActionUseCase
+  private let folderActionUseCase: WorkspaceFolderActionUseCase
   private let runtimeSessionFactory: GlassRuntimeSessionFactory
   private var sessions: [GlassID: GlassRuntimeSession] = [:]
+  private var connectedFolderURLs: [GlassID: URL] = [:]
   private var stateTasks: [GlassID: Task<Void, Never>] = [:]
   private var sessionTaskTracker = WorkspaceSessionTaskTracker()
   private var dropExecutionGate = WorkspaceDropExecutionGate()
@@ -111,6 +113,7 @@ public final class SchneeGlassWorkspaceModel {
     resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
     configurationRecoveryUseCase: ConfigurationRecoveryUseCase,
     fileActionUseCase: WorkspaceFileActionUseCase,
+    folderActionUseCase: WorkspaceFolderActionUseCase,
     runtimeSessionFactory: GlassRuntimeSessionFactory
   ) {
     self.createGlassUseCase = createGlassUseCase
@@ -121,6 +124,7 @@ public final class SchneeGlassWorkspaceModel {
     self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
     self.configurationRecoveryUseCase = configurationRecoveryUseCase
     self.fileActionUseCase = fileActionUseCase
+    self.folderActionUseCase = folderActionUseCase
     self.runtimeSessionFactory = runtimeSessionFactory
   }
 
@@ -253,6 +257,7 @@ public final class SchneeGlassWorkspaceModel {
       if let session = sessions.removeValue(forKey: id) {
         await session.stop()
       }
+      connectedFolderURLs[id] = nil
 
       glasses.removeAll { $0.id == id }
       userMessage = nil
@@ -533,6 +538,7 @@ public final class SchneeGlassWorkspaceModel {
     if let session = sessions.removeValue(forKey: glassID) {
       await session.stop()
     }
+    connectedFolderURLs[glassID] = nil
 
     do {
       guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
@@ -564,6 +570,18 @@ public final class SchneeGlassWorkspaceModel {
 
   public func revealInFinder(_ item: GlassItem) {
     fileActionUseCase.reveal(item)
+  }
+
+  public func canRevealConnectedFolder(glassID: GlassID) -> Bool {
+    connectedFolderURLs[glassID] != nil
+  }
+
+  public func revealConnectedFolder(glassID: GlassID) {
+    guard let url = connectedFolderURLs[glassID] else {
+      userMessage = "This Glass does not currently have an active folder connection."
+      return
+    }
+    folderActionUseCase.revealConnectedFolder(url: url)
   }
 
   public func dismissMessage() {
@@ -621,6 +639,7 @@ public final class SchneeGlassWorkspaceModel {
     }
     stateTasks.removeAll(keepingCapacity: false)
     sessions.removeAll(keepingCapacity: false)
+    connectedFolderURLs.removeAll(keepingCapacity: false)
 
     for session in activeSessions {
       await session.stop()
@@ -635,6 +654,7 @@ public final class SchneeGlassWorkspaceModel {
       let glassID = seed.configuration.id
 
       sessions[glassID] = session
+      connectedFolderURLs[glassID] = seed.access.url
       upsert(
         GlassWorkspaceEntry(
           id: glassID,
@@ -665,6 +685,7 @@ public final class SchneeGlassWorkspaceModel {
         }
         self.stateTasks[glassID] = nil
         self.sessions[glassID] = nil
+        self.connectedFolderURLs[glassID] = nil
       }
     } catch {
       await session.stop()
