@@ -136,6 +136,21 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] reconnectによってGlass ID/title/placementが不必要に変化しない
 - [ ] reconnect操作そのものはuser file contentを変更しない
 
+### 7.1 General Glass Source Reconnect (v0.2)
+
+- [ ] bookmark/permission failureなどで`unavailable`になったGlassにReconnect controlが表示される
+- [ ] healthyな`ready` / `empty` GlassにはReconnect controlが表示されない
+- [ ] pickerをCancelした場合、configuration / runtime / user fileを変更しない
+- [ ] 元の同一folderを選択するとGlass ID/title/placement/show-on-all-spacesを維持したまま復旧する
+- [ ] volume UUIDまたはdocument identifierが異なる別folderは、pathやfolder名が同じでも拒否する
+- [ ] persistent identityを証明できない場合はpath一致へfallbackせずfail-closedする
+- [ ] bookmark refresh後にもpersistent identityを再検証する
+- [ ] event subscription / initial snapshot / conditional config saveのいずれかが失敗した場合、準備済みaccessとsubscriptionをcleanupする
+- [ ] picker表示中またはruntime準備中にconfigurationが変わった場合staleとして拒否し、上書きしない
+- [ ] reconnect成功後に外部file変更が再びGlassへ反映される
+- [ ] reconnect成功後にアプリを再起動しても同じfolderへ復元できる
+- [ ] reconnect操作そのものはuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される

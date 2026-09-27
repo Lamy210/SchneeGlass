@@ -88,6 +88,7 @@ public final class SchneeGlassWorkspaceModel {
 
   private let createGlassUseCase: CreateGlassUseCase
   private let restoreApplicationUseCase: RestoreApplicationUseCase
+  private let reconnectGlassSourceUseCase: ReconnectGlassSourceUseCase
   private let removeGlassUseCase: RemoveGlassUseCase
   private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
   private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
@@ -104,6 +105,7 @@ public final class SchneeGlassWorkspaceModel {
   public init(
     createGlassUseCase: CreateGlassUseCase,
     restoreApplicationUseCase: RestoreApplicationUseCase,
+    reconnectGlassSourceUseCase: ReconnectGlassSourceUseCase,
     removeGlassUseCase: RemoveGlassUseCase,
     updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
     resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
@@ -113,6 +115,7 @@ public final class SchneeGlassWorkspaceModel {
   ) {
     self.createGlassUseCase = createGlassUseCase
     self.restoreApplicationUseCase = restoreApplicationUseCase
+    self.reconnectGlassSourceUseCase = reconnectGlassSourceUseCase
     self.removeGlassUseCase = removeGlassUseCase
     self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
     self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
@@ -497,6 +500,60 @@ public final class SchneeGlassWorkspaceModel {
     await session.cancelCopy()
   }
 
+  public func canReconnectSource(glassID: GlassID) -> Bool {
+    guard canMutateConfiguration,
+      !isDropBusy(glassID: glassID),
+      let entry = glasses.first(where: { $0.id == glassID })
+    else {
+      return false
+    }
+
+    if case .unavailable = entry.contentState {
+      return true
+    }
+    return false
+  }
+
+  public func reconnectGlassSource(glassID: GlassID) async {
+    if requiresConfigurationRecovery {
+      presentConfigurationRecoveryRequirementIfNeeded()
+      return
+    }
+    guard canReconnectSource(glassID: glassID) else {
+      return
+    }
+
+    isMutatingConfiguration = true
+    userMessage = nil
+    defer { isMutatingConfiguration = false }
+
+    sessionTaskTracker.invalidate(glassID)
+    stateTasks[glassID]?.cancel()
+    stateTasks[glassID] = nil
+    if let session = sessions.removeValue(forKey: glassID) {
+      await session.stop()
+    }
+
+    do {
+      guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
+        return
+      }
+
+      do {
+        try await activate(seed)
+        userMessage = nil
+      } catch {
+        userMessage =
+          "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
+      }
+    } catch let error as ReconnectGlassSourceError {
+      handleReconnectError(error)
+    } catch {
+      userMessage =
+        "SchneeGlass couldn't reconnect this Glass. The saved folder connection was left unchanged."
+    }
+  }
+
   public func open(_ item: GlassItem) {
     do {
       try fileActionUseCase.open(item)
@@ -627,6 +684,48 @@ public final class SchneeGlassWorkspaceModel {
       return
     }
     glasses[index].interactionState = state
+  }
+
+  private func handleReconnectError(_ error: ReconnectGlassSourceError) {
+    switch error {
+    case .configurationLoadFailed:
+      enterConfigurationRecoveryRequiredState()
+    case .configurationMissing:
+      userMessage = "This Glass is no longer present in the saved configuration."
+    case .sourceCreationFailed:
+      userMessage =
+        "SchneeGlass couldn't remember access to the selected folder. The previous connection was left unchanged."
+    case .selectedSourceIdentityUnavailable:
+      userMessage =
+        "SchneeGlass couldn't prove that the selected folder is the original folder. The previous connection was left unchanged."
+    case .selectedSourceMismatch:
+      userMessage =
+        "That is a different folder. Choose the original folder that this Glass was connected to."
+    case .folderAccess(.bookmarkResolutionFailed), .folderAccessFailed:
+      userMessage =
+        "macOS couldn't reopen the selected folder. The previous connection was left unchanged."
+    case .folderAccess(.accessDenied):
+      userMessage =
+        "macOS denied access to the selected folder. The previous connection was left unchanged."
+    case .folderAccess(.resourceReplacementDetected):
+      userMessage =
+        "The selected folder changed while reconnecting. Nothing was saved."
+    case .eventStreamFailed:
+      userMessage =
+        "SchneeGlass could access the folder but couldn't watch it for changes. Nothing was saved."
+    case .snapshotFailed:
+      userMessage =
+        "SchneeGlass could access the folder but couldn't read it safely. Nothing was saved."
+    case .invalidConfiguration:
+      userMessage =
+        "SchneeGlass couldn't build a valid reconnect configuration. Nothing was saved."
+    case .staleConfiguration:
+      userMessage =
+        "The Glass configuration changed while reconnecting. Nothing was overwritten; try again."
+    case .configurationSaveFailed:
+      userMessage =
+        "SchneeGlass couldn't save the reconnected folder. The previous connection was left unchanged."
+    }
   }
 
   private func enterConfigurationRecoveryRequiredState() {

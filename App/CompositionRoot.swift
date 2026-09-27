@@ -67,6 +67,15 @@ final class SchneeGlassCompositionRoot {
       snapshotReader: snapshotReader
     )
 
+    let reconnectGlassSourceUseCase = ReconnectGlassSourceUseCase(
+      configurationStore: configurationStore,
+      folderSelector: NativeFolderReconnectSelector(),
+      sourceCreator: sourceCreator,
+      accessController: accessController,
+      eventStreaming: eventHub,
+      snapshotReader: snapshotReader
+    )
+
     let removeGlassUseCase = RemoveGlassUseCase(
       configurationStore: configurationStore,
       pendingCopyStore: pendingCopyStore
@@ -101,6 +110,7 @@ final class SchneeGlassCompositionRoot {
     let workspaceModel = SchneeGlassWorkspaceModel(
       createGlassUseCase: createGlassUseCase,
       restoreApplicationUseCase: restoreApplicationUseCase,
+      reconnectGlassSourceUseCase: reconnectGlassSourceUseCase,
       removeGlassUseCase: removeGlassUseCase,
       updateGlassPlacementUseCase: updateGlassPlacementUseCase,
       resetGlassPositionsUseCase: resetGlassPositionsUseCase,
