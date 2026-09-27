@@ -201,6 +201,17 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] snap中にconfiguration mutationが進行中なら新しいsnapを開始しない
 - [ ] snap操作でuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.6 Compact Window Controls (v0.2)
+
+- [ ] small-width Glassでもtitlebar controlsがcontent/headerを過度に圧迫しない
+- [ ] Position Lockは直接buttonから切り替えられる
+- [ ] Rename / Finder / Keep on Top / All Spaces / Snapは`Glass window options` menuから実行できる
+- [ ] unavailable GlassではReconnectが直接見える状態を維持する
+- [ ] Keep on Top / All Spacesの現在状態がmenu内で判別できる
+- [ ] unavailable/failed時にstale Finder actionをmenuへ表示しない
+- [ ] configuration mutation中はRename / All Spaces / Snapの実行可否が既存policyに従う
+- [ ] compact化によってfile grid / context menu / drag / resize操作が阻害されない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
