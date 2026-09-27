@@ -189,6 +189,18 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] copy/drop処理中はSpaces behavior変更を開始しない
 - [ ] toggle操作でuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.5 Desktop Glass Snap Presets (v0.2)
+
+- [ ] Snap menuからTop Left / Top Right / Bottom Left / Bottom Right / Centerを選べる
+- [ ] snap後もGlassの現在sizeを維持する
+- [ ] menu bar / Dockを除いたcurrent displayのvisible frame基準で配置される
+- [ ] second display上のGlassはそのdisplay内でsnapされ、primary displayへ勝手に戻らない
+- [ ] oversized frameはcurrent displayへ収まるように安全にboundedされる
+- [ ] Position Lock中でも明示的なSnap操作は実行でき、Lock状態自体は維持される
+- [ ] snap後のplacementが保存され、アプリ再起動後も同じ位置へ復元される
+- [ ] snap中にconfiguration mutationが進行中なら新しいsnapを開始しない
+- [ ] snap操作でuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される

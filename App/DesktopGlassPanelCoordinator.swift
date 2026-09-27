@@ -13,12 +13,14 @@ private struct DesktopGlassWindowControls: View {
   let canRevealConnectedFolder: Bool
   let canRename: Bool
   let canChangeSpacesBehavior: Bool
+  let canSnap: Bool
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
   let onToggleSpacesBehavior: @MainActor () -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
   let onRename: @MainActor () -> Void
+  let onSnap: @MainActor (DesktopGlassSnapPreset) -> Void
 
   var body: some View {
     HStack(spacing: 6) {
@@ -77,6 +79,33 @@ private struct DesktopGlassWindowControls: View {
           ? "Stop showing Glass on all Spaces"
           : "Show Glass on all Spaces"
       )
+
+      Menu {
+        Button("Top Left") {
+          onSnap(.topLeft)
+        }
+        Button("Top Right") {
+          onSnap(.topRight)
+        }
+        Button("Bottom Left") {
+          onSnap(.bottomLeft)
+        }
+        Button("Bottom Right") {
+          onSnap(.bottomRight)
+        }
+        Divider()
+        Button("Center") {
+          onSnap(.center)
+        }
+      } label: {
+        Image(systemName: "rectangle.split.2x2")
+          .frame(width: 20, height: 20)
+      }
+      .menuStyle(.borderlessButton)
+      .fixedSize()
+      .disabled(!canSnap)
+      .help("Snap Glass")
+      .accessibilityLabel("Snap Glass")
 
       if showsReconnect {
         Button(action: onReconnect) {
@@ -431,6 +460,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         && model.canRevealConnectedFolder(glassID: glassID),
       canRename: model.canRenameGlass(glassID: glassID),
       canChangeSpacesBehavior: model.canChangeSpacesBehavior(glassID: glassID),
+      canSnap: !model.isMutatingConfiguration,
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
@@ -463,6 +493,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       },
       onRename: { [weak self] in
         self?.promptForRename(glassID: glassID)
+      },
+      onSnap: { [weak self] preset in
+        self?.snapGlass(glassID: glassID, preset: preset)
       }
     )
 
@@ -476,6 +509,28 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     controller.view = NSHostingView(rootView: rootView)
     panel.addTitlebarAccessoryViewController(controller)
     panel.windowControlsAccessoryController = controller
+  }
+
+  private func snapGlass(
+    glassID: GlassID,
+    preset: DesktopGlassSnapPreset
+  ) {
+    guard !model.isMutatingConfiguration,
+      let panel = panels[glassID]?.panel,
+      let screen = panel.screen ?? NSScreen.main ?? NSScreen.screens.first
+    else {
+      return
+    }
+
+    let snappedFrame = DesktopGlassSnapPlanner.frame(
+      currentFrame: panel.frame,
+      visibleFrame: screen.visibleFrame,
+      preset: preset
+    )
+    panel.suppressPlacementPersistence = true
+    panel.setFrame(snappedFrame, display: true)
+    panel.suppressPlacementPersistence = false
+    schedulePlacementPersistence(for: panel, delayNanoseconds: 0)
   }
 
   private func promptForRename(glassID: GlassID) {
