@@ -1586,7 +1586,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_ENUMERATION_FAILURE" 2
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to enumerate draft release assets before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_ASSET_ENUMERATION_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
@@ -1663,7 +1663,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_QUERY_FAILURE" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify draft release state before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_DRAFT_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # A malformed Draft state is not positive proof of ownership/state.
@@ -1678,7 +1678,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_DRAFT_INVALID" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: release is no longer a Draft before publication' "$OUTPUT_DRAFT_INVALID"
+grep -Fq 'Release promotion failed: run-owned draft release snapshot is malformed before publication' "$OUTPUT_DRAFT_INVALID"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_DRAFT_MODE='exact'
 
@@ -1694,7 +1694,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_TARGET_QUERY_FAILURE" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify draft release target before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_TARGET_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Non-SHA target values must also fail before publication.
@@ -1779,7 +1779,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_QUERY_FAILURE" 2>
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify prerelease state before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
+grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_PRERELEASE_QUERY_FAILURE"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 
 # Malformed prerelease state is not positive proof of a stable release.
@@ -1791,7 +1791,7 @@ bash Scripts/publish-notarized-release.sh >"$OUTPUT_PRERELEASE_MALFORMED" 2>&1
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: prerelease state is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
+grep -Fq 'Release promotion failed: run-owned draft release snapshot is malformed before publication' "$OUTPUT_PRERELEASE_MALFORMED"
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 
