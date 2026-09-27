@@ -33,79 +33,64 @@ private struct DesktopGlassWindowControls: View {
         isPositionLocked ? "Unlock Glass position" : "Lock Glass position"
       )
 
-      Button(action: onRename) {
-        Image(systemName: "pencil")
-          .frame(width: 20, height: 20)
-      }
-      .disabled(!canRename)
-      .help("Rename Glass")
-      .accessibilityLabel("Rename Glass")
-
-      if canRevealConnectedFolder {
-        Button(action: onRevealConnectedFolder) {
-          Image(systemName: "folder")
-            .frame(width: 20, height: 20)
-        }
-        .help("Show connected folder in Finder")
-        .accessibilityLabel("Show connected folder in Finder")
-      }
-
-      Button(action: onToggleKeepOnTop) {
-        Image(systemName: keepsOnTop ? "pin.fill" : "pin")
-          .frame(width: 20, height: 20)
-      }
-      .help(keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top")
-      .accessibilityLabel(
-        keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top"
-      )
-
-      Button(action: onToggleSpacesBehavior) {
-        Image(
-          systemName:
-            showsOnAllSpaces
-            ? "rectangle.fill.on.rectangle.fill"
-            : "rectangle.on.rectangle"
-        )
-        .frame(width: 20, height: 20)
-      }
-      .disabled(!canChangeSpacesBehavior)
-      .help(
-        showsOnAllSpaces
-          ? "Stop showing Glass on all Spaces"
-          : "Show Glass on all Spaces"
-      )
-      .accessibilityLabel(
-        showsOnAllSpaces
-          ? "Stop showing Glass on all Spaces"
-          : "Show Glass on all Spaces"
-      )
-
       Menu {
-        Button("Top Left") {
-          onSnap(.topLeft)
+        Button(action: onRename) {
+          Label("Rename Glass…", systemImage: "pencil")
         }
-        Button("Top Right") {
-          onSnap(.topRight)
+        .disabled(!canRename)
+
+        if canRevealConnectedFolder {
+          Button(action: onRevealConnectedFolder) {
+            Label("Show Connected Folder in Finder", systemImage: "folder")
+          }
         }
-        Button("Bottom Left") {
-          onSnap(.bottomLeft)
-        }
-        Button("Bottom Right") {
-          onSnap(.bottomRight)
-        }
+
         Divider()
-        Button("Center") {
-          onSnap(.center)
+
+        Button(action: onToggleKeepOnTop) {
+          Label(
+            "Keep on Top",
+            systemImage: keepsOnTop ? "checkmark.circle.fill" : "circle"
+          )
         }
+
+        Button(action: onToggleSpacesBehavior) {
+          Label(
+            "Show on All Spaces",
+            systemImage: showsOnAllSpaces ? "checkmark.circle.fill" : "circle"
+          )
+        }
+        .disabled(!canChangeSpacesBehavior)
+
+        Menu {
+          Button("Top Left") {
+            onSnap(.topLeft)
+          }
+          Button("Top Right") {
+            onSnap(.topRight)
+          }
+          Button("Bottom Left") {
+            onSnap(.bottomLeft)
+          }
+          Button("Bottom Right") {
+            onSnap(.bottomRight)
+          }
+          Divider()
+          Button("Center") {
+            onSnap(.center)
+          }
+        } label: {
+          Label("Snap Glass", systemImage: "rectangle.split.2x2")
+        }
+        .disabled(!canSnap)
       } label: {
-        Image(systemName: "rectangle.split.2x2")
+        Image(systemName: "ellipsis.circle")
           .frame(width: 20, height: 20)
       }
       .menuStyle(.borderlessButton)
       .fixedSize()
-      .disabled(!canSnap)
-      .help("Snap Glass")
-      .accessibilityLabel("Snap Glass")
+      .help("Glass window options")
+      .accessibilityLabel("Glass window options")
 
       if showsReconnect {
         Button(action: onReconnect) {
@@ -120,6 +105,7 @@ private struct DesktopGlassWindowControls: View {
     .buttonStyle(.plain)
     .controlSize(.small)
   }
+
 }
 
 enum DesktopGlassPositionResetResult: Hashable, Sendable {
