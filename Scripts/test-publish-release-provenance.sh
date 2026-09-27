@@ -1172,6 +1172,30 @@ else
   fi
 fi
 
+# Malformed run_attempt metadata cannot establish an exact candidate attempt.
+reset_case
+export GH_FIXTURE_RUN_ATTEMPT_MODE='malformed'
+OUTPUT_RUN_ATTEMPT_MALFORMED="$FIXTURE/output-run-attempt-malformed.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RUN_ATTEMPT_MALFORMED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RUN_ATTEMPT_MALFORMED"
+  echo 'Release publication unexpectedly accepted malformed run_attempt metadata.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: candidate workflow run snapshot is malformed: before artifact download' "$OUTPUT_RUN_ATTEMPT_MALFORMED"; then
+    cat "$OUTPUT_RUN_ATTEMPT_MALFORMED"
+    echo 'Malformed run_attempt did not fail at the initial candidate snapshot.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh run download ' "$LOG" || grep -Fq 'gh api --method POST ' "$LOG"; then
+    echo 'Malformed run_attempt reached artifact download or Draft Release creation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
 # A rerun can begin after the initial candidate validation but while the artifact
 # is being downloaded. Revalidate the run after download before any Release mutation.
 reset_case
