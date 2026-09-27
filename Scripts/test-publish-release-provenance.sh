@@ -438,7 +438,11 @@ case "$COMMAND" in
 
             if [[ "$direct_snapshot_reads" -eq 1 ]]; then
               case "$ASSET_MODE" in
-                exact|digest-mismatch-after-publication)
+                exact|digest-mismatch-after-publication|digest-malformed-after-publication)
+                  ;;
+                digest-missing-before-publication)
+                  snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"}]' \
+                    "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
                   ;;
                 digest-mismatch-before-publication)
                   snapshot_archive_digest='sha256:0000000000000000000000000000000000000000000000000000000000000000'
@@ -551,6 +555,10 @@ case "$COMMAND" in
                 snapshot_archive_digest='sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
                 snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"}]' \
                   "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
+              elif [[ "$ASSET_MODE" == 'digest-malformed-after-publication' ]]; then
+                snapshot_archive_digest='sha256:not-a-valid-sha256'
+                snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"}]' \
+                  "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
               fi
             fi
 
@@ -632,7 +640,7 @@ case "$COMMAND" in
           '.assets[].name')
             direct_asset_reads="$(grep -Fc -- 'repos/example/SchneeGlass/releases/101 --jq .assets\[\].name' "$LOG")"
             case "$ASSET_MODE" in
-              exact|digest-mismatch-before-publication|digest-mismatch-after-publication)
+              exact|digest-missing-before-publication|digest-mismatch-before-publication|digest-mismatch-after-publication|digest-malformed-after-publication)
                 if [[ "$direct_asset_reads" -eq 2 ]]; then
                   if [[ "$DRAFT_MODE" == 'publish-before-publication' ]]; then
                     touch "$STATE/release-public"
@@ -965,7 +973,7 @@ EOF
           assets)
             asset_reads="$(grep -Fc -- '--json assets' "$LOG")"
             case "$ASSET_MODE" in
-              exact|digest-mismatch-before-publication|digest-mismatch-after-publication)
+              exact|digest-missing-before-publication|digest-mismatch-before-publication|digest-mismatch-after-publication|digest-malformed-after-publication)
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
                 if [[ "$DRAFT_MODE" == 'publish-before-publication' && "$asset_reads" -ge 2 ]]; then
                   touch "$STATE/release-public"
@@ -1607,6 +1615,33 @@ grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snap
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_ASSET_MODE='exact'
 
+# Missing digest metadata cannot establish byte-level provenance even when all
+# expected asset names are present.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='digest-missing-before-publication'
+OUTPUT_ASSET_DIGEST_MISSING="$FIXTURE/output-asset-digest-missing-before-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_DIGEST_MISSING" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_ASSET_DIGEST_MISSING"
+  echo 'Release publication unexpectedly accepted missing Draft asset digest metadata.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: run-owned draft release snapshot is malformed before publication' "$OUTPUT_ASSET_DIGEST_MISSING"; then
+    cat "$OUTPUT_ASSET_DIGEST_MISSING"
+    echo 'Missing Draft asset digest did not fail as malformed release state.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
+    echo 'Missing Draft asset digest reached the Draft-to-public mutation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
 # Same-name asset substitution must be rejected by content digest, not accepted
 # merely because the expected filenames are still present.
 reset_case
@@ -2160,6 +2195,30 @@ else
   if ! grep -Fq 'Release promotion failed: published release asset digests do not match the validated candidate; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_ASSET_DIGEST_AFTER"; then
     cat "$OUTPUT_ASSET_DIGEST_AFTER"
     echo 'Published asset digest mismatch did not fail with the expected reconciliation error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_ASSET_MODE='exact'
+
+# Malformed post-publication digest metadata is ambiguous public state and
+# must never be accepted as an integrity proof.
+reset_case
+export GH_FIXTURE_TARGET_MODE='exact'
+export GH_FIXTURE_TAG_MODE='exact'
+export GH_FIXTURE_ASSET_MODE='digest-malformed-after-publication'
+OUTPUT_ASSET_DIGEST_MALFORMED="$FIXTURE/output-asset-digest-malformed-after-publication.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_ASSET_DIGEST_MALFORMED" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_ASSET_DIGEST_MALFORMED"
+  echo 'Published Release unexpectedly accepted malformed asset digest metadata.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Release promotion failed: published release asset digests do not match the validated candidate; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_ASSET_DIGEST_MALFORMED"; then
+    cat "$OUTPUT_ASSET_DIGEST_MALFORMED"
+    echo 'Malformed published asset digest did not fail with the expected reconciliation error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
