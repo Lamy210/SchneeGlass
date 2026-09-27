@@ -103,4 +103,3 @@ func removingKeepOnTopClearsOnlyKeepOnTopPreference() throws {
   #expect(store.isPositionLocked(for: glassID))
   #expect(defaults.object(forKey: "desktopGlass.keepOnTopIDs.v1") == nil)
 }
-
