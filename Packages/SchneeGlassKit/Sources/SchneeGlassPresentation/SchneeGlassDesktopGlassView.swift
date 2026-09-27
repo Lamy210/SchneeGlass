@@ -140,6 +140,9 @@ struct DesktopGlassSurface: View {
             .fixedSize()
             .accessibilityLabel("Glass options")
         }
+        .contentShape(Rectangle())
+        .gesture(WindowDragGesture())
+        .allowsWindowActivationEvents()
     }
 
     @ViewBuilder
