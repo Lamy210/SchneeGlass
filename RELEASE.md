@@ -268,14 +268,15 @@ Publication captures the run-created Draft identity after Draft creation succeed
 2. verify `targetCommitish` equals that candidate SHA
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt` as raw binary bodies to the captured run-owned Release `databaseId`; never resolve the upload target by tag
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
-5. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
-6. fetch one run-owned Release snapshot by captured `databaseId` immediately before publication and, from that single snapshot, require matching ID, Draft=true, prerelease=false, exact candidate target, and the exact three-asset set; separately re-certify repository immutability/governance, public build history, and tag provenance
-7. publish that exact Draft by the captured `databaseId` (not by tag), forcing `draft=false`, `prerelease=false`, and `make_latest=true`
-8. fetch one run-owned Release snapshot by captured `databaseId` after publication and, from that single snapshot, require matching ID, Draft=false, immutable=true, exact candidate target, and the exact three-asset set
-9. re-read the immutable public Release and require the same exact three-asset set
-10. re-read the public Release `targetCommitish` and require the exact candidate SHA
-11. resolve the final remote release tag and require it to point to the exact candidate SHA
-12. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
+5. compute local SHA-256 digests for all three validated candidate files and retain them as the byte-level publication authority
+6. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
+7. fetch one run-owned Release snapshot by captured `databaseId` immediately before publication and, from that single snapshot, require matching ID, Draft=true, prerelease=false, exact candidate target, the exact three-asset set, and exact `assets[].digest == sha256:<local hex>` mapping for every asset; separately re-certify repository immutability/governance, public build history, and tag provenance
+8. publish that exact Draft by the captured `databaseId` (not by tag), forcing `draft=false`, `prerelease=false`, and `make_latest=true`
+9. fetch one run-owned Release snapshot by captured `databaseId` after publication and, from that single snapshot, require matching ID, Draft=false, immutable=true, exact candidate target, the exact three-asset set, and the same exact SHA-256 digest mapping
+10. re-read the immutable public Release and require the same exact three-asset set
+11. re-read the public Release `targetCommitish` and require the exact candidate SHA
+12. resolve the final remote release tag and require it to point to the exact candidate SHA
+13. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
 
 If publication reports `isImmutable=false`, the workflow fails without deleting or editing the remote Release or tag. It emits manual-reconciliation guidance containing the target tag and captured Release ID so an operator can inspect the exact public state before taking any corrective action. Automatic deletion is intentionally prohibited because the mutable-state proof and a later destructive delete cannot be made atomic; the same tag/Release may change between those operations. Pre-existing tag/Release names are still rejected before creation.
 
