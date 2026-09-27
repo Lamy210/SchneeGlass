@@ -69,3 +69,38 @@ func removingPositionLockClearsPersistedState() throws {
   #expect(!store.isPositionLocked(for: glassID))
   #expect(defaults.object(forKey: "desktopGlass.lockedPositionIDs.v1") == nil)
 }
+
+@Test
+func keepOnTopPersistsIndependentlyFromPositionLock() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  store.setKeepsOnTop(true, for: glassID)
+
+  let restoredStore = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(restoredStore.keepsOnTop(glassID))
+  #expect(!restoredStore.isPositionLocked(for: glassID))
+}
+
+@Test
+func removingKeepOnTopClearsOnlyKeepOnTopPreference() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setPositionLocked(true, for: glassID)
+  store.setKeepsOnTop(true, for: glassID)
+
+  store.removeKeepOnTop(for: glassID)
+
+  #expect(!store.keepsOnTop(glassID))
+  #expect(store.isPositionLocked(for: glassID))
+  #expect(defaults.object(forKey: "desktopGlass.keepOnTopIDs.v1") == nil)
+}
+
