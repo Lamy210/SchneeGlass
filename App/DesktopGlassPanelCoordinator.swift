@@ -285,7 +285,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     panel.hasShadow = true
     panel.isReleasedWhenClosed = false
     panel.hidesOnDeactivate = false
-    panel.isMovableByWindowBackground = false
+    panel.isMovable = true
+    panel.isMovableByWindowBackground = true
     panel.minSize = NSSize(
       width: GlassPlacement.minimumWidth,
       height: GlassPlacement.minimumHeight
