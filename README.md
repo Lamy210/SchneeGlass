@@ -6,9 +6,13 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1 Core / Recovery / Automated Quality Baseline Complete — Production Validation Pending**
+**v0.1.1 Ad-Hoc Release Published — v0.2 Development Active**
 
-v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / notarization / immutable release publicationのコードは`main`へ実装済みです。現在のRelease blockerは、production credential・repository governance・実signed candidate・Manual QAを用いた運用検証です。
+`v0.1.1`は、v0.1.0の完全未署名packageをad-hoc署名版へ置き換える互換リリースとしてGitHub Releasesへ公開済みです。ad-hoc署名はApple Developer ID署名・notarizationではないため、初回起動時のGatekeeper UXには制約が残ります。
+
+Developer ID signing / notarization / immutable production publicationのコードは実装済みで、実credential・repository governance・signed candidate Manual QAなどの運用検証はIssue #33で継続します。これとは独立して、v0.2のWindow UX / Glass management開発を進行中です。
+
+v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md) を参照してください。
 
 実装済み:
 
@@ -75,16 +79,16 @@ v0.1の主要機能、Recovery導線、CI diagnostics、Developer ID signing / n
 - public Release build-number monotonicity gate
 - Manual QA後のimmutable GitHub Release promotion workflow
 
-v0.1で残っているRelease blocker:
+Developer ID production pathで残っているRelease blocker:
 
 - `production-release` environmentへ実Developer ID / App Store Connect credentialを設定
 - Repository release immutabilityを有効化
 - `main` branch protection / required CIなどRelease governanceを確認
 - 最初のcredentialed signed/notarized candidateを成功させる
 - `docs/MANUAL_QA.md`をsigned candidateで完走する
-- 最初のimmutable v0.1 GitHub Releaseをpublishする
+- 最初のDeveloper ID signed / notarized immutable production Releaseをpublishする
 
-コード実装済みと運用検証待ちを混同しないこと。詳細は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) と Issue #33 を参照してください。
+ad-hoc公開済みのv0.1.1とDeveloper ID production pathを混同しないこと。詳細は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)、[`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Issue #33 を参照してください。
 
 ## Product Promise
 
