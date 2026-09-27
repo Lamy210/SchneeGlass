@@ -61,6 +61,8 @@ done <<< "$ORIGINAL_KEYCHAINS_OUTPUT"
 cleanup() {
   set +e
 
+  unset DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+
   if ((${#ORIGINAL_KEYCHAINS[@]} > 0)); then
     security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1
   fi
