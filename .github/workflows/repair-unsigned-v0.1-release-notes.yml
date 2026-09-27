@@ -1,0 +1,60 @@
+name: Repair Unsigned v0.1.0 Release Notes
+
+on:
+  push:
+    branches:
+      - 'release/0.1.0'
+    paths:
+      - '.github/workflows/repair-unsigned-v0.1-release-notes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    name: Repair v0.1.0 release metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Rewrite release notes literally
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > "$RUNNER_TEMP/RELEASE_NOTES.md" <<'EOF'
+          # SchneeGlass v0.1.0
+
+          This is the first public SchneeGlass release.
+
+          **Important:** this build is intentionally **not signed with Apple Developer ID and not notarized by Apple**.
+
+          macOS Gatekeeper may block the first launch. If you trust this repository and the downloaded checksum matches, try opening SchneeGlass once, then open **System Settings → Privacy & Security** and use **Open Anyway** for SchneeGlass.
+
+          ## Integrity
+
+          Verify the downloaded archive with:
+
+          ```bash
+          shasum -a 256 -c SHA256SUMS
+          ```
+
+          Source commit: `62cb32cff52dd6cd94008d58ea53430ef9228542`
+
+          Release archive SHA-256: `bf3c07884384dfd8c11a6861e63cad6692c1c34dbbd9461a94c5397cc65f0e4f`
+
+          A Developer ID signed/notarized distribution can be added later without changing the v0.1 source baseline.
+          EOF
+
+          gh release edit v0.1.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SchneeGlass v0.1.0 (Unsigned)" \
+            --notes-file "$RUNNER_TEMP/RELEASE_NOTES.md"
+
+      - name: Verify repaired release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY="$(gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" --json body --jq '.body')"
+          grep -Fq 'shasum -a 256 -c SHA256SUMS' <<< "$BODY"
+          grep -Fq '62cb32cff52dd6cd94008d58ea53430ef9228542' <<< "$BODY"
+          grep -Fq 'bf3c07884384dfd8c11a6861e63cad6692c1c34dbbd9461a94c5397cc65f0e4f' <<< "$BODY"
