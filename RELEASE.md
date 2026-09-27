@@ -269,9 +269,9 @@ Publication captures the run-created Draft identity after Draft creation succeed
 3. upload ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt` as raw binary bodies to the captured run-owned Release `databaseId`; never resolve the upload target by tag
 4. require the Draft asset set to contain exactly those three assets, with no missing, extra, or duplicate names
 5. re-fetch `origin/main` and require the candidate SHA to still equal the exact current `main` commit
-6. re-certify final Draft state, target, stable classification, repository immutability/governance, public build history, tag provenance, and exact equality with the captured run-owned `databaseId`
+6. fetch one run-owned Release snapshot by captured `databaseId` immediately before publication and, from that single snapshot, require matching ID, Draft=true, prerelease=false, exact candidate target, and the exact three-asset set; separately re-certify repository immutability/governance, public build history, and tag provenance
 7. publish that exact Draft by the captured `databaseId` (not by tag), forcing `draft=false`, `prerelease=false`, and `make_latest=true`
-8. require the resulting public Release to report `isDraft=false` and `isImmutable=true`
+8. fetch one run-owned Release snapshot by captured `databaseId` after publication and, from that single snapshot, require matching ID, Draft=false, immutable=true, exact candidate target, and the exact three-asset set
 9. re-read the immutable public Release and require the same exact three-asset set
 10. re-read the public Release `targetCommitish` and require the exact candidate SHA
 11. resolve the final remote release tag and require it to point to the exact candidate SHA
