@@ -229,16 +229,19 @@ This is deliberately stricter than name-only matching: an unrelated integration 
 Publication does not trust the display name alone. The selected Actions run must satisfy all of the following:
 
 ```text
-name       = Production Release Candidate
-path       = .github/workflows/production-release.yml
-event      = workflow_dispatch
-status     = completed
-conclusion = success
-branch     = main
-head_sha   = 40-character lowercase commit SHA
+name        = Production Release Candidate
+path        = .github/workflows/production-release.yml
+event       = workflow_dispatch
+status      = completed
+conclusion  = success
+branch      = main
+head_sha    = 40-character lowercase commit SHA
+run_attempt = 1
 ```
 
-This prevents a lookalike workflow with the same display name from being promoted.
+This prevents a lookalike workflow with the same display name from being promoted. The workflow-run metadata is read from one JSON snapshot before artifact download, including `run_attempt`. Only the first attempt is publishable. The run is fetched and validated again immediately after artifact download; if the run was re-run or became ambiguous during that boundary, publication fails before any GitHub Release mutation.
+
+Do not use GitHub Actions **Re-run jobs** for a Manual-QA-bound production candidate. Start a fresh `workflow_dispatch` instead so the new candidate has its own run ID and first attempt.
 
 ### Publication revalidation
 
