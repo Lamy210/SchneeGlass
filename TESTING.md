@@ -564,6 +564,9 @@ candidate workflow path == .github/workflows/production-release.yml
 event == workflow_dispatch
 branch == main
 status == completed / conclusion == success
+run_attempt == 1
+candidate workflow-run metadata is schema-validated from one JSON snapshot before artifact download
+candidate workflow-run snapshot is re-fetched and revalidated after artifact download; reruns fail before any Release mutation
 valid candidate source commit SHA
 schema v1 release evidence
 unknown/malformed evidence rejection
