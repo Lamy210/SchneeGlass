@@ -260,6 +260,7 @@ IDENTITY_MODE="${GH_FIXTURE_IDENTITY_MODE:-stable}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
 IMMUTABILITY_MODE="${GH_FIXTURE_IMMUTABILITY_MODE:-enabled}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
+RUN_ATTEMPT_MODE="${GH_FIXTURE_RUN_ATTEMPT_MODE:-first}"
 printf 'gh ' >> "$LOG"
 printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
@@ -698,7 +699,30 @@ case "$COMMAND" in
         esac
         ;;
       repos/example/SchneeGlass/actions/runs/123)
+        run_attempt=1
+        case "$RUN_ATTEMPT_MODE" in
+          first|rerun-after-download)
+            if [[ -f "$STATE/run-rerun" ]]; then
+              run_attempt=2
+            fi
+            ;;
+          second)
+            run_attempt=2
+            ;;
+          malformed)
+            run_attempt='"two"'
+            ;;
+          *)
+            echo "unexpected run-attempt fixture mode: $RUN_ATTEMPT_MODE" >&2
+            exit 124
+            ;;
+        esac
+
         case "$JQ" in
+          '')
+            printf '{"name":"Production Release Candidate","path":".github/workflows/production-release.yml","event":"workflow_dispatch","status":"completed","conclusion":"success","head_branch":"main","head_sha":"%s","run_attempt":%s}\n' \
+              "$CANDIDATE_SHA" "$run_attempt"
+            ;;
           .name) printf '%s\n' 'Production Release Candidate' ;;
           .path) printf '%s\n' '.github/workflows/production-release.yml' ;;
           .event) printf '%s\n' 'workflow_dispatch' ;;
@@ -706,6 +730,7 @@ case "$COMMAND" in
           .conclusion) printf '%s\n' 'success' ;;
           .head_branch) printf '%s\n' 'main' ;;
           .head_sha) printf '%s\n' "$CANDIDATE_SHA" ;;
+          .run_attempt) printf '%s\n' "$run_attempt" ;;
           *) echo "unexpected run jq: $JQ" >&2; exit 92 ;;
         esac
         ;;
@@ -789,6 +814,9 @@ bundle_version=0.1.0
 bundle_build=1
 commit_sha=$CANDIDATE_SHA
 EOF
+    if [[ "$RUN_ATTEMPT_MODE" == 'rerun-after-download' ]]; then
+      touch "$STATE/run-rerun"
+    fi
     ;;
 
   release)
@@ -1117,6 +1145,59 @@ if [[ "$STATUS" -ne 0 ]]; then
   echo 'Exact release provenance fixture unexpectedly failed.' >&2
   FAILURES=$((FAILURES + 1))
 fi
+
+# A workflow run can be re-run under the same run ID. A second attempt must never
+# be accepted as the Manual-QA candidate identity.
+reset_case
+export GH_FIXTURE_RUN_ATTEMPT_MODE='second'
+OUTPUT_RERUN_ATTEMPT="$FIXTURE/output-rerun-attempt.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RERUN_ATTEMPT" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RERUN_ATTEMPT"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted workflow run attempt 2.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Production candidate run validation failed: candidate run attempt must be 1: 2' "$OUTPUT_RERUN_ATTEMPT"; then
+    cat "$OUTPUT_RERUN_ATTEMPT"
+    echo 'Workflow rerun did not fail with the expected attempt-identity error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh api --method POST ' "$LOG"; then
+    echo 'Workflow rerun reached Draft Release creation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+
+# A rerun can begin after the initial candidate validation but while the artifact
+# is being downloaded. Revalidate the run after download before any Release mutation.
+reset_case
+export GH_FIXTURE_RUN_ATTEMPT_MODE='rerun-after-download'
+OUTPUT_RERUN_AFTER_DOWNLOAD="$FIXTURE/output-rerun-after-download.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_RERUN_AFTER_DOWNLOAD" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT_RERUN_AFTER_DOWNLOAD"
+  cat "$LOG"
+  echo 'Release publication unexpectedly accepted a candidate rerun that started during artifact download.' >&2
+  FAILURES=$((FAILURES + 1))
+else
+  if ! grep -Fq 'Production candidate run validation failed: candidate run attempt must be 1: 2' "$OUTPUT_RERUN_AFTER_DOWNLOAD"; then
+    cat "$OUTPUT_RERUN_AFTER_DOWNLOAD"
+    echo 'Artifact-download rerun race did not fail with the expected attempt-identity error.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -Fq 'gh api --method POST ' "$LOG"; then
+    echo 'Artifact-download rerun race reached Draft Release creation.' >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+fi
+export GH_FIXTURE_RUN_ATTEMPT_MODE='first'
 
 # A successful tag-addressed create followed by a separate tag lookup cannot prove
 # which Release object was created by this run. Replace ID 101 with same-tag ID 202
