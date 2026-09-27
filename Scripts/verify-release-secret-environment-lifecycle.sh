@@ -38,6 +38,8 @@ line_of_exact() {
   printf '%s\n' "$result"
 }
 
+CLEANUP_CLEAR_LINE="$(line_of_exact "$SCRIPT" '  unset DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD APPSTORE_CONNECT_PRIVATE_KEY_BASE64')"
+CLEANUP_SECURITY_LINE="$(line_of_exact "$SCRIPT" '    security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1')"
 DECODE_P12_LINE="$(line_of_exact "$SCRIPT" 'printf '"'"'%s'"'"' "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$P12_PATH"')"
 DECODE_API_KEY_LINE="$(line_of_exact "$SCRIPT" 'printf '"'"'%s'"'"' "$APPSTORE_CONNECT_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$API_KEY_PATH"')"
 CLEAR_ENCODED_LINE="$(line_of_exact "$SCRIPT" 'unset DEVELOPER_ID_P12_BASE64 APPSTORE_CONNECT_PRIVATE_KEY_BASE64')"
@@ -46,6 +48,7 @@ IMPORT_P12_LINE="$(line_of_exact "$SCRIPT" 'security import "$P12_PATH" \')"
 CLEAR_PASSWORD_LINE="$(line_of_exact "$SCRIPT" 'unset DEVELOPER_ID_P12_PASSWORD')"
 PARTITION_LIST_LINE="$(line_of_exact "$SCRIPT" 'security set-key-partition-list \')"
 
+(( CLEANUP_CLEAR_LINE < CLEANUP_SECURITY_LINE ))   || fail "cleanup must clear signing secrets before invoking cleanup subprocesses"
 (( DECODE_P12_LINE < CLEAR_ENCODED_LINE ))   || fail "encoded Developer ID secret must be cleared after PKCS#12 decode"
 (( DECODE_API_KEY_LINE < CLEAR_ENCODED_LINE ))   || fail "encoded App Store Connect secret must be cleared after private-key decode"
 (( CLEAR_ENCODED_LINE < VERIFY_DECODED_LINE ))   || fail "encoded credential secrets must be cleared before decoded credential verification"
