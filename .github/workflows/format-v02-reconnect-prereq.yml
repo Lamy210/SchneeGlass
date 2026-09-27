@@ -1,0 +1,46 @@
+name: Format v0.2 reconnect prerequisite
+
+on:
+  push:
+    branches:
+      - chore/format-v0.2-reconnect-path
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-26
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Format reconnect prerequisite files
+        run: |
+          set -euo pipefail
+          xcrun swift-format format --in-place \
+            App/CompositionRoot.swift \
+            Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
+          xcrun swift-format lint --strict \
+            App/CompositionRoot.swift \
+            Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
+
+      - name: Commit format-only result
+        env:
+          BRANCH: chore/format-v0.2-reconnect-path
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/format-v02-reconnect-prereq.yml
+          git add \
+            App/CompositionRoot.swift \
+            Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/SchneeGlassWorkspaceModel.swift
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'style: format v0.2 reconnect path'
+          git push origin "HEAD:$BRANCH"
