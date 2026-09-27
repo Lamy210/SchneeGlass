@@ -417,6 +417,85 @@ func staleConfigurationAfterPreparationReleasesRuntimeResources() async throws {
 
 @Test
 @MainActor
+func refreshedSourceIdentityMismatchReleasesAccessBeforeRuntimePreparation() async throws {
+  let identity = reconnectIdentity()
+  let originalSource = reconnectSource(
+    path: "/old/Projects",
+    marker: 1,
+    identity: identity
+  )
+  let selectedSource = reconnectSource(
+    path: "/new/Projects",
+    marker: 2,
+    identity: identity
+  )
+  let refreshedSource = reconnectSource(
+    path: "/new/Projects",
+    marker: 3,
+    identity: reconnectIdentity(volume: "volume-a", document: 99)
+  )
+  let configuration = try reconnectConfiguration(source: originalSource)
+  let fixture = makeReconnectUseCase(
+    configurations: [[configuration]],
+    selectedSource: selectedSource,
+    refreshedSource: refreshedSource
+  )
+
+  do {
+    _ = try await fixture.useCase.execute(glassID: configuration.id)
+    Issue.record("Expected refreshed identity mismatch")
+  } catch let error as ReconnectGlassSourceError {
+    #expect(error == .selectedSourceMismatch)
+  }
+
+  let accessCounts = await fixture.access.counts()
+  let eventCounts = await fixture.events.counts()
+  #expect(accessCounts.acquired == 1)
+  #expect(accessCounts.released == 1)
+  #expect(eventCounts.subscribed == 0)
+  #expect(eventCounts.stopped == 0)
+  #expect(await fixture.store.savedValues().isEmpty)
+}
+
+@Test
+@MainActor
+func eventSubscriptionFailureReleasesAccess() async throws {
+  let identity = reconnectIdentity()
+  let originalSource = reconnectSource(
+    path: "/old/Projects",
+    marker: 1,
+    identity: identity
+  )
+  let selectedSource = reconnectSource(
+    path: "/new/Projects",
+    marker: 2,
+    identity: identity
+  )
+  let configuration = try reconnectConfiguration(source: originalSource)
+  let fixture = makeReconnectUseCase(
+    configurations: [[configuration]],
+    selectedSource: selectedSource,
+    failEvents: true
+  )
+
+  do {
+    _ = try await fixture.useCase.execute(glassID: configuration.id)
+    Issue.record("Expected event subscription failure")
+  } catch let error as ReconnectGlassSourceError {
+    #expect(error == .eventStreamFailed)
+  }
+
+  let accessCounts = await fixture.access.counts()
+  let eventCounts = await fixture.events.counts()
+  #expect(accessCounts.acquired == 1)
+  #expect(accessCounts.released == 1)
+  #expect(eventCounts.subscribed == 0)
+  #expect(eventCounts.stopped == 0)
+  #expect(await fixture.store.savedValues().isEmpty)
+}
+
+@Test
+@MainActor
 func snapshotFailureStopsEventsAndReleasesAccess() async throws {
   let identity = reconnectIdentity()
   let originalSource = reconnectSource(
