@@ -37,6 +37,8 @@ on:
       - 'Scripts/verify-production-release-path-coverage.sh'
       - 'Scripts/verify-production-release-secret-scope.sh'
       - 'Scripts/test-production-release-secret-scope.sh'
+      - 'Scripts/verify-release-secret-environment-lifecycle.sh'
+      - 'Scripts/test-release-secret-environment-lifecycle.sh'
       - 'Scripts/test-production-release-path-coverage-enumeration.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
 
@@ -84,7 +86,9 @@ jobs:
             'Scripts/verify-production-release-path-coverage.sh' \
             'Scripts/test-production-release-path-coverage-enumeration.sh' \
             'Scripts/verify-production-release-secret-scope.sh' \
-            'Scripts/test-production-release-secret-scope.sh'
+            'Scripts/test-production-release-secret-scope.sh' \
+            'Scripts/verify-release-secret-environment-lifecycle.sh' \
+            'Scripts/test-release-secret-environment-lifecycle.sh'
 
       - name: Production release path coverage enumeration fixture
         run: bash Scripts/test-production-release-path-coverage-enumeration.sh
@@ -101,6 +105,8 @@ jobs:
           bash -n Scripts/test-production-release-path-coverage-enumeration.sh
           bash -n Scripts/verify-production-release-secret-scope.sh
           bash -n Scripts/test-production-release-secret-scope.sh
+          bash -n Scripts/verify-release-secret-environment-lifecycle.sh
+          bash -n Scripts/test-release-secret-environment-lifecycle.sh
           bash -n Scripts/verify-release-credential-inputs.sh
           bash -n Scripts/verify-release-decoded-credentials.sh
           bash -n Scripts/encode-release-fixture-base64.sh
@@ -125,6 +131,12 @@ jobs:
 
       - name: Production release credential scope
         run: bash Scripts/verify-production-release-secret-scope.sh .github/workflows/production-release.yml
+
+      - name: Release secret environment lifecycle fixture
+        run: bash Scripts/test-release-secret-environment-lifecycle.sh
+
+      - name: Release secret environment lifecycle
+        run: bash Scripts/verify-release-secret-environment-lifecycle.sh Scripts/build-notarized-release.sh
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
