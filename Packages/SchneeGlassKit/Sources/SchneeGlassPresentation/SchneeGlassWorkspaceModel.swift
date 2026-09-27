@@ -10,7 +10,7 @@ public struct GlassWorkspaceEntry: Identifiable, Hashable, Sendable {
   public var contentState: GlassContentState
   public var interactionState: InteractionState
   public var placement: GlassPlacement?
-  public let showOnAllSpaces: Bool
+  public var showOnAllSpaces: Bool
 
   public init(
     id: GlassID,
@@ -93,6 +93,7 @@ public final class SchneeGlassWorkspaceModel {
   private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
   private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
   private let updateGlassTitleUseCase: UpdateGlassTitleUseCase
+  private let updateGlassSpacesBehaviorUseCase: UpdateGlassSpacesBehaviorUseCase
   private let configurationRecoveryUseCase: ConfigurationRecoveryUseCase
   private let fileActionUseCase: WorkspaceFileActionUseCase
   private let folderActionUseCase: WorkspaceFolderActionUseCase
@@ -113,6 +114,7 @@ public final class SchneeGlassWorkspaceModel {
     updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
     resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
     updateGlassTitleUseCase: UpdateGlassTitleUseCase,
+    updateGlassSpacesBehaviorUseCase: UpdateGlassSpacesBehaviorUseCase,
     configurationRecoveryUseCase: ConfigurationRecoveryUseCase,
     fileActionUseCase: WorkspaceFileActionUseCase,
     folderActionUseCase: WorkspaceFolderActionUseCase,
@@ -125,6 +127,7 @@ public final class SchneeGlassWorkspaceModel {
     self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
     self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
     self.updateGlassTitleUseCase = updateGlassTitleUseCase
+    self.updateGlassSpacesBehaviorUseCase = updateGlassSpacesBehaviorUseCase
     self.configurationRecoveryUseCase = configurationRecoveryUseCase
     self.fileActionUseCase = fileActionUseCase
     self.folderActionUseCase = folderActionUseCase
@@ -560,6 +563,60 @@ public final class SchneeGlassWorkspaceModel {
       }
     } catch {
       userMessage = "SchneeGlass couldn't rename this Glass. Nothing was changed."
+    }
+  }
+
+  public func canChangeSpacesBehavior(glassID: GlassID) -> Bool {
+    canMutateConfiguration
+      && glasses.contains(where: { $0.id == glassID })
+      && !isDropBusy(glassID: glassID)
+  }
+
+  public func setShowOnAllSpaces(
+    glassID: GlassID,
+    showOnAllSpaces: Bool
+  ) async {
+    if requiresConfigurationRecovery {
+      presentConfigurationRecoveryRequirementIfNeeded()
+      return
+    }
+    guard canChangeSpacesBehavior(glassID: glassID) else {
+      return
+    }
+
+    isMutatingConfiguration = true
+    userMessage = nil
+    defer { isMutatingConfiguration = false }
+
+    do {
+      let updated = try await updateGlassSpacesBehaviorUseCase.execute(
+        glassID: glassID,
+        showOnAllSpaces: showOnAllSpaces
+      )
+      guard updated,
+        let index = glasses.firstIndex(where: { $0.id == glassID })
+      else {
+        return
+      }
+
+      glasses[index].showOnAllSpaces = showOnAllSpaces
+    } catch let error as UpdateGlassSpacesBehaviorError {
+      switch error {
+      case .configurationLoadFailed:
+        enterConfigurationRecoveryRequiredState()
+      case .configurationChanged:
+        userMessage =
+          "The Glass configuration changed while updating Spaces behavior. Nothing was overwritten; try again."
+      case .invalidConfiguration:
+        userMessage =
+          "SchneeGlass couldn't build a valid Spaces configuration. Nothing was saved."
+      case .configurationSaveFailed:
+        userMessage =
+          "SchneeGlass couldn't save the Spaces behavior. Nothing was changed."
+      }
+    } catch {
+      userMessage =
+        "SchneeGlass couldn't update this Glass's Spaces behavior. Nothing was changed."
     }
   }
 

@@ -7,12 +7,15 @@ import SwiftUI
 private struct DesktopGlassWindowControls: View {
   let isPositionLocked: Bool
   let keepsOnTop: Bool
+  let showsOnAllSpaces: Bool
   let showsReconnect: Bool
   let canReconnect: Bool
   let canRevealConnectedFolder: Bool
   let canRename: Bool
+  let canChangeSpacesBehavior: Bool
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
+  let onToggleSpacesBehavior: @MainActor () -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
   let onRename: @MainActor () -> Void
@@ -52,6 +55,27 @@ private struct DesktopGlassWindowControls: View {
       .help(keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top")
       .accessibilityLabel(
         keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top"
+      )
+
+      Button(action: onToggleSpacesBehavior) {
+        Image(
+          systemName:
+            showsOnAllSpaces
+            ? "rectangle.fill.on.rectangle.fill"
+            : "rectangle.on.rectangle"
+        )
+        .frame(width: 20, height: 20)
+      }
+      .disabled(!canChangeSpacesBehavior)
+      .help(
+        showsOnAllSpaces
+          ? "Stop showing Glass on all Spaces"
+          : "Show Glass on all Spaces"
+      )
+      .accessibilityLabel(
+        showsOnAllSpaces
+          ? "Stop showing Glass on all Spaces"
+          : "Show Glass on all Spaces"
       )
 
       if showsReconnect {
@@ -399,17 +423,32 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     let rootView = DesktopGlassWindowControls(
       isPositionLocked: windowPreferences.isPositionLocked(for: glassID),
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
+      showsOnAllSpaces: entry.showOnAllSpaces,
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
       canRevealConnectedFolder:
         Self.allowsConnectedFolderAction(for: entry)
         && model.canRevealConnectedFolder(glassID: glassID),
       canRename: model.canRenameGlass(glassID: glassID),
+      canChangeSpacesBehavior: model.canChangeSpacesBehavior(glassID: glassID),
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
       onToggleKeepOnTop: { [weak self] in
         self?.toggleKeepOnTop(for: glassID)
+      },
+      onToggleSpacesBehavior: { [weak self] in
+        guard let self,
+          let currentEntry = self.model.glasses.first(where: { $0.id == glassID })
+        else {
+          return
+        }
+        Task {
+          await self.model.setShowOnAllSpaces(
+            glassID: glassID,
+            showOnAllSpaces: !currentEntry.showOnAllSpaces
+          )
+        }
       },
       onReconnect: { [weak self] in
         guard let self else {

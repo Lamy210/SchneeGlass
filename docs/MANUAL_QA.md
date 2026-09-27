@@ -176,6 +176,19 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] rename成功後にアプリを再起動しても新しいGlass表示名が維持される
 - [ ] rename中もuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.4 Per-Glass Spaces Behavior (v0.2)
+
+- [ ] `Show Glass on all Spaces` controlでGlass単位に切り替えられる
+- [ ] 有効化すると別Spaceへ移動しても同じGlassが表示される
+- [ ] 無効化すると通常のSpace所属Window behaviorへ戻る
+- [ ] toggle成功後にcontrolの状態表示が更新される
+- [ ] toggle状態がアプリ再起動後も維持される
+- [ ] title / source / bookmark / persistent identity / placement / createdAtはtoggleで変化しない
+- [ ] 同じ状態への更新では不要なconfiguration writeを増やさない
+- [ ] toggle中にconfigurationが変化した場合stale writeとして拒否し、他変更を上書きしない
+- [ ] copy/drop処理中はSpaces behavior変更を開始しない
+- [ ] toggle操作でuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
