@@ -13,9 +13,19 @@ trap cleanup EXIT
 
 GOOD="$FIXTURE/good.sh"
 MISSING_CLEAR="$FIXTURE/missing-clear.sh"
+MISSING_CLEANUP_CLEAR="$FIXTURE/missing-cleanup-clear.sh"
 EARLY_PASSWORD_CLEAR="$FIXTURE/early-password-clear.sh"
 
 cat > "$GOOD" <<'SH'
+cleanup() {
+  set +e
+
+  unset DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD APPSTORE_CONNECT_PRIVATE_KEY_BASE64
+
+  if ((${#ORIGINAL_KEYCHAINS[@]} > 0)); then
+    security list-keychains -d user -s "${ORIGINAL_KEYCHAINS[@]}" >/dev/null 2>&1
+  fi
+}
 printf '%s' "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$P12_PATH"
 printf '%s' "$APPSTORE_CONNECT_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$API_KEY_PATH"
 unset DEVELOPER_ID_P12_BASE64 APPSTORE_CONNECT_PRIVATE_KEY_BASE64
@@ -33,6 +43,17 @@ SH
 if ! bash Scripts/verify-release-secret-environment-lifecycle.sh "$GOOD" >"$FIXTURE/good.log" 2>&1; then
   cat "$FIXTURE/good.log"
   echo 'Secret lifecycle validator rejected the valid ordering fixture.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
+grep -Fv '  unset DEVELOPER_ID_P12_BASE64 DEVELOPER_ID_P12_PASSWORD APPSTORE_CONNECT_PRIVATE_KEY_BASE64' "$GOOD" > "$MISSING_CLEANUP_CLEAR"
+set +e
+bash Scripts/verify-release-secret-environment-lifecycle.sh "$MISSING_CLEANUP_CLEAR" >"$FIXTURE/missing-cleanup-clear.log" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$FIXTURE/missing-cleanup-clear.log"
+  echo 'Secret lifecycle validator unexpectedly accepted failure cleanup without clearing signing secrets.' >&2
   FAILURES=$((FAILURES + 1))
 fi
 
