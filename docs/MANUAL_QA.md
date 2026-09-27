@@ -161,7 +161,10 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 ## 10. Windowing / multi-display
 
-- [ ] Glass panelを移動・resizeできる
+- [ ] Glass headerのfolder icon / title / empty header areaをドラッグしてpanelを移動できる
+- [ ] Glass options menuの操作がwindow dragに奪われない
+- [ ] file gridのdouble-click / context menu / scrollがwindow dragに奪われない
+- [ ] Glass panelをresizeできる
 - [ ] placementが保存される
 - [ ] second displayへ配置できる
 - [ ] display切断後もGlassが完全に画面外へ取り残されない
