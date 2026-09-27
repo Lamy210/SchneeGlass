@@ -84,7 +84,8 @@ count_expression() {
 
 for secret_name in   DEVELOPER_ID_P12_BASE64   DEVELOPER_ID_P12_PASSWORD   APPSTORE_CONNECT_PRIVATE_KEY_BASE64
 do
-  expression="${{ secrets.$secret_name }}"
+  expression=''
+  printf -v expression '${{ secrets.%s }}' "$secret_name"
   expected_line="          $secret_name: $expression"
 
   [[ "$(count_expression "$WORKFLOW" "$expression")" -eq 1 ]]     || fail "$secret_name must be referenced exactly once in the workflow"
@@ -94,7 +95,8 @@ done
 
 for variable_name in   APPLE_TEAM_ID   APPSTORE_CONNECT_KEY_ID   APPSTORE_CONNECT_ISSUER_ID
 do
-  expression="${{ vars.$variable_name }}"
+  expression=''
+  printf -v expression '${{ vars.%s }}' "$variable_name"
   expected_line="          $variable_name: $expression"
 
   [[ "$(count_expression "$WORKFLOW" "$expression")" -eq 1 ]]     || fail "$variable_name must be referenced exactly once in the workflow"
