@@ -10,10 +10,12 @@ private struct DesktopGlassWindowControls: View {
   let showsReconnect: Bool
   let canReconnect: Bool
   let canRevealConnectedFolder: Bool
+  let canRename: Bool
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
+  let onRename: @MainActor () -> Void
 
   var body: some View {
     HStack(spacing: 6) {
@@ -25,6 +27,14 @@ private struct DesktopGlassWindowControls: View {
       .accessibilityLabel(
         isPositionLocked ? "Unlock Glass position" : "Lock Glass position"
       )
+
+      Button(action: onRename) {
+        Image(systemName: "pencil")
+          .frame(width: 20, height: 20)
+      }
+      .disabled(!canRename)
+      .help("Rename Glass")
+      .accessibilityLabel("Rename Glass")
 
       if canRevealConnectedFolder {
         Button(action: onRevealConnectedFolder) {
@@ -394,6 +404,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       canRevealConnectedFolder:
         Self.allowsConnectedFolderAction(for: entry)
         && model.canRevealConnectedFolder(glassID: glassID),
+      canRename: model.canRenameGlass(glassID: glassID),
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
@@ -410,6 +421,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       },
       onRevealConnectedFolder: { [weak self] in
         self?.model.revealConnectedFolder(glassID: glassID)
+      },
+      onRename: { [weak self] in
+        self?.promptForRename(glassID: glassID)
       }
     )
 
@@ -423,6 +437,37 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     controller.view = NSHostingView(rootView: rootView)
     panel.addTitlebarAccessoryViewController(controller)
     panel.windowControlsAccessoryController = controller
+  }
+
+  private func promptForRename(glassID: GlassID) {
+    guard model.canRenameGlass(glassID: glassID),
+      let entry = model.glasses.first(where: { $0.id == glassID })
+    else {
+      return
+    }
+
+    let textField = NSTextField(string: entry.title)
+    textField.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+
+    let alert = NSAlert()
+    alert.messageText = "Rename Glass"
+    alert.informativeText =
+      "This changes only the Glass display name. The connected folder itself will not be renamed."
+    alert.accessoryView = textField
+    alert.addButton(withTitle: "Rename")
+    alert.addButton(withTitle: "Cancel")
+
+    guard alert.runModal() == .alertFirstButtonReturn else {
+      return
+    }
+
+    let proposedTitle = textField.stringValue
+    Task {
+      await model.renameGlass(
+        glassID: glassID,
+        title: proposedTitle
+      )
+    }
   }
 
   private func togglePositionLock(for glassID: GlassID) {
