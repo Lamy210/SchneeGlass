@@ -1,0 +1,208 @@
+name: Publish Ad-Hoc v0.1.1
+
+on:
+  push:
+    branches:
+      - 'release/0.1.1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: adhoc-release-v0.1.1
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build and publish ad-hoc v0.1.1
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      RELEASE_VERSION: '0.1.1'
+      RELEASE_TAG: 'v0.1.1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Toolchain
+        run: |
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
+          swift --version
+
+      - name: Validate release metadata
+        run: bash Scripts/verify-release-metadata.sh "$RELEASE_TAG"
+
+      - name: Confirm release tag is absent
+        run: |
+          set +e
+          git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1
+          STATUS=$?
+          set -e
+
+          if [[ "$STATUS" -eq 0 ]]; then
+            echo "Release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          if [[ "$STATUS" -ne 2 ]]; then
+            echo "Unable to establish release-tag absence (git ls-remote status $STATUS)" >&2
+            exit 1
+          fi
+
+      - name: Swift package tests
+        run: swift test --package-path Packages/SchneeGlassKit
+
+      - name: Build unsigned Release app
+        run: |
+          xcodebuild \
+            -project SchneeGlass.xcodeproj \
+            -scheme SchneeGlass \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/SchneeGlassAdhocReleaseDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Apply ad-hoc signature
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassAdhocReleaseDerivedData/Build/Products/Release/SchneeGlass.app"
+
+          test -d "$APP"
+          test -f "$APP/Contents/MacOS/SchneeGlass"
+          plutil -lint "$APP/Contents/Info.plist"
+
+          codesign \
+            --force \
+            --deep \
+            --sign - \
+            --options runtime \
+            --entitlements App/SchneeGlass.entitlements \
+            "$APP"
+
+      - name: Verify final app bundle and ad-hoc signature
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassAdhocReleaseDerivedData/Build/Products/Release/SchneeGlass.app"
+          DETAILS="$RUNNER_TEMP/SchneeGlassAdhocSignature.txt"
+          ENTITLEMENTS="$RUNNER_TEMP/SchneeGlassAdhocEntitlements.plist"
+
+          bash Scripts/verify-required-plist-value.sh \
+            "$APP/Contents/Info.plist" \
+            'CFBundleIdentifier' \
+            'io.github.lamy210.schneeglass' \
+            'Ad-hoc v0.1.1 release'
+
+          bash Scripts/verify-required-plist-value.sh \
+            "$APP/Contents/Info.plist" \
+            'CFBundleShortVersionString' \
+            "$RELEASE_VERSION" \
+            'Ad-hoc v0.1.1 release'
+
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2> "$DETAILS"
+          cat "$DETAILS"
+
+          grep -F 'Signature=adhoc' "$DETAILS" >/dev/null \
+            || { echo 'Final app does not have an ad-hoc signature.' >&2; exit 1; }
+
+          if grep -Fq 'Authority=Developer ID Application:' "$DETAILS"; then
+            echo 'Ad-hoc release unexpectedly contains a Developer ID Application authority.' >&2
+            exit 1
+          fi
+
+          codesign -d --entitlements :- "$APP" > "$ENTITLEMENTS" 2>/dev/null
+          plutil -lint "$ENTITLEMENTS"
+          bash Scripts/verify-required-plist-value.sh \
+            "$ENTITLEMENTS" \
+            'com.apple.security.app-sandbox' \
+            'true' \
+            'Ad-hoc v0.1.1 release'
+
+      - name: Package release and integrity files
+        run: |
+          APP="$RUNNER_TEMP/SchneeGlassAdhocReleaseDerivedData/Build/Products/Release/SchneeGlass.app"
+          ARCHIVE="SchneeGlass-$RELEASE_VERSION-adhoc.zip"
+          EXECUTABLE="$APP/Contents/MacOS/SchneeGlass"
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$ARCHIVE"
+          shasum -a 256 "$ARCHIVE" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+
+          ARCH_INFO="$(file "$EXECUTABLE")"
+
+          cat > BUILD_INFO.txt <<EOF
+          version=$RELEASE_VERSION
+          build=2
+          source_commit=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          code_signature=adhoc
+          apple_developer_id_signed=false
+          apple_notarized=false
+          minimum_macos=15.0
+          executable_info=$ARCH_INFO
+          distribution=github-adhoc
+          EOF
+
+          cat > RELEASE_NOTES.md <<EOF
+          # SchneeGlass v0.1.1
+
+          v0.1.1 replaces the fully unsigned v0.1.0 package.
+
+          This build now has a valid **ad-hoc macOS code signature**, and the final app bundle is verified with `codesign --verify --deep --strict` before publication.
+
+          **This is still not signed with an Apple Developer ID certificate and is not notarized by Apple.** Gatekeeper can therefore still block the first launch.
+
+          If you trust this repository, first verify the downloaded checksum, then try opening SchneeGlass. If macOS blocks it, open **System Settings → Privacy & Security** and use **Open Anyway** for SchneeGlass.
+
+          ## Integrity
+
+          ```bash
+          shasum -a 256 -c SHA256SUMS
+          ```
+
+          Source commit: `$GITHUB_SHA`
+          EOF
+
+      - name: Upload validated ad-hoc release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SchneeGlass-0.1.1-adhoc-release
+          path: |
+            SchneeGlass-0.1.1-adhoc.zip
+            SHA256SUMS
+            BUILD_INFO.txt
+            RELEASE_NOTES.md
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            "SchneeGlass-$RELEASE_VERSION-adhoc.zip" \
+            SHA256SUMS \
+            BUILD_INFO.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "SchneeGlass v0.1.1 (Ad-Hoc Signed)" \
+            --notes-file RELEASE_NOTES.md
+
+      - name: Verify published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,name,isDraft,isPrerelease,targetCommitish \
+            --jq '
+              .tagName == "v0.1.1" and
+              .name == "SchneeGlass v0.1.1 (Ad-Hoc Signed)" and
+              .isDraft == false and
+              .isPrerelease == false and
+              .targetCommitish == env.GITHUB_SHA
+            ' | grep -Fx true >/dev/null
