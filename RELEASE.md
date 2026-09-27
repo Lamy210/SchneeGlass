@@ -348,7 +348,9 @@ Private keys, certificates, passwords, API keys, and notarization credentials mu
 
 ## Credential boundary
 
-Signing/notarization credentials come from the protected `production-release` environment and exist only for the lifetime of the release job.
+Signing/notarization credentials come from the protected `production-release` environment. Within the signing job, the Developer ID PKCS#12 material/password and App Store Connect private key are injected only into the single build/sign/notarize step that consumes them; Checkout, Toolchain, evidence, and artifact-upload steps do not receive those credentials through workflow `env`.
+
+`Scripts/verify-production-release-secret-scope.sh` locks that step-level boundary in credential-free PR validation.
 
 The production script uses a temporary keychain for imported Developer ID material and removes temporary credential material during job teardown.
 

@@ -517,6 +517,7 @@ Credential-free pathでは次をCIで固定します。
 ```text
 production release preflight
 Production Release Candidate pull_request.paths enumeration / exact membership failureをfail-closed
+production signing secrets / credential-adjacent variables are referenced exactly once and only in the signing build step
 signing/evidence helper shell syntax
 credential不足でfail-closed
 credential-free失敗時にrelease-outputを生成しない
