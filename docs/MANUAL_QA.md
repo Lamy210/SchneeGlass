@@ -165,6 +165,11 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] Glass options menuの操作がwindow dragに奪われない
 - [ ] file gridのdouble-click / context menu / scrollがwindow dragに奪われない
 - [ ] Glass panelをresizeできる
+- [ ] position lock buttonでGlassの移動をLock / Unlockできる
+- [ ] Lock中はbackground dragで移動せず、file操作・menu操作・resizeは引き続き利用できる
+- [ ] position lock状態がアプリ再起動後も維持される
+- [ ] Unlock後は再びbackground dragで移動できる
+- [ ] Reset Glass PositionsはLock中のGlassも明示操作として救出し、Lock状態自体は維持する
 - [ ] placementが保存される
 - [ ] second displayへ配置できる
 - [ ] display切断後もGlassが完全に画面外へ取り残されない

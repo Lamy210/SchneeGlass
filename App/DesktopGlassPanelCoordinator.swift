@@ -4,6 +4,22 @@ import SchneeGlassMacOSAdapter
 import SchneeGlassPresentation
 import SwiftUI
 
+private struct DesktopGlassPositionLockButton: View {
+  let isLocked: Bool
+  let onToggle: @MainActor () -> Void
+
+  var body: some View {
+    Button(action: onToggle) {
+      Image(systemName: isLocked ? "lock.fill" : "lock.open")
+        .frame(width: 20, height: 20)
+    }
+    .buttonStyle(.plain)
+    .controlSize(.small)
+    .help(isLocked ? "Unlock Glass position" : "Lock Glass position")
+    .accessibilityLabel(isLocked ? "Unlock Glass position" : "Lock Glass position")
+  }
+}
+
 enum DesktopGlassPositionResetResult: Hashable, Sendable {
   case updated
   case noGlasses
@@ -17,6 +33,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   private final class DesktopGlassPanel: NSPanel {
     let glassID: GlassID
     var suppressPlacementPersistence = false
+    var positionLockAccessoryController: NSTitlebarAccessoryViewController?
 
     init(glassID: GlassID, contentRect: NSRect) {
       self.glassID = glassID
@@ -35,13 +52,18 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   }
 
   private let model: SchneeGlassWorkspaceModel
+  private let windowPreferences: DesktopGlassWindowPreferences
   private var panels: [GlassID: PanelRecord] = [:]
   private var visibilityMode: DesktopGlassVisibilityMode = .shown
   private var isPanelCreationSuppressed = false
   private var isStopped = false
 
-  init(model: SchneeGlassWorkspaceModel) {
+  init(
+    model: SchneeGlassWorkspaceModel,
+    windowPreferences: DesktopGlassWindowPreferences = DesktopGlassWindowPreferences()
+  ) {
     self.model = model
+    self.windowPreferences = windowPreferences
     super.init()
     NotificationCenter.default.addObserver(
       self,
@@ -245,6 +267,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     panel.contentView = NSHostingView(
       rootView: SchneeGlassDesktopGlassView(model: model, glassID: entry.id)
     )
+    configurePositionLockAccessory(for: panel)
 
     panels[entry.id] = PanelRecord(panel: panel, persistenceTask: nil)
     if visibilityMode.presentsPanels {
@@ -285,8 +308,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     panel.hasShadow = true
     panel.isReleasedWhenClosed = false
     panel.hidesOnDeactivate = false
-    panel.isMovable = true
-    panel.isMovableByWindowBackground = true
+    let isPositionLocked = windowPreferences.isPositionLocked(for: entry.id)
+    panel.isMovable = !isPositionLocked
+    panel.isMovableByWindowBackground = !isPositionLocked
     panel.minSize = NSSize(
       width: GlassPlacement.minimumWidth,
       height: GlassPlacement.minimumHeight
@@ -304,11 +328,46 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
   }
 
+  private func configurePositionLockAccessory(for panel: DesktopGlassPanel) {
+    let glassID = panel.glassID
+    let isLocked = windowPreferences.isPositionLocked(for: glassID)
+    let rootView = DesktopGlassPositionLockButton(
+      isLocked: isLocked,
+      onToggle: { [weak self] in
+        self?.togglePositionLock(for: glassID)
+      }
+    )
+
+    if let controller = panel.positionLockAccessoryController {
+      controller.view = NSHostingView(rootView: rootView)
+      return
+    }
+
+    let controller = NSTitlebarAccessoryViewController()
+    controller.layoutAttribute = .left
+    controller.view = NSHostingView(rootView: rootView)
+    panel.addTitlebarAccessoryViewController(controller)
+    panel.positionLockAccessoryController = controller
+  }
+
+  private func togglePositionLock(for glassID: GlassID) {
+    guard let panel = panels[glassID]?.panel else {
+      return
+    }
+
+    let isLocked = !windowPreferences.isPositionLocked(for: glassID)
+    windowPreferences.setPositionLocked(isLocked, for: glassID)
+    panel.isMovable = !isLocked
+    panel.isMovableByWindowBackground = !isLocked
+    configurePositionLockAccessory(for: panel)
+  }
+
   private func removePanel(glassID: GlassID) {
     guard let record = panels.removeValue(forKey: glassID) else {
       return
     }
     record.persistenceTask?.cancel()
+    windowPreferences.removePositionLock(for: glassID)
     record.panel.delegate = nil
     record.panel.close()
   }
