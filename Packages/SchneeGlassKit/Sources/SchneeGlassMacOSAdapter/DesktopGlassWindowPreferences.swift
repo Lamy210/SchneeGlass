@@ -2,14 +2,12 @@ import Foundation
 import SchneeGlassDomain
 
 public final class DesktopGlassWindowPreferences {
-  private static let defaultLockedPositionKey = "desktopGlass.lockedPositionIDs.v1"
-
   private let defaults: UserDefaults
   private let lockedPositionKey: String
 
   public init(
     defaults: UserDefaults = .standard,
-    lockedPositionKey: String = Self.defaultLockedPositionKey
+    lockedPositionKey: String = "desktopGlass.lockedPositionIDs.v1"
   ) {
     self.defaults = defaults
     self.lockedPositionKey = lockedPositionKey
