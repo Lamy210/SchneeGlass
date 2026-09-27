@@ -161,7 +161,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 ## 10. Windowing / multi-display
 
-- [ ] Glass headerのfolder icon / title / empty header areaをドラッグしてpanelを移動できる
+- [ ] Glassの非インタラクティブなbackground / header areaをドラッグしてpanelを移動できる
 - [ ] Glass options menuの操作がwindow dragに奪われない
 - [ ] file gridのdouble-click / context menu / scrollがwindow dragに奪われない
 - [ ] Glass panelをresizeできる
