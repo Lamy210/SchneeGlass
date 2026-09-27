@@ -162,6 +162,20 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] reconnect成功後はReconnect controlからconnected-folder controlへ状態が更新される
 - [ ] Glass削除 / app shutdown / configuration recovery restore後に古いconnected folder URLを再利用しない
 
+### 7.3 Glass Display Name Rename (v0.2)
+
+- [ ] Rename controlからGlass表示名を変更できる
+- [ ] rename前後でconnected source folderの実ファイル名 / directory名が変化しない
+- [ ] bookmark / persistent identity / placement / show-on-all-spaces / createdAtがrenameで変化しない
+- [ ] 前後のwhitespace / newlineはtrimされて保存される
+- [ ] 空白だけのtitleは拒否される
+- [ ] 101文字以上のtitleは拒否される
+- [ ] 同じnormalized titleへのrenameでは不要なconfiguration writeを増やさない
+- [ ] rename中にconfigurationが変化した場合stale writeとして拒否し、他変更を上書きしない
+- [ ] rename成功後にpanel/header表示が更新される
+- [ ] rename成功後にアプリを再起動しても新しいGlass表示名が維持される
+- [ ] rename中もuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
