@@ -9,9 +9,11 @@ private struct DesktopGlassWindowControls: View {
   let keepsOnTop: Bool
   let showsReconnect: Bool
   let canReconnect: Bool
+  let canRevealConnectedFolder: Bool
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
   let onReconnect: @MainActor () -> Void
+  let onRevealConnectedFolder: @MainActor () -> Void
 
   var body: some View {
     HStack(spacing: 6) {
@@ -23,6 +25,15 @@ private struct DesktopGlassWindowControls: View {
       .accessibilityLabel(
         isPositionLocked ? "Unlock Glass position" : "Lock Glass position"
       )
+
+      if canRevealConnectedFolder {
+        Button(action: onRevealConnectedFolder) {
+          Image(systemName: "folder")
+            .frame(width: 20, height: 20)
+        }
+        .help("Show connected folder in Finder")
+        .accessibilityLabel("Show connected folder in Finder")
+      }
 
       Button(action: onToggleKeepOnTop) {
         Image(systemName: keepsOnTop ? "pin.fill" : "pin")
@@ -380,6 +391,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
+      canRevealConnectedFolder: model.canRevealConnectedFolder(glassID: glassID),
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
@@ -393,6 +405,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
         Task {
           await self.model.reconnectGlassSource(glassID: glassID)
         }
+      },
+      onRevealConnectedFolder: { [weak self] in
+        self?.model.revealConnectedFolder(glassID: glassID)
       }
     )
 
