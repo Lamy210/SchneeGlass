@@ -223,6 +223,18 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     else {
       return
     }
+
+    let constrainedFrame = DesktopGlassDragConstraint.constrainedFrame(
+      requestedFrame: panel.frame,
+      visibleFrames: NSScreen.screens.map(\.visibleFrame),
+      preferredVisibleFrame: panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+    )
+    if !Self.framesApproximatelyEqual(panel.frame, constrainedFrame) {
+      panel.suppressPlacementPersistence = true
+      panel.setFrame(constrainedFrame, display: true)
+      panel.suppressPlacementPersistence = false
+    }
+
     schedulePlacementPersistence(for: panel, delayNanoseconds: 350_000_000)
   }
 
