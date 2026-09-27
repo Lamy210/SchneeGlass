@@ -276,15 +276,19 @@ encoded credential input contract validation
   ↓
 release metadata / credential-free production preflight
   ↓
-P12 / p8を$RUNNER_TEMPへdecode + chmod 600
+P12 / p8を$RUNNER_TEMPへdecode
   ↓
-decoded PKCS#12 / private-key parse validation
+encoded base64 secret 2種をenvironmentからunset
+  ↓
+chmod 600 + decoded PKCS#12 / private-key parse validation
   ↓
 release-output初期化
   ↓
 temporary keychain作成
   ↓
 certificate/private key import
+  ↓
+P12 passwordをenvironmentからunset
   ↓
 non-interactive codesign用partition list設定
   ↓
@@ -299,7 +303,7 @@ notarization / stapling / Gatekeeper
 always cleanup
 ```
 
-validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。
+validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。encoded base64 secretはdecode成功後に、P12 passwordはtemporary keychainへのimport成功後にenvironmentから削除し、それ以降のbuild/sign/notarization subprocessへ継承しない。
 
 `security find-identity`で`Developer ID Application` identityが0件または複数で曖昧な場合はReleaseを停止する。
 
