@@ -303,7 +303,7 @@ notarization / stapling / Gatekeeper
 always cleanup
 ```
 
-validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。encoded base64 secretはdecode成功後に、P12 passwordはtemporary keychainへのimport成功後にenvironmentから削除し、それ以降のbuild/sign/notarization subprocessへ継承しない。
+validation失敗を含め、decodeされたP12/p8は`EXIT` cleanupで削除する。encoded base64 secretはdecode成功後に、P12 passwordはtemporary keychainへのimport成功後にenvironmentから削除し、それ以降のbuild/sign/notarization subprocessへ継承しない。さらに`EXIT` cleanupは最初に3 secretをenvironmentから削除してからkeychain/file cleanup subprocessを起動するため、decoded validationやimport途中のfail-closed経路でもcredentialをcleanup子プロセスへ継承しない。
 
 `security find-identity`で`Developer ID Application` identityが0件または複数で曖昧な場合はReleaseを停止する。
 
