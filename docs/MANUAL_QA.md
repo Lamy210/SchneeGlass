@@ -257,7 +257,9 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] Release assetsに`SHA256SUMS`が存在する
 - [ ] Release assetsに`RELEASE_EVIDENCE.txt`が存在する
 - [ ] Release tagがQA済みcandidate source commitを指す
+- [ ] 公開直前のrun-owned Release検証がcapture済みRelease IDへの単一snapshot取得で、ID / Draft / prerelease / target / assetsを同じresponseから検証している
 - [ ] Draft -> public mutationがtag lookupではなくcapture済みrun-owned Release IDを直接指定している
+- [ ] 公開直後のrun-owned Release検証がcapture済みRelease IDへの単一snapshot取得で、ID / Draft / immutable / target / assetsを同じresponseから検証している
 - [ ] 公開後のRelease `databaseId`がDraft作成直後にcaptureしたrun-owned Release IDと一致する
 
 ## 16. Performance / release-window diagnostics
