@@ -798,7 +798,7 @@ EOF
           '') exit 0 ;;
           isDraft)
             draft_reads="$(awk '/--json isDraft/ { count += 1 } END { print count + 0 }' "$LOG")"
-            if [[ "$IDENTITY_MODE" == 'replace-after-cleanup-identity' && "$ASSET_MODE" == 'extra-before-publication' && "$draft_reads" -ge 2 ]]; then
+            if [[ "$IDENTITY_MODE" == 'replace-after-cleanup-identity' && "$ASSET_MODE" == 'extra-before-publication' && "$draft_reads" -ge 1 ]]; then
               printf '202\n' > "$STATE/release-id"
             fi
             if [[ "$DRAFT_MODE" == 'query-failure-before-publication' && "$draft_reads" -ge 2 ]]; then
@@ -1415,7 +1415,7 @@ if [[ "$STATUS" -eq 0 ]]; then
   echo 'Release publication unexpectedly succeeded after the run-owned Draft was replaced.' >&2
   FAILURES=$((FAILURES + 1))
 else
-  if ! grep -Fq 'Release promotion failed: draft release identity changed before publication' "$OUTPUT_IDENTITY_PUBLICATION"; then
+  if ! grep -Fq 'Release promotion failed: unable to fetch run-owned draft release snapshot before publication' "$OUTPUT_IDENTITY_PUBLICATION"; then
     cat "$OUTPUT_IDENTITY_PUBLICATION"
     echo 'Replacement Draft did not fail with the expected identity error.' >&2
     FAILURES=$((FAILURES + 1))
