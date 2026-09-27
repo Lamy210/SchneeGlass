@@ -9,13 +9,13 @@ public enum DesktopGlassSnapPreset: String, CaseIterable, Sendable {
 }
 
 public enum DesktopGlassSnapPlanner {
-  public static let defaultMargin = 16.0
+  public static let defaultMargin: CGFloat = 16
 
   public static func frame(
     currentFrame: CGRect,
     visibleFrame: CGRect,
     preset: DesktopGlassSnapPreset,
-    margin: Double = defaultMargin
+    margin: CGFloat = defaultMargin
   ) -> CGRect {
     let width = min(max(currentFrame.width, 1), visibleFrame.width)
     let height = min(max(currentFrame.height, 1), visibleFrame.height)
