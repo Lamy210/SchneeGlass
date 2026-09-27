@@ -89,6 +89,10 @@ final class SchneeGlassCompositionRoot {
       configurationStore: configurationStore
     )
 
+    let updateGlassTitleUseCase = UpdateGlassTitleUseCase(
+      configurationStore: configurationStore
+    )
+
     let configurationRecoveryUseCase = ConfigurationRecoveryUseCase(
       recoveryStore: configurationStore,
       pendingCopyStore: pendingCopyStore,
@@ -117,6 +121,7 @@ final class SchneeGlassCompositionRoot {
       removeGlassUseCase: removeGlassUseCase,
       updateGlassPlacementUseCase: updateGlassPlacementUseCase,
       resetGlassPositionsUseCase: resetGlassPositionsUseCase,
+      updateGlassTitleUseCase: updateGlassTitleUseCase,
       configurationRecoveryUseCase: configurationRecoveryUseCase,
       fileActionUseCase: fileActionUseCase,
       folderActionUseCase: folderActionUseCase,
