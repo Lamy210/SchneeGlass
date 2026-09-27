@@ -7,8 +7,11 @@ import SwiftUI
 private struct DesktopGlassWindowControls: View {
   let isPositionLocked: Bool
   let keepsOnTop: Bool
+  let showsReconnect: Bool
+  let canReconnect: Bool
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
+  let onReconnect: @MainActor () -> Void
 
   var body: some View {
     HStack(spacing: 6) {
@@ -29,6 +32,16 @@ private struct DesktopGlassWindowControls: View {
       .accessibilityLabel(
         keepsOnTop ? "Stop keeping Glass on top" : "Keep Glass on top"
       )
+
+      if showsReconnect {
+        Button(action: onReconnect) {
+          Image(systemName: "arrow.triangle.2.circlepath")
+            .frame(width: 20, height: 20)
+        }
+        .disabled(!canReconnect)
+        .help("Reconnect original folder")
+        .accessibilityLabel("Reconnect original folder")
+      }
     }
     .buttonStyle(.plain)
     .controlSize(.small)
@@ -294,7 +307,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     panel.contentView = NSHostingView(
       rootView: SchneeGlassDesktopGlassView(model: model, glassID: entry.id)
     )
-    configureWindowControlsAccessory(for: panel)
+    configureWindowControlsAccessory(for: panel, entry: entry)
 
     panels[entry.id] = PanelRecord(panel: panel, persistenceTask: nil)
     if visibilityMode.presentsPanels {
@@ -311,6 +324,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     configure(record.panel, for: entry)
+    configureWindowControlsAccessory(for: record.panel, entry: entry)
 
     let persistedFrame = Self.frame(for: placement)
     let desiredFrame = recoveredDisplayFrame(persistedFrame)
@@ -355,16 +369,30 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
   }
 
-  private func configureWindowControlsAccessory(for panel: DesktopGlassPanel) {
+  private func configureWindowControlsAccessory(
+    for panel: DesktopGlassPanel,
+    entry: GlassWorkspaceEntry
+  ) {
     let glassID = panel.glassID
+    let showsReconnect = Self.showsReconnect(for: entry)
     let rootView = DesktopGlassWindowControls(
       isPositionLocked: windowPreferences.isPositionLocked(for: glassID),
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
+      showsReconnect: showsReconnect,
+      canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
       onTogglePositionLock: { [weak self] in
         self?.togglePositionLock(for: glassID)
       },
       onToggleKeepOnTop: { [weak self] in
         self?.toggleKeepOnTop(for: glassID)
+      },
+      onReconnect: { [weak self] in
+        guard let self else {
+          return
+        }
+        Task {
+          await self.model.reconnectGlassSource(glassID: glassID)
+        }
       }
     )
 
@@ -389,7 +417,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     windowPreferences.setPositionLocked(isLocked, for: glassID)
     panel.isMovable = !isLocked
     panel.isMovableByWindowBackground = !isLocked
-    configureWindowControlsAccessory(for: panel)
+    guard let entry = model.glasses.first(where: { $0.id == glassID }) else {
+      return
+    }
+    configureWindowControlsAccessory(for: panel, entry: entry)
   }
 
   private func toggleKeepOnTop(for glassID: GlassID) {
@@ -400,7 +431,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     let keepsOnTop = !windowPreferences.keepsOnTop(glassID)
     windowPreferences.setKeepsOnTop(keepsOnTop, for: glassID)
     panel.level = keepsOnTop ? .floating : .normal
-    configureWindowControlsAccessory(for: panel)
+    guard let entry = model.glasses.first(where: { $0.id == glassID }) else {
+      return
+    }
+    configureWindowControlsAccessory(for: panel, entry: entry)
   }
 
   private func removePanel(glassID: GlassID) {
@@ -476,6 +510,13 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       visibleFrames: NSScreen.screens.map(\.visibleFrame),
       preferredVisibleFrame: NSScreen.main?.visibleFrame
     )
+  }
+
+  private static func showsReconnect(for entry: GlassWorkspaceEntry) -> Bool {
+    if case .unavailable = entry.contentState {
+      return true
+    }
+    return false
   }
 
   private static func frame(for placement: GlassPlacement) -> NSRect {
