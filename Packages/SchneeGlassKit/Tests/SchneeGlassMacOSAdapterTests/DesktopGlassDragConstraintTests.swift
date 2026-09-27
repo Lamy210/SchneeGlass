@@ -33,6 +33,22 @@ func mostlyOffscreenFrameKeepsMinimumReachableArea() {
 }
 
 @Test
+func leftBottomOffscreenFrameKeepsMinimumReachableArea() {
+  let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+  let requested = CGRect(x: -340, y: -240, width: 360, height: 260)
+
+  let constrained = DesktopGlassDragConstraint.constrainedFrame(
+    requestedFrame: requested,
+    visibleFrames: [screen]
+  )
+  let intersection = constrained.intersection(screen)
+
+  #expect(constrained.size == requested.size)
+  #expect(intersection.width >= DesktopGlassDragConstraint.minimumVisibleWidth)
+  #expect(intersection.height >= DesktopGlassDragConstraint.minimumVisibleHeight)
+}
+
+@Test
 func frameVisibleOnSecondDisplayIsNotPulledBackToPreferredDisplay() {
   let primary = CGRect(x: 0, y: 0, width: 1440, height: 900)
   let secondary = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
