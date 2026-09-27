@@ -98,6 +98,9 @@ final class SchneeGlassCompositionRoot {
     let fileActionUseCase = WorkspaceFileActionUseCase(
       actor: fileActor
     )
+    let folderActionUseCase = WorkspaceFolderActionUseCase(
+      actor: fileActor
+    )
 
     let runtimeSessionFactory = GlassRuntimeSessionFactory(
       eventStreaming: eventHub,
@@ -116,6 +119,7 @@ final class SchneeGlassCompositionRoot {
       resetGlassPositionsUseCase: resetGlassPositionsUseCase,
       configurationRecoveryUseCase: configurationRecoveryUseCase,
       fileActionUseCase: fileActionUseCase,
+      folderActionUseCase: folderActionUseCase,
       runtimeSessionFactory: runtimeSessionFactory
     )
 
