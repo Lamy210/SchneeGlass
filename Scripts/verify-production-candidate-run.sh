@@ -13,6 +13,7 @@ RUN_STATUS="${4:-}"
 RUN_CONCLUSION="${5:-}"
 RUN_BRANCH="${6:-}"
 RUN_HEAD_SHA="${7:-}"
+RUN_ATTEMPT="${8:-}"
 
 [[ "$RUN_NAME" == 'Production Release Candidate' ]] \
   || fail "unexpected workflow name: $RUN_NAME"
@@ -28,5 +29,9 @@ RUN_HEAD_SHA="${7:-}"
   || fail "candidate run must be built from main: $RUN_BRANCH"
 [[ "$RUN_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] \
   || fail "candidate run returned an invalid head SHA: $RUN_HEAD_SHA"
+[[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] \
+  || fail "candidate run returned an invalid run attempt: $RUN_ATTEMPT"
+[[ "$RUN_ATTEMPT" -eq 1 ]] \
+  || fail "candidate run attempt must be 1: $RUN_ATTEMPT"
 
-echo "Production candidate run OK: path=$RUN_PATH commit=$RUN_HEAD_SHA"
+echo "Production candidate run OK: path=$RUN_PATH commit=$RUN_HEAD_SHA attempt=$RUN_ATTEMPT"

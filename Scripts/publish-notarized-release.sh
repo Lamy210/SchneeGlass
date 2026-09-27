@@ -231,27 +231,63 @@ rm -rf "$CANDIDATE_DIR"
 mkdir -p "$CANDIDATE_DIR" "$HISTORY_DIR"
 
 RUN_API="repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID"
-RUN_NAME="$(gh api "$RUN_API" --jq '.name')"
-RUN_PATH="$(gh api "$RUN_API" --jq '.path')"
-RUN_EVENT="$(gh api "$RUN_API" --jq '.event')"
-RUN_STATUS="$(gh api "$RUN_API" --jq '.status')"
-RUN_CONCLUSION="$(gh api "$RUN_API" --jq '.conclusion')"
-RUN_BRANCH="$(gh api "$RUN_API" --jq '.head_branch')"
-RUN_HEAD_SHA="$(gh api "$RUN_API" --jq '.head_sha')"
 
-bash Scripts/verify-production-candidate-run.sh \
-  "$RUN_NAME" \
-  "$RUN_PATH" \
-  "$RUN_EVENT" \
-  "$RUN_STATUS" \
-  "$RUN_CONCLUSION" \
-  "$RUN_BRANCH" \
-  "$RUN_HEAD_SHA"
+validate_candidate_run_snapshot() {
+  local snapshot_json="$1"
+  local context="$2"
+
+  jq -e '
+    type == "object" and
+    (.name | type == "string") and
+    (.path | type == "string") and
+    (.event | type == "string") and
+    (.status | type == "string") and
+    (.conclusion | type == "string") and
+    (.head_branch | type == "string") and
+    (.head_sha | type == "string") and
+    (.run_attempt | type == "number" and . > 0 and . == floor)
+  ' "$snapshot_json" >/dev/null \
+    || fail "candidate workflow run snapshot is malformed: $context"
+
+  RUN_NAME="$(jq -r '.name' "$snapshot_json")"
+  RUN_PATH="$(jq -r '.path' "$snapshot_json")"
+  RUN_EVENT="$(jq -r '.event' "$snapshot_json")"
+  RUN_STATUS="$(jq -r '.status' "$snapshot_json")"
+  RUN_CONCLUSION="$(jq -r '.conclusion' "$snapshot_json")"
+  RUN_BRANCH="$(jq -r '.head_branch' "$snapshot_json")"
+  RUN_HEAD_SHA="$(jq -r '.head_sha' "$snapshot_json")"
+  RUN_ATTEMPT="$(jq -r '.run_attempt | tostring' "$snapshot_json")"
+
+  bash Scripts/verify-production-candidate-run.sh \
+    "$RUN_NAME" \
+    "$RUN_PATH" \
+    "$RUN_EVENT" \
+    "$RUN_STATUS" \
+    "$RUN_CONCLUSION" \
+    "$RUN_BRANCH" \
+    "$RUN_HEAD_SHA" \
+    "$RUN_ATTEMPT"
+}
+
+INITIAL_RUN_JSON="$CANDIDATE_DIR/candidate-run-initial.json"
+if ! gh api "$RUN_API" > "$INITIAL_RUN_JSON"; then
+  fail "unable to fetch candidate workflow run snapshot before artifact download"
+fi
+validate_candidate_run_snapshot "$INITIAL_RUN_JSON" 'before artifact download'
+INITIAL_RUN_HEAD_SHA="$RUN_HEAD_SHA"
 
 gh run download "$CANDIDATE_RUN_ID" \
   --repo "$GITHUB_REPOSITORY" \
   --name "$ARTIFACT_NAME" \
   --dir "$CANDIDATE_DIR"
+
+POST_DOWNLOAD_RUN_JSON="$CANDIDATE_DIR/candidate-run-post-download.json"
+if ! gh api "$RUN_API" > "$POST_DOWNLOAD_RUN_JSON"; then
+  fail "unable to re-fetch candidate workflow run snapshot after artifact download"
+fi
+validate_candidate_run_snapshot "$POST_DOWNLOAD_RUN_JSON" 'after artifact download'
+[[ "$RUN_HEAD_SHA" == "$INITIAL_RUN_HEAD_SHA" ]] \
+  || fail "candidate workflow run head SHA changed during artifact download"
 
 ARCHIVE="$CANDIDATE_DIR/$ARCHIVE_NAME"
 CHECKSUMS="$CANDIDATE_DIR/SHA256SUMS"

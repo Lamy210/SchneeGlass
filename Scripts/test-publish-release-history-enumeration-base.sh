@@ -485,6 +485,9 @@ case "$COMMAND" in
         ;;
       repos/example/SchneeGlass/actions/runs/123)
         case "$JQ" in
+          '')
+            printf '%s\n' '{"name":"Production Release Candidate","path":".github/workflows/production-release.yml","event":"workflow_dispatch","status":"completed","conclusion":"success","head_branch":"main","head_sha":"0123456789abcdef0123456789abcdef01234567","run_attempt":1}'
+            ;;
           .name) printf '%s\n' 'Production Release Candidate' ;;
           .path) printf '%s\n' '.github/workflows/production-release.yml' ;;
           .event) printf '%s\n' 'workflow_dispatch' ;;
@@ -492,6 +495,7 @@ case "$COMMAND" in
           .conclusion) printf '%s\n' 'success' ;;
           .head_branch) printf '%s\n' 'main' ;;
           .head_sha) printf '%s\n' '0123456789abcdef0123456789abcdef01234567' ;;
+          .run_attempt) printf '%s\n' '1' ;;
           *) echo "unexpected run jq: $JQ" >&2; exit 92 ;;
         esac
         ;;

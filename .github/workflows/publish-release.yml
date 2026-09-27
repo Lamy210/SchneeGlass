@@ -135,7 +135,8 @@ jobs:
             'completed' \
             'success' \
             'main' \
-            "$SHA"
+            "$SHA" \
+            '1'
 
           if bash Scripts/verify-production-candidate-run.sh \
             'Production Release Candidate' \
@@ -144,8 +145,35 @@ jobs:
             'completed' \
             'success' \
             'main' \
-            "$SHA"; then
+            "$SHA" \
+            '1'; then
             echo 'Candidate validator unexpectedly accepted a lookalike workflow path.' >&2
+            exit 1
+          fi
+
+          if bash Scripts/verify-production-candidate-run.sh \
+            'Production Release Candidate' \
+            '.github/workflows/production-release.yml' \
+            'workflow_dispatch' \
+            'completed' \
+            'success' \
+            'main' \
+            "$SHA" \
+            '2'; then
+            echo 'Candidate validator unexpectedly accepted a re-run workflow attempt.' >&2
+            exit 1
+          fi
+
+          if bash Scripts/verify-production-candidate-run.sh \
+            'Production Release Candidate' \
+            '.github/workflows/production-release.yml' \
+            'workflow_dispatch' \
+            'completed' \
+            'success' \
+            'main' \
+            "$SHA" \
+            'invalid'; then
+            echo 'Candidate validator unexpectedly accepted a malformed workflow attempt.' >&2
             exit 1
           fi
 
