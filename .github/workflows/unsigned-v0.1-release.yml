@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: unsigned-release-v0.1.0
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   publish:
