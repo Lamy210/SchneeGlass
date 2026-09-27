@@ -35,6 +35,7 @@ on:
       - 'Scripts/verify-required-plist-value.sh'
       - 'Scripts/test-required-plist-value-probes.sh'
       - 'Scripts/verify-production-release-path-coverage.sh'
+      - 'Scripts/verify-production-release-secret-scope.sh'
       - 'Scripts/test-production-release-path-coverage-enumeration.sh'
       - 'docs/RELEASE_CREDENTIALS.md'
 
@@ -80,7 +81,8 @@ jobs:
             'Scripts/verify-release-checksum-manifest.sh' \
             'Scripts/test-release-checksum-manifest.sh' \
             'Scripts/verify-production-release-path-coverage.sh' \
-            'Scripts/test-production-release-path-coverage-enumeration.sh'
+            'Scripts/test-production-release-path-coverage-enumeration.sh' \
+            'Scripts/verify-production-release-secret-scope.sh'
 
       - name: Production release path coverage enumeration fixture
         run: bash Scripts/test-production-release-path-coverage-enumeration.sh
@@ -95,6 +97,7 @@ jobs:
           bash -n Scripts/test-required-plist-value-probes.sh
           bash -n Scripts/verify-production-release-path-coverage.sh
           bash -n Scripts/test-production-release-path-coverage-enumeration.sh
+          bash -n Scripts/verify-production-release-secret-scope.sh
           bash -n Scripts/verify-release-credential-inputs.sh
           bash -n Scripts/verify-release-decoded-credentials.sh
           bash -n Scripts/encode-release-fixture-base64.sh
@@ -113,6 +116,9 @@ jobs:
 
       - name: Release checksum manifest fixture
         run: bash Scripts/test-release-checksum-manifest.sh
+
+      - name: Production release credential scope
+        run: bash Scripts/verify-production-release-secret-scope.sh .github/workflows/production-release.yml
 
       - name: Production release baseline
         run: bash Scripts/verify-production-release-preflight.sh
