@@ -1,9 +1,7 @@
 name: Publish Ad-Hoc v0.1.1
 
 on:
-  push:
-    branches:
-      - 'release/0.1.1'
+  workflow_dispatch:
 
 permissions:
   contents: write
