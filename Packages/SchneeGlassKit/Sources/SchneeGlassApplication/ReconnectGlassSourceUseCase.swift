@@ -9,6 +9,7 @@ public enum ReconnectGlassSourceError: Error, Hashable, Sendable {
   case selectedSourceIdentityUnavailable
   case selectedSourceMismatch
   case folderAccess(FolderAccessError)
+  case folderAccessFailed
   case eventStreamFailed
   case snapshotFailed
   case invalidConfiguration
@@ -80,7 +81,7 @@ public actor ReconnectGlassSourceUseCase {
     } catch let error as FolderAccessError {
       throw ReconnectGlassSourceError.folderAccess(error)
     } catch {
-      throw ReconnectGlassSourceError.folderAccess(.accessDenied)
+      throw ReconnectGlassSourceError.folderAccessFailed
     }
 
     let persistedSource = acquisition.refreshedSource ?? selectedSource
