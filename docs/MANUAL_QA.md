@@ -151,6 +151,17 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] reconnect成功後にアプリを再起動しても同じfolderへ復元できる
 - [ ] reconnect操作そのものはuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.2 Connected Folder Actions (v0.2)
+
+- [ ] active runtimeを持つGlassに`Show connected folder in Finder` controlが表示される
+- [ ] controlからGlass root folderをFinderで表示できる
+- [ ] item選択ではなくconnected root folder自体を表示する
+- [ ] Finder表示はread-onlyで、user-owned fileを作成・移動・rename・deleteしない
+- [ ] unavailableなどactive runtimeを持たないGlassではstale folder URLを操作authorityとして残さない
+- [ ] runtime session終了後はsession-local connected folder URLを破棄する
+- [ ] reconnect成功後はReconnect controlからconnected-folder controlへ状態が更新される
+- [ ] Glass削除 / app shutdown / configuration recovery restore後に古いconnected folder URLを再利用しない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
