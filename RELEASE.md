@@ -273,10 +273,8 @@ Publication captures the run-created Draft identity after Draft creation succeed
 7. fetch one run-owned Release snapshot by captured `databaseId` immediately before publication and, from that single snapshot, require matching ID, Draft=true, prerelease=false, exact candidate target, the exact three-asset set, and exact `assets[].digest == sha256:<local hex>` mapping for every asset; separately re-certify repository immutability/governance, public build history, and tag provenance
 8. publish that exact Draft by the captured `databaseId` (not by tag), forcing `draft=false`, `prerelease=false`, and `make_latest=true`
 9. fetch one run-owned Release snapshot by captured `databaseId` after publication and, from that single snapshot, require matching ID, Draft=false, immutable=true, exact candidate target, the exact three-asset set, and the same exact SHA-256 digest mapping
-10. re-read the immutable public Release and require the same exact three-asset set
-11. re-read the public Release `targetCommitish` and require the exact candidate SHA
-12. resolve the final remote release tag and require it to point to the exact candidate SHA
-13. re-read the public Release `databaseId` and require exact equality with the run-created Draft Release ID
+10. resolve the final remote release tag and require it to point to the exact candidate SHA
+11. re-read the tag-associated public Release `databaseId` and require exact equality with the run-created Draft Release ID
 
 If publication reports `isImmutable=false`, the workflow fails without deleting or editing the remote Release or tag. It emits manual-reconciliation guidance containing the target tag and captured Release ID so an operator can inspect the exact public state before taking any corrective action. Automatic deletion is intentionally prohibited because the mutable-state proof and a later destructive delete cannot be made atomic; the same tag/Release may change between those operations. Pre-existing tag/Release names are still rejected before creation.
 
