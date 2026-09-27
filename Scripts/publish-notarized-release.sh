@@ -82,6 +82,42 @@ release_asset_set_is_exact() {
     && "$evidence_count" -eq 1 ]]
 }
 
+sha256_digest_for_file() {
+  local path="$1"
+  local digest=''
+
+  if ! digest="$(shasum -a 256 "$path" | awk '{print $1}')"; then
+    fail "unable to compute SHA-256 digest for $path"
+  fi
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+    || fail "SHA-256 digest computation returned an invalid value for $path"
+
+  printf 'sha256:%s\n' "$digest"
+}
+
+release_asset_digests_match_expected() {
+  local release_json="$1"
+
+  jq -e \
+    --arg archive_name "$ARCHIVE_NAME" \
+    --arg archive_digest "$ARCHIVE_DIGEST" \
+    --arg checksums_digest "$CHECKSUMS_DIGEST" \
+    --arg evidence_digest "$EVIDENCE_DIGEST" \
+    '
+      (.assets | type == "array") and
+      (.assets | length == 3) and
+      ((.assets | map(.name) | sort) == ([$archive_name, "SHA256SUMS", "RELEASE_EVIDENCE.txt"] | sort)) and
+      (.assets | all(.[];
+        (.digest | type == "string") and
+        (.digest | test("^sha256:[0-9a-f]{64}$"))
+      )) and
+      (.assets | any(.[]; .name == $archive_name and .digest == $archive_digest)) and
+      (.assets | any(.[]; .name == "SHA256SUMS" and .digest == $checksums_digest)) and
+      (.assets | any(.[]; .name == "RELEASE_EVIDENCE.txt" and .digest == $evidence_digest))
+    ' \
+    "$release_json" >/dev/null
+}
+
 upload_release_asset_by_id() {
   local asset_path="$1"
   local asset_name="$2"
@@ -228,6 +264,10 @@ test -f "$EVIDENCE" || fail "RELEASE_EVIDENCE.txt is missing"
 bash Scripts/verify-release-evidence.sh "$EVIDENCE" "$RELEASE_VERSION" "$RUN_HEAD_SHA"
 
 bash Scripts/verify-release-checksum-manifest.sh "$CANDIDATE_DIR" "$ARCHIVE_NAME"
+
+ARCHIVE_DIGEST="$(sha256_digest_for_file "$ARCHIVE")"
+CHECKSUMS_DIGEST="$(sha256_digest_for_file "$CHECKSUMS")"
+EVIDENCE_DIGEST="$(sha256_digest_for_file "$EVIDENCE")"
 
 # Every public (non-draft) release is distribution history, including prereleases.
 # Download its release evidence and require the new build number to exceed the
@@ -466,7 +506,7 @@ jq -e '
   (.draft | type == "boolean") and
   (.prerelease | type == "boolean") and
   (.target_commitish | type == "string") and
-  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string")))
+  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string") and (.digest | type == "string")))
 ' "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON" >/dev/null \
   || fail "run-owned draft release snapshot is malformed before publication"
 
@@ -488,6 +528,8 @@ PREPUBLICATION_ASSET_NAMES="$(jq -r '.assets[].name' "$PREPUBLICATION_RUN_OWNED_
   || fail "draft release target changed before publication"
 release_asset_set_is_exact "$PREPUBLICATION_ASSET_NAMES" \
   || fail "draft release asset set changed before publication"
+release_asset_digests_match_expected "$PREPUBLICATION_RUN_OWNED_RELEASE_JSON" \
+  || fail "draft release asset digests do not match the validated candidate before publication"
 
 if ! PREPUBLICATION_RELEASE_ID="$(gh release view "$TAG" \
   --repo "$GITHUB_REPOSITORY" \
@@ -523,7 +565,7 @@ jq -e '
   (.draft | type == "boolean") and
   (.immutable | type == "boolean") and
   (.target_commitish | type == "string") and
-  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string")))
+  (.assets | type == "array" and all(.[]; type == "object" and (.name | type == "string") and (.digest | type == "string")))
 ' "$PUBLISHED_RUN_OWNED_RELEASE_JSON" >/dev/null \
   || fail "run-owned published release snapshot is malformed; publication state is ambiguous and requires manual reconciliation"
 
@@ -552,6 +594,8 @@ fi
   || fail "published release returned invalid immutability state; publication state is ambiguous and requires manual reconciliation"
 release_asset_set_is_exact "$PUBLISHED_ASSET_NAMES" \
   || fail "published release asset set does not exactly match expected public assets; publication state is ambiguous and requires manual reconciliation"
+release_asset_digests_match_expected "$PUBLISHED_RUN_OWNED_RELEASE_JSON" \
+  || fail "published release asset digests do not match the validated candidate; publication state is ambiguous and requires manual reconciliation"
 [[ "$PUBLISHED_RELEASE_TARGET" == "$RUN_HEAD_SHA" ]] \
   || fail "published release target does not match candidate source commit; publication state is ambiguous and requires manual reconciliation"
 

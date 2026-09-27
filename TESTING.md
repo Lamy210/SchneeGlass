@@ -583,6 +583,8 @@ candidate commit still exactly matches re-fetched current main after Draft asset
 published release isImmutable == true
 Draft -> public mutation addresses the captured run-created Release databaseId directly and fails closed if that API mutation fails
 pre-publication and post-publication run-owned Release verification each use one GET-by-databaseId snapshot so ID/state/target/assets are evaluated from a single object response rather than mixed reads
+every expected Release asset exposes a well-formed `sha256:<64 lowercase hex>` `assets[].digest`, and the exact name -> digest mapping matches the locally validated ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt` before and after publication
+same-name/different-content substitution, missing digest metadata, malformed digest metadata, duplicate/missing/extra asset state, and snapshot fetch/schema failures all fail closed
 published Release databaseId == captured run-created Draft databaseId after final public provenance checks
 explicitly mutable public Release remains intact and fails with manual-reconciliation guidance containing the tag and captured Release ID
 post-publication mutable-state handling performs no remote Release/tag mutation

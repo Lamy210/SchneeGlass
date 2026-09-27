@@ -250,6 +250,8 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] asset無しDraftの作成後、Draft targetがQA済みcandidate SHAと一致する
 - [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`はcapture済みrun-owned Release IDへ直接uploadされ、tag lookupをupload targetに使っていない
 - [ ] ZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`のDraft upload/asset validation PASS
+- [ ] 3ファイルのlocal SHA-256を記録し、公開直前のrun-owned Release snapshotで各`assets[].digest`がexact `sha256:<local hex>`として一致する
+- [ ] digest欠落・malformed・同名別内容のassetはpublication前にfail-closedする
 - [ ] 公開前に失敗した場合、run-created Draft/tagは自動削除されず、tagとcaptured Release IDを含むmanual-reconciliation guidanceが出る
 - [ ] 公開後`isImmutable=true`
 - [ ] `isImmutable=false`の場合、mutable public Release/tagは自動削除されず、tagとcaptured Release IDを含むmanual-reconciliation guidanceが出る
@@ -260,6 +262,7 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] 公開直前のrun-owned Release検証がcapture済みRelease IDへの単一snapshot取得で、ID / Draft / prerelease / target / assetsを同じresponseから検証している
 - [ ] Draft -> public mutationがtag lookupではなくcapture済みrun-owned Release IDを直接指定している
 - [ ] 公開直後のrun-owned Release検証がcapture済みRelease IDへの単一snapshot取得で、ID / Draft / immutable / target / assetsを同じresponseから検証している
+- [ ] 公開直後の同じrun-owned Release snapshotで3 assetの`assets[].digest`が公開前と同じlocal SHA-256 mappingに一致する
 - [ ] 公開後のRelease `databaseId`がDraft作成直後にcaptureしたrun-owned Release IDと一致する
 
 ## 16. Performance / release-window diagnostics
