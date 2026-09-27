@@ -26,6 +26,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] eventが`workflow_dispatch`である
 - [ ] branchが`main`である
 - [ ] workflow status=`completed` / conclusion=`success`である
+- [ ] workflow `run_attempt=1`である
+- [ ] QA対象runに対して`Re-run jobs`を実行していない。再生成が必要なら新しい`workflow_dispatch` runを作る
 - [ ] 対象workflow head commit SHAを記録した
 - [ ] `MARKETING_VERSION`を記録した
 - [ ] `CURRENT_PROJECT_VERSION`を記録した
@@ -235,6 +237,7 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 - [ ] publication workflowがcandidate workflow nameを`Production Release Candidate`として再検証する
 - [ ] publication workflowがcandidate workflow pathを`.github/workflows/production-release.yml`として再検証する
 - [ ] candidate event=`workflow_dispatch` / branch=`main` / completed-successを再検証する
+- [ ] candidate `run_attempt=1`をartifact download前後の単一workflow-run snapshotで再検証し、途中rerunを拒否する
 - [ ] candidate commitがDraft作成前にfresh fetchしたcurrent `main`とexact matchする
 - [ ] Draft asset validation後、公開コマンド直前に`origin/main`を再fetchし、candidate commitがcurrent `main`とexact matchする
 - [ ] schema v1 evidence再検証がPASSする
