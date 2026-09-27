@@ -358,7 +358,12 @@ case "$COMMAND" in
 
             snapshot_draft=true
             snapshot_immutable=false
-            snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"}]'
+            candidate_dir="$RUNNER_TEMP/SchneeGlassReleasePromotion"
+            snapshot_archive_digest="sha256:$(shasum -a 256 "$candidate_dir/SchneeGlass-0.1.0.zip" | awk '{print $1}')"
+            snapshot_checksums_digest="sha256:$(shasum -a 256 "$candidate_dir/SHA256SUMS" | awk '{print $1}')"
+            snapshot_evidence_digest="sha256:$(shasum -a 256 "$candidate_dir/RELEASE_EVIDENCE.txt" | awk '{print $1}')"
+            snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"}]' \
+              "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
 
             if [[ "$snapshot_reads" -eq 1 ]]; then
               case "$ASSET_MODE" in
@@ -369,7 +374,8 @@ case "$COMMAND" in
                     touch "$STATE/release-public"
                     snapshot_draft=false
                   fi
-                  snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.txt"}]'
+                  snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"},{"name":"unexpected.txt","digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}]' \
+                    "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
                   ;;
                 *)
                   echo "unexpected run-owned snapshot asset mode: $ASSET_MODE" >&2
@@ -396,7 +402,8 @@ case "$COMMAND" in
               esac
 
               if [[ "$ASSET_MODE" == 'extra-after' ]]; then
-                snapshot_assets='[{"name":"SchneeGlass-0.1.0.zip"},{"name":"SHA256SUMS"},{"name":"RELEASE_EVIDENCE.txt"},{"name":"unexpected.txt"}]'
+                snapshot_assets="$(printf '[{"name":"SchneeGlass-0.1.0.zip","digest":"%s"},{"name":"SHA256SUMS","digest":"%s"},{"name":"RELEASE_EVIDENCE.txt","digest":"%s"},{"name":"unexpected.txt","digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}]' \
+                    "$snapshot_archive_digest" "$snapshot_checksums_digest" "$snapshot_evidence_digest")"
               fi
             fi
 
