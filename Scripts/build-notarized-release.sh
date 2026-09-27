@@ -79,6 +79,7 @@ trap cleanup EXIT
 
 printf '%s' "$DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$P12_PATH"
 printf '%s' "$APPSTORE_CONNECT_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$API_KEY_PATH"
+unset DEVELOPER_ID_P12_BASE64 APPSTORE_CONNECT_PRIVATE_KEY_BASE64
 chmod 600 "$P12_PATH" "$API_KEY_PATH"
 
 bash Scripts/verify-release-decoded-credentials.sh \
@@ -99,6 +100,7 @@ security import "$P12_PATH" \
   -P "$DEVELOPER_ID_P12_PASSWORD" \
   -T /usr/bin/codesign \
   -T /usr/bin/security >/dev/null
+unset DEVELOPER_ID_P12_PASSWORD
 security set-key-partition-list \
   -S apple-tool:,apple: \
   -s \
