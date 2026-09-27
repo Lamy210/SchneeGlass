@@ -411,8 +411,12 @@ func staleConfigurationAfterPreparationReleasesRuntimeResources() async throws {
   }
 
   #expect(await fixture.store.savedValues().isEmpty)
-  #expect(await fixture.access.counts() == (1, 1))
-  #expect(await fixture.events.counts() == (1, 1))
+  let accessCounts = await fixture.access.counts()
+  let eventCounts = await fixture.events.counts()
+  #expect(accessCounts.acquired == 1)
+  #expect(accessCounts.released == 1)
+  #expect(eventCounts.subscribed == 1)
+  #expect(eventCounts.stopped == 1)
 }
 
 @Test
@@ -522,8 +526,12 @@ func snapshotFailureStopsEventsAndReleasesAccess() async throws {
     #expect(error == .snapshotFailed)
   }
 
-  #expect(await fixture.access.counts() == (1, 1))
-  #expect(await fixture.events.counts() == (1, 1))
+  let accessCounts = await fixture.access.counts()
+  let eventCounts = await fixture.events.counts()
+  #expect(accessCounts.acquired == 1)
+  #expect(accessCounts.released == 1)
+  #expect(eventCounts.subscribed == 1)
+  #expect(eventCounts.stopped == 1)
   #expect(await fixture.store.savedValues().isEmpty)
 }
 
@@ -555,7 +563,11 @@ func conditionalSaveRejectionCleansPreparedRuntimeResources() async throws {
     #expect(error == .staleConfiguration)
   }
 
-  #expect(await fixture.access.counts() == (1, 1))
-  #expect(await fixture.events.counts() == (1, 1))
+  let accessCounts = await fixture.access.counts()
+  let eventCounts = await fixture.events.counts()
+  #expect(accessCounts.acquired == 1)
+  #expect(accessCounts.released == 1)
+  #expect(eventCounts.subscribed == 1)
+  #expect(eventCounts.stopped == 1)
   #expect(await fixture.store.savedValues().isEmpty)
 }
