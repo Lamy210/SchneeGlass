@@ -6,7 +6,7 @@ import SchneeGlassDomain
 
 public struct GlassWorkspaceEntry: Identifiable, Hashable, Sendable {
   public let id: GlassID
-  public let title: String
+  public var title: String
   public var contentState: GlassContentState
   public var interactionState: InteractionState
   public var placement: GlassPlacement?
@@ -92,6 +92,7 @@ public final class SchneeGlassWorkspaceModel {
   private let removeGlassUseCase: RemoveGlassUseCase
   private let updateGlassPlacementUseCase: UpdateGlassPlacementUseCase
   private let resetGlassPositionsUseCase: ResetGlassPositionsUseCase
+  private let updateGlassTitleUseCase: UpdateGlassTitleUseCase
   private let configurationRecoveryUseCase: ConfigurationRecoveryUseCase
   private let fileActionUseCase: WorkspaceFileActionUseCase
   private let folderActionUseCase: WorkspaceFolderActionUseCase
@@ -111,6 +112,7 @@ public final class SchneeGlassWorkspaceModel {
     removeGlassUseCase: RemoveGlassUseCase,
     updateGlassPlacementUseCase: UpdateGlassPlacementUseCase,
     resetGlassPositionsUseCase: ResetGlassPositionsUseCase,
+    updateGlassTitleUseCase: UpdateGlassTitleUseCase,
     configurationRecoveryUseCase: ConfigurationRecoveryUseCase,
     fileActionUseCase: WorkspaceFileActionUseCase,
     folderActionUseCase: WorkspaceFolderActionUseCase,
@@ -122,6 +124,7 @@ public final class SchneeGlassWorkspaceModel {
     self.removeGlassUseCase = removeGlassUseCase
     self.updateGlassPlacementUseCase = updateGlassPlacementUseCase
     self.resetGlassPositionsUseCase = resetGlassPositionsUseCase
+    self.updateGlassTitleUseCase = updateGlassTitleUseCase
     self.configurationRecoveryUseCase = configurationRecoveryUseCase
     self.fileActionUseCase = fileActionUseCase
     self.folderActionUseCase = folderActionUseCase
@@ -505,6 +508,69 @@ public final class SchneeGlassWorkspaceModel {
     await session.cancelCopy()
   }
 
+  public func canRenameGlass(glassID: GlassID) -> Bool {
+    canMutateConfiguration
+      && glasses.contains(where: { $0.id == glassID })
+      && !isDropBusy(glassID: glassID)
+  }
+
+  public func renameGlass(
+    glassID: GlassID,
+    title: String
+  ) async {
+    if requiresConfigurationRecovery {
+      presentConfigurationRecoveryRequirementIfNeeded()
+      return
+    }
+    guard canRenameGlass(glassID: glassID) else {
+      return
+    }
+
+    isMutatingConfiguration = true
+    userMessage = nil
+    defer { isMutatingConfiguration = false }
+
+    sessionTaskTracker.invalidate(glassID)
+    stateTasks[glassID]?.cancel()
+    stateTasks[glassID] = nil
+    if let session = sessions.removeValue(forKey: glassID) {
+      await session.stop()
+    }
+    connectedFolderURLs[glassID] = nil
+
+    do {
+      let updated = try await updateGlassTitleUseCase.execute(
+        glassID: glassID,
+        title: title
+      )
+      guard updated,
+        let index = glasses.firstIndex(where: { $0.id == glassID })
+      else {
+        return
+      }
+
+      glasses[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch let error as UpdateGlassTitleError {
+      switch error {
+      case .configurationLoadFailed:
+        enterConfigurationRecoveryRequiredState()
+      case .configurationChanged:
+        userMessage =
+          "The Glass configuration changed while renaming. Nothing was overwritten; try again."
+      case .emptyTitle:
+        userMessage = "Glass name cannot be empty."
+      case .titleTooLong:
+        userMessage = "Glass name must be 100 characters or fewer."
+      case .invalidConfiguration:
+        userMessage = "SchneeGlass couldn't build a valid renamed Glass. Nothing was saved."
+      case .configurationSaveFailed:
+        userMessage = "SchneeGlass couldn't save the new Glass name. Nothing was changed."
+      }
+    } catch {
+      userMessage = "SchneeGlass couldn't rename this Glass. Nothing was changed."
+    }
+  }
+
   public func canReconnectSource(glassID: GlassID) -> Bool {
     guard canMutateConfiguration,
       !isDropBusy(glassID: glassID),
@@ -531,14 +597,6 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     userMessage = nil
     defer { isMutatingConfiguration = false }
-
-    sessionTaskTracker.invalidate(glassID)
-    stateTasks[glassID]?.cancel()
-    stateTasks[glassID] = nil
-    if let session = sessions.removeValue(forKey: glassID) {
-      await session.stop()
-    }
-    connectedFolderURLs[glassID] = nil
 
     do {
       guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
