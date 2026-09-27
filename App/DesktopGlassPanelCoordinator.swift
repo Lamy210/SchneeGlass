@@ -49,14 +49,14 @@ private struct DesktopGlassWindowControls: View {
 
         Button(action: onToggleKeepOnTop) {
           Label(
-            "Keep on Top",
+            keepsOnTop ? "Stop Keeping on Top" : "Keep on Top",
             systemImage: keepsOnTop ? "checkmark.circle.fill" : "circle"
           )
         }
 
         Button(action: onToggleSpacesBehavior) {
           Label(
-            "Show on All Spaces",
+            showsOnAllSpaces ? "Stop Showing on All Spaces" : "Show on All Spaces",
             systemImage: showsOnAllSpaces ? "checkmark.circle.fill" : "circle"
           )
         }
