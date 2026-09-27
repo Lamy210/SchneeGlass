@@ -352,7 +352,7 @@ Signing/notarization credentials come from the protected `production-release` en
 
 `Scripts/verify-production-release-secret-scope.sh` locks that step-level boundary in credential-free PR validation.
 
-The production script uses a temporary keychain for imported Developer ID material and removes temporary credential material during job teardown.
+The production script uses a temporary keychain for imported Developer ID material, clears encoded credential environment variables immediately after decode, clears the PKCS#12 password immediately after certificate/private-key import, and removes temporary credential files/keychain material during job teardown.
 
 Repository files may document secret/variable names and required formats, but must never contain actual credential values or encoded certificate/key material.
 
