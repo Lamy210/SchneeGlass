@@ -169,6 +169,9 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] Lock中はbackground dragで移動せず、file操作・menu操作・resizeは引き続き利用できる
 - [ ] position lock状態がアプリ再起動後も維持される
 - [ ] Unlock後は再びbackground dragで移動できる
+- [ ] Glassを画面端へdragしても最低80x40ptの操作可能領域がvisible frame内へ残る
+- [ ] second displayへ十分表示されているGlassをprimary displayへ勝手に引き戻さない
+- [ ] drag reachability補正後のplacementが保存され、再起動後も同じreachable位置へ復元される
 - [ ] Reset Glass PositionsはLock中のGlassも明示操作として救出し、Lock状態自体は維持する
 - [ ] placementが保存される
 - [ ] second displayへ配置できる
