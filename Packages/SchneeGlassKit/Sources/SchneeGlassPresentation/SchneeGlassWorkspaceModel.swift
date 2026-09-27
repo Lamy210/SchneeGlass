@@ -502,7 +502,7 @@ public final class SchneeGlassWorkspaceModel {
 
   public func canReconnectSource(glassID: GlassID) -> Bool {
     guard canMutateConfiguration,
-      sessions[glassID] == nil,
+      !isDropBusy(glassID: glassID),
       let entry = glasses.first(where: { $0.id == glassID })
     else {
       return false
@@ -526,6 +526,13 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     userMessage = nil
     defer { isMutatingConfiguration = false }
+
+    sessionTaskTracker.invalidate(glassID)
+    stateTasks[glassID]?.cancel()
+    stateTasks[glassID] = nil
+    if let session = sessions.removeValue(forKey: glassID) {
+      await session.stop()
+    }
 
     do {
       guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
