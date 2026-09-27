@@ -1,0 +1,64 @@
+name: Repair v0.1.1 Release Notes
+
+on:
+  push:
+    branches:
+      - 'release/0.1.1'
+    paths:
+      - '.github/workflows/repair-v0.1.1-release-notes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    name: Repair published v0.1.1 notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Rewrite release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > RELEASE_NOTES.md <<'EOF'
+          # SchneeGlass v0.1.1
+
+          v0.1.1 replaces the fully unsigned v0.1.0 package.
+
+          This build has a valid **ad-hoc macOS code signature**. The final app bundle passed:
+
+          ```bash
+          codesign --verify --deep --strict SchneeGlass.app
+          ```
+
+          before publication.
+
+          **This build is still not signed with an Apple Developer ID certificate and is not notarized by Apple.** Gatekeeper can therefore still block the first launch.
+
+          If you trust this repository, verify the downloaded checksum first. Then try opening SchneeGlass. If macOS blocks it, open **System Settings → Privacy & Security** and use **Open Anyway** for SchneeGlass.
+
+          ## Integrity
+
+          ```text
+          7f20f1178a771ea1fba1de5d378de6da1b7dea21dc0f9fba55e6ca6b6dd5ff2a  SchneeGlass-0.1.1-adhoc.zip
+          ```
+
+          Source commit: `cf942622f57d18ad09eb63ffe43f2574e17cf53c`
+
+          Minimum macOS: 15.0
+
+          This release uses an ad-hoc signature only; it does not claim Apple Developer ID trust or Apple notarization.
+          EOF
+
+          gh release edit v0.1.1 \
+            --repo Lamy210/SchneeGlass \
+            --notes-file RELEASE_NOTES.md
+
+      - name: Verify repaired notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY="$(gh release view v0.1.1 --repo Lamy210/SchneeGlass --json body --jq '.body')"
+          grep -Fq 'codesign --verify --deep --strict SchneeGlass.app' <<< "$BODY"
+          grep -Fq '7f20f1178a771ea1fba1de5d378de6da1b7dea21dc0f9fba55e6ca6b6dd5ff2a' <<< "$BODY"
+          grep -Fq 'cf942622f57d18ad09eb63ffe43f2574e17cf53c' <<< "$BODY"
