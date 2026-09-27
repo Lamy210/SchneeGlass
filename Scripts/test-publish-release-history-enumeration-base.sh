@@ -1341,7 +1341,7 @@ if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/releas
   exit 1
 fi
 
-grep -Fq 'Release promotion failed: unable to verify published release immutability; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
+grep -Fq 'Release promotion failed: unable to fetch run-owned published release snapshot; publication state is ambiguous and requires manual reconciliation' "$OUTPUT_AMBIGUOUS"
 
 # Post-publication mutable cleanup has the same non-atomic destructive boundary:
 # after isImmutable=false is observed, the same tag can resolve to changed/replacement
