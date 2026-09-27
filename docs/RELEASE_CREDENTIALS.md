@@ -30,6 +30,10 @@ GitHubで次の順に設定します。
 
 Environment protection ruleがある場合、そのruleが通過するまでEnvironment secretsはjobから利用できない。
 
+Environment protection通過後もsecret exposureをjob全体へ広げない。`.github/workflows/production-release.yml`では、`DEVELOPER_ID_P12_BASE64`、`DEVELOPER_ID_P12_PASSWORD`、`APPSTORE_CONNECT_PRIVATE_KEY_BASE64`と3つのcredential-adjacent Environment variablesを、実際にconsumeする`Build signed and notarized release candidate` stepの`env`にだけ注入する。Checkout / Toolchain / evidence metadata / artifact upload stepへsigning credentialを渡さない。
+
+`Scripts/verify-production-release-secret-scope.sh`がこの境界をfail-closedで検証し、secret/variableのjob-level再露出、重複参照、build stepからの欠落をProduction Release Candidate preflightで拒否する。
+
 ### Required reviewersの注意
 
 別のtrusted reviewerを運用できる場合はrequired reviewerを設定することを推奨する。
