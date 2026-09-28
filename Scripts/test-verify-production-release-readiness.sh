@@ -23,6 +23,15 @@ printf '%q ' "$@" >> "$LOG"
 printf '\n' >> "$LOG"
 
 case "${1:-}" in
+  Scripts/verify-local-release-source.sh)
+    [[ "${2:-}" == 'example/SchneeGlass' ]]
+    [[ "$#" -eq 2 ]]
+    if [[ "$MODE" == 'source-failure' ]]; then
+      echo 'synthetic source failure' >&2
+      exit 41
+    fi
+    echo 'synthetic source verified'
+    ;;
   Scripts/setup-release-governance.sh)
     [[ "${2:-}" == 'example/SchneeGlass' ]]
     [[ "${3:-}" == '--verify-only' ]]
@@ -86,11 +95,28 @@ export READINESS_FIXTURE_MODE='success'
 "$REAL_BASH" Scripts/verify-production-release-readiness.sh   example/SchneeGlass   >"$FIXTURE/success.log" 2>&1
 
 grep -Fq 'Production release readiness verified:' "$FIXTURE/success.log"
+assert_count 1 'Scripts/verify-local-release-source.sh example/SchneeGlass'
 assert_count 1 'Scripts/setup-release-governance.sh example/SchneeGlass --verify-only'
 assert_count 1 'Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names'
+SOURCE_LINE="$(grep -n 'Scripts/verify-local-release-source.sh' "$LOG" | cut -d: -f1)"
 GOV_LINE="$(grep -n 'Scripts/setup-release-governance.sh' "$LOG" | cut -d: -f1)"
 ENV_LINE="$(grep -n 'Scripts/setup-production-release-environment.sh' "$LOG" | cut -d: -f1)"
-[[ "$GOV_LINE" -lt "$ENV_LINE" ]]
+[[ "$SOURCE_LINE" -lt "$GOV_LINE" && "$GOV_LINE" -lt "$ENV_LINE" ]]
+
+# Source proof failure must stop before either authority check.
+: > "$LOG"
+export READINESS_FIXTURE_MODE='source-failure'
+set +e
+"$REAL_BASH" Scripts/verify-production-release-readiness.sh \
+  example/SchneeGlass \
+  >"$FIXTURE/source-failure.log" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'synthetic source failure' "$FIXTURE/source-failure.log"
+assert_count 1 'Scripts/verify-local-release-source.sh example/SchneeGlass'
+assert_count 0 'Scripts/setup-release-governance.sh'
+assert_count 0 'Scripts/setup-production-release-environment.sh'
 
 # Governance failure must stop before Environment credential-name verification.
 : > "$LOG"
@@ -101,6 +127,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'synthetic governance failure' "$FIXTURE/governance-failure.log"
+assert_count 1 'Scripts/verify-local-release-source.sh example/SchneeGlass'
 assert_count 1 'Scripts/setup-release-governance.sh example/SchneeGlass --verify-only'
 assert_count 0 'Scripts/setup-production-release-environment.sh'
 
@@ -113,6 +140,7 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'synthetic Environment failure' "$FIXTURE/environment-failure.log"
+assert_count 1 'Scripts/verify-local-release-source.sh example/SchneeGlass'
 assert_count 1 'Scripts/setup-release-governance.sh example/SchneeGlass --verify-only'
 assert_count 1 'Scripts/setup-production-release-environment.sh example/SchneeGlass --verify-credential-names'
 
