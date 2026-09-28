@@ -73,7 +73,7 @@ public struct SchneeGlassDesktopGlassView: View {
 struct DesktopGlassSurface: View {
   let entry: GlassWorkspaceEntry
   let fileGridDensity: DesktopGlassFileGridDensity
-  let fileSortOrder: DesktopGlassFileSortOrder
+  let fileSortOrder: DesktopGlassFileSortOrder?
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -88,7 +88,7 @@ struct DesktopGlassSurface: View {
   init(
     entry: GlassWorkspaceEntry,
     fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
-    fileSortOrder: DesktopGlassFileSortOrder = .nameAscending,
+    fileSortOrder: DesktopGlassFileSortOrder? = nil,
     canRemove: Bool,
     onOpen: @escaping (GlassItem) -> Void,
     onReveal: @escaping (GlassItem) -> Void,
@@ -400,9 +400,16 @@ struct DesktopGlassSurface: View {
 private struct DesktopFileGrid: View {
   let snapshot: FolderSnapshot
   let density: DesktopGlassFileGridDensity
-  let sortOrder: DesktopGlassFileSortOrder
+  let sortOrder: DesktopGlassFileSortOrder?
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
+
+  private var displayedItems: [GlassItem] {
+    guard let sortOrder else {
+      return snapshot.items
+    }
+    return sortOrder.sortedItems(snapshot.items)
+  }
 
   private var columns: [GridItem] {
     [
@@ -419,7 +426,7 @@ private struct DesktopFileGrid: View {
 
   var body: some View {
     LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
-      ForEach(sortOrder.sortedItems(snapshot.items)) { item in
+      ForEach(displayedItems) { item in
         let presentation = GlassItemPresentation.make(for: item)
         SchneeGlassFileTile(
           systemImage: presentation.systemImage,
