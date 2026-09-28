@@ -306,8 +306,9 @@ CHECKSUMS_DIGEST="$(sha256_digest_for_file "$CHECKSUMS")"
 EVIDENCE_DIGEST="$(sha256_digest_for_file "$EVIDENCE")"
 
 # Every public (non-draft) release is distribution history, including prereleases.
-# Download its release evidence and require the new build number to exceed the
-# maximum previously distributed build. Missing/malformed history fails closed.
+# Production releases use RELEASE_EVIDENCE.txt. Pre-evidence legacy releases are
+# accepted only when BUILD_INFO.txt matches the pinned legacy manifest exactly.
+# Missing, unknown, or malformed history fails closed.
 PUBLISHED_TAGS="$CANDIDATE_DIR/published-release-tags.txt"
 if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
   --jq '.[] | select(.draft == false) | .tag_name' \
@@ -315,22 +316,10 @@ if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
   fail "failed to enumerate public release history"
 fi
 
-HISTORY_INDEX=0
-while IFS= read -r PUBLISHED_TAG; do
-  [[ -n "$PUBLISHED_TAG" ]] || continue
-  HISTORY_INDEX=$((HISTORY_INDEX + 1))
-  RELEASE_HISTORY_DIR="$HISTORY_DIR/$HISTORY_INDEX"
-  mkdir -p "$RELEASE_HISTORY_DIR"
-
-  gh release download "$PUBLISHED_TAG" \
-    --repo "$GITHUB_REPOSITORY" \
-    --pattern 'RELEASE_EVIDENCE.txt' \
-    --dir "$RELEASE_HISTORY_DIR" \
-    || fail "public release $PUBLISHED_TAG is missing readable RELEASE_EVIDENCE.txt"
-
-  test -f "$RELEASE_HISTORY_DIR/RELEASE_EVIDENCE.txt" \
-    || fail "public release $PUBLISHED_TAG did not yield RELEASE_EVIDENCE.txt"
-done < "$PUBLISHED_TAGS"
+bash Scripts/materialize-public-release-build-history.sh \
+  "$GITHUB_REPOSITORY" \
+  "$PUBLISHED_TAGS" \
+  "$HISTORY_DIR"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$HISTORY_DIR"
 
@@ -513,22 +502,10 @@ if ! gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
   fail "failed to enumerate public release history before publication"
 fi
 
-FINAL_HISTORY_INDEX=0
-while IFS= read -r PUBLISHED_TAG; do
-  [[ -n "$PUBLISHED_TAG" ]] || continue
-  FINAL_HISTORY_INDEX=$((FINAL_HISTORY_INDEX + 1))
-  FINAL_RELEASE_HISTORY_DIR="$FINAL_HISTORY_DIR/$FINAL_HISTORY_INDEX"
-  mkdir -p "$FINAL_RELEASE_HISTORY_DIR"
-
-  gh release download "$PUBLISHED_TAG" \
-    --repo "$GITHUB_REPOSITORY" \
-    --pattern 'RELEASE_EVIDENCE.txt' \
-    --dir "$FINAL_RELEASE_HISTORY_DIR" \
-    || fail "public release $PUBLISHED_TAG is missing readable RELEASE_EVIDENCE.txt before publication"
-
-  test -f "$FINAL_RELEASE_HISTORY_DIR/RELEASE_EVIDENCE.txt" \
-    || fail "public release $PUBLISHED_TAG did not yield RELEASE_EVIDENCE.txt before publication"
-done < "$FINAL_PUBLISHED_TAGS"
+bash Scripts/materialize-public-release-build-history.sh \
+  "$GITHUB_REPOSITORY" \
+  "$FINAL_PUBLISHED_TAGS" \
+  "$FINAL_HISTORY_DIR"
 
 bash Scripts/verify-release-build-history.sh "$EVIDENCE" "$FINAL_HISTORY_DIR"
 
