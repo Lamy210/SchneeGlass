@@ -15,6 +15,10 @@ cat > "$FIXTURE/bin/git-fixture" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${LOCAL_SOURCE_FIXTURE_GIT_FAIL:-}" == "$*" ]]; then
+  exit 42
+fi
+
 case "$*" in
   'rev-parse --show-toplevel')
     printf '%s\n' "${LOCAL_SOURCE_FIXTURE_ROOT:?}"
@@ -47,6 +51,9 @@ if [[ "${1:-}" == 'auth' && "${2:-}" == 'status' ]]; then
 fi
 
 if [[ "${1:-}" == 'api' && "${2:-}" == 'repos/example/SchneeGlass/branches/main' ]]; then
+  if [[ -n "${LOCAL_SOURCE_FIXTURE_GH_FAIL:-}" ]]; then
+    exit 42
+  fi
   if [[ -n "${LOCAL_SOURCE_FIXTURE_MALFORMED_REMOTE:-}" ]]; then
     printf '%s\n' '{"name":"main","commit":{"sha":"not-a-sha"}}'
   else
@@ -107,6 +114,17 @@ expect_failure \
   env LOCAL_SOURCE_FIXTURE_MALFORMED_REMOTE=1 \
     bash Scripts/verify-local-release-source.sh example/SchneeGlass
 grep -Fq 'remote main branch response is malformed' "$FIXTURE/failure.log"
+
+expect_failure \
+  'git working tree probe failure' \
+  env LOCAL_SOURCE_FIXTURE_GIT_FAIL='status --porcelain=v1 --untracked-files=normal' \
+    bash Scripts/verify-local-release-source.sh example/SchneeGlass
+grep -Fq 'working tree probe failed (git status 42)' "$FIXTURE/failure.log"
+
+expect_failure \
+  'GitHub branch API failure' \
+  env LOCAL_SOURCE_FIXTURE_GH_FAIL=1 \
+    bash Scripts/verify-local-release-source.sh example/SchneeGlass
 
 rm -rf "$FIXTURE"
 echo 'Local release source fixtures passed'
