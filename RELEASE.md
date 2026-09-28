@@ -108,13 +108,22 @@ For pull requests, Release Candidate Validation uses PR-scoped concurrency and c
 
 `.github/workflows/adhoc-release-candidate.yml` produces an **Actions artifact for testing only**. It never creates or modifies a GitHub Release.
 
+The workflow runs on release-related Pull Requests and manual `workflow_dispatch`.
+
+Source rules:
+
+- Pull Requests build and verify the exact checked-out PR merge commit, but do **not** retain a downloadable candidate artifact.
+- Manual candidates must run from exact `main`.
+- The checked-out `HEAD` must exactly match `GITHUB_SHA`; source ambiguity fails closed.
+
 The workflow:
 
-1. resolves the current project `X.Y.Z` version and validates release metadata
-2. runs Swift Package tests
-3. builds the Release app with normal code signing disabled
-4. applies an ad-hoc signature with Hardened Runtime and the checked-in Sandbox entitlements
-5. verifies:
+1. proves the event / ref / checkout SHA source contract
+2. resolves the current project `X.Y.Z` version and validates release metadata
+3. runs Swift Package tests
+4. builds the Release app with normal code signing disabled
+5. applies an ad-hoc signature with Hardened Runtime and the checked-in Sandbox entitlements
+6. verifies:
    - `Signature=adhoc`
    - no certificate authority is present
    - Hardened Runtime is enabled
@@ -122,10 +131,10 @@ The workflow:
    - user-selected read/write entitlement remains enabled
    - unexpected network-client entitlement is absent
    - `get-task-allow=true` is absent
-6. packages `SchneeGlass-X.Y.Z-adhoc-candidate.zip`
-7. creates and self-verifies `SHA256SUMS`
-8. records non-production `BUILD_INFO.txt`
-9. uploads the candidate as a short-lived Actions artifact
+7. packages `SchneeGlass-X.Y.Z-adhoc-candidate.zip`
+8. creates and self-verifies `SHA256SUMS`
+9. records non-production `BUILD_INFO.txt`
+10. on manual `main` dispatch only, uploads the candidate as a short-lived Actions artifact
 
 The ad-hoc candidate is useful for Manual QA before Developer ID credentials are available, but it is **not** production evidence:
 
