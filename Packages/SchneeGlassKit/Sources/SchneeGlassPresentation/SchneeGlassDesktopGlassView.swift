@@ -68,7 +68,7 @@ public struct SchneeGlassDesktopGlassView: View {
 
 struct DesktopGlassSurface: View {
   let entry: GlassWorkspaceEntry
-  let fileGridDensity: DesktopGlassFileGridDensity
+  let fileGridDensity: DesktopGlassFileGridDensity = .comfortable
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
