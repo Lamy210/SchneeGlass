@@ -58,4 +58,4 @@ probe_absent() {
 
 probe_required 'ad-hoc signature marker' -Fx 'Signature=adhoc'
 probe_absent 'certificate authority' -q '^Authority='
-probe_required 'Hardened Runtime marker' -F '(runtime)'
+probe_required 'Hardened Runtime marker' -E 'flags=.*\\(([^,)]*,)*runtime(,[^,)]*)*\\)'
