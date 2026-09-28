@@ -237,6 +237,20 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] density切替でsource folder / Glass configuration / placementを変更しない
 - [ ] density切替でuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.9 Per-Glass File Sorting (v0.2)
+
+- [ ] Glass window optionsのSort FilesからName / Modified / Sizeを切り替えられる
+- [ ] NameはFinder風の自然順で表示され、同名時も表示順が安定する
+- [ ] Modifiedは更新日時が新しいitemから並び、日時不明itemは末尾へ送られる
+- [ ] Sizeはsizeが大きいitemから並び、size不明itemは末尾へ送られる
+- [ ] sortを切り替えてもdouble-click Open / Reveal in Finder / context menuの対象が変わらない
+- [ ] sort状態がGlass単位で独立し、アプリ再起動後も維持される
+- [ ] Compact File Tiles / Opacity / Position Lockなど他のWindow UX preferenceと独立する
+- [ ] Glass削除時にstale sort preferenceをcleanupする
+- [ ] FSEvents refresh後も選択済みsort orderで再表示される
+- [ ] sort操作でFolderSnapshot本体 / Glass configuration / source folderを変更しない
+- [ ] sort操作でuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
