@@ -68,7 +68,7 @@ public struct SchneeGlassDesktopGlassView: View {
 
 struct DesktopGlassSurface: View {
   let entry: GlassWorkspaceEntry
-  let fileGridDensity: DesktopGlassFileGridDensity = .comfortable
+  let fileGridDensity: DesktopGlassFileGridDensity
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -79,6 +79,30 @@ struct DesktopGlassSurface: View {
   let onPerformDrop: @MainActor ([URL]) async -> Void
 
   @State private var showsRemoveConfirmation = false
+
+  init(
+    entry: GlassWorkspaceEntry,
+    fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
+    canRemove: Bool,
+    onOpen: @escaping (GlassItem) -> Void,
+    onReveal: @escaping (GlassItem) -> Void,
+    onRemove: @escaping () -> Void,
+    onPlanDrop: @escaping @MainActor ([URL]) async -> Bool,
+    onCancelDrop: @escaping @MainActor () -> Void,
+    onCancelCopy: @escaping @MainActor () -> Void,
+    onPerformDrop: @escaping @MainActor ([URL]) async -> Void
+  ) {
+    self.entry = entry
+    self.fileGridDensity = fileGridDensity
+    self.canRemove = canRemove
+    self.onOpen = onOpen
+    self.onReveal = onReveal
+    self.onRemove = onRemove
+    self.onPlanDrop = onPlanDrop
+    self.onCancelDrop = onCancelDrop
+    self.onCancelCopy = onCancelCopy
+    self.onPerformDrop = onPerformDrop
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: SchneeGlassSpacing.surfaceContent) {
