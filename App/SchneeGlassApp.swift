@@ -35,7 +35,6 @@ struct SchneeGlassApp: App {
                 SchneeGlassWorkspaceView(model: root.workspaceModel)
                     .task {
                         await root.workspaceModel.restoreIfNeeded()
-                        panelCoordinator?.reconcileWindowPreferencesWithCurrentGlasses()
                         panelCoordinator?.sync()
                     }
                     .onChange(of: root.workspaceModel.glasses) { _, _ in
@@ -531,7 +530,6 @@ private struct SchneeGlassSettingsView: View {
         let result = await model.restoreConfigurationBackup(id: backup.id)
         switch result {
         case .restored:
-            panelCoordinator.reconcileWindowPreferencesWithCurrentGlasses()
             panelCoordinator.showAll()
             recoveryMessage = "Configuration restored. Connected folders and files were not changed."
             await refreshBackups()
