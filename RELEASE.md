@@ -455,16 +455,30 @@ If a release is bad:
 
 User-owned files remain the source of truth. Release rollback must never require automatic destructive migration of connected folders.
 
-## Remaining v0.1 release work
+## Remaining v0.2 production release work
 
-The remaining work is operational, not missing release-pipeline code:
+The remaining work is operational, not missing release-pipeline code.
 
-1. configure `production-release` environment credentials/variables
+Before any credentialed candidate is started, an administrator can run the read-only combined readiness check:
+
+```bash
+bash Scripts/verify-production-release-readiness.sh \
+  Lamy210/SchneeGlass
+```
+
+That command verifies the exact-live-main governance attestation and the `production-release` Environment credential-name contract without creating or updating repository governance, Environment settings, secrets, or variables.
+
+Remaining production steps:
+
+1. configure and verify the canonical `main` ruleset / required Bootstrap checks
 2. enable and verify repository release immutability
-3. configure `main` branch/ruleset so both Bootstrap CI jobs are required from the GitHub Actions App, and review direct-push/bypass governance
-4. run the first real Developer ID signed/notarized candidate
-5. verify schema v1 signed ZIP evidence, including actual `bundle_build`
-6. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
-7. run `Publish Production Release` with all confirmations, including release governance
-8. verify exact candidate workflow provenance and build-history gate PASS
-9. verify the first immutable public v0.1 Release, including exact target/tag provenance, and record its run/tag/checksum/evidence
+3. configure the protected `production-release` Environment and required credential names
+4. run the read-only combined production-readiness verifier successfully from exact current `main`
+5. generate a fresh Developer ID signed + Apple-notarized `0.2.0 / build 3` candidate from that exact current `main`
+6. verify schema v1 signed ZIP evidence, including actual `bundle_build=3` and exact source commit
+7. complete [`docs/MANUAL_QA.md`](docs/MANUAL_QA.md) against that exact candidate
+8. run `Publish Production Release` with all confirmations, including release governance
+9. verify candidate provenance, legacy/current build-history monotonicity, exact asset digests, immutable Release state, and exact target/tag provenance
+10. record the production run ID, tag, checksum, evidence, and Manual QA result
+
+The existing public v0.1.0 / v0.1.1 Releases remain historical distribution evidence; they are not the pending production target.
