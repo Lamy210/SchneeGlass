@@ -95,7 +95,7 @@ done
 
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/branches/main)
-    printf '{"name":"main","commit":{"sha":"${LOCAL_SOURCE_FIXTURE_REMOTE_SHA:?}"},"protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+    printf '{"name":"main","commit":{"sha":"%s"},"protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n' "$LOCAL_SOURCE_FIXTURE_REMOTE_SHA"
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
