@@ -6,6 +6,9 @@ on:
       - '.github/workflows/release-governance-setup.yml'
       - '.github/rulesets/main-release-governance.json'
       - 'Scripts/setup-release-governance.sh'
+      - 'Scripts/setup-production-release-environment.sh'
+      - 'Scripts/verify-production-release-readiness.sh'
+      - 'Scripts/test-verify-production-release-readiness.sh'
       - 'Scripts/verify-local-release-source.sh'
       - 'Scripts/test-verify-local-release-source.sh'
       - 'Scripts/verify-release-canonical-ruleset.sh'
@@ -30,6 +33,9 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/setup-release-governance.sh
+          bash -n Scripts/setup-production-release-environment.sh
+          bash -n Scripts/verify-production-release-readiness.sh
+          bash -n Scripts/test-verify-production-release-readiness.sh
           bash -n Scripts/verify-local-release-source.sh
           bash -n Scripts/test-verify-local-release-source.sh
           bash -n Scripts/verify-release-canonical-ruleset.sh
@@ -40,3 +46,6 @@ jobs:
 
       - name: Governance setup fixture
         run: bash Scripts/test-setup-release-governance.sh
+
+      - name: Production release readiness fixture
+        run: bash Scripts/test-verify-production-release-readiness.sh
