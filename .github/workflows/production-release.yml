@@ -22,6 +22,7 @@ on:
       - 'Scripts/initialize-release-evidence-schema.sh'
       - 'Scripts/test-release-evidence-schema-probe.sh'
       - 'Scripts/verify-release-metadata.sh'
+      - 'Scripts/resolve-release-version.sh'
       - 'Scripts/verify-release-credential-inputs.sh'
       - 'Scripts/verify-release-decoded-credentials.sh'
       - 'Scripts/encode-release-fixture-base64.sh'
@@ -73,6 +74,7 @@ jobs:
           bash Scripts/verify-production-release-path-coverage.sh \
             .github/workflows/production-release.yml \
             'Scripts/verify-release-metadata.sh' \
+            'Scripts/resolve-release-version.sh' \
             'Scripts/verify-xcode-version.sh' \
             'Scripts/test-release-bundle-metadata-key-probe.sh' \
             'Scripts/initialize-release-evidence-schema.sh' \
@@ -100,6 +102,7 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/verify-release-metadata.sh
+          bash -n Scripts/resolve-release-version.sh
           bash -n Scripts/verify-production-release-preflight.sh
           bash -n Scripts/verify-optional-release-entitlements.sh
           bash -n Scripts/test-optional-release-entitlement-probes.sh
@@ -300,7 +303,8 @@ jobs:
           rm -rf release-output
           LOG="$RUNNER_TEMP/decoded-credential-build-integration.log"
 
-          export RELEASE_VERSION='0.1.0'
+          RELEASE_VERSION="$(bash Scripts/resolve-release-version.sh)"
+          export RELEASE_VERSION
           DEVELOPER_ID_P12_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/not-p12.bin")"
           export DEVELOPER_ID_P12_BASE64
           export DEVELOPER_ID_P12_PASSWORD='fixture-password'
