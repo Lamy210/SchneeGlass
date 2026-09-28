@@ -46,7 +46,7 @@ public enum DesktopGlassFileSortOrder: String, CaseIterable, Sendable {
     rhs: GlassItem
   ) -> Bool {
     switch (lhsValue, rhsValue) {
-    case let (lhsValue?, rhsValue?):
+    case (let lhsValue?, let rhsValue?):
       if lhsValue != rhsValue {
         return lhsValue > rhsValue
       }
