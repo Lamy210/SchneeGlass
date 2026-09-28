@@ -235,6 +235,9 @@ confirm_release_governance = true
 first prove the local checkout is the exact live `main`, then run the administrator-side read-only governance verification:
 
 ```bash
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
 bash Scripts/setup-release-governance.sh \
   Lamy210/SchneeGlass \
   --verify-only
