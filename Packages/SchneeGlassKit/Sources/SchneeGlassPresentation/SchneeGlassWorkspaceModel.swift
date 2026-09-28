@@ -65,6 +65,18 @@ enum WorkspaceConfigurationMutationPolicy {
   }
 }
 
+enum WorkspaceConfigurationAuthorityPolicy {
+  static func hasAuthoritativeSnapshot(
+    didAttemptInitialRestore: Bool,
+    isMutatingConfiguration: Bool,
+    requiresConfigurationRecovery: Bool
+  ) -> Bool {
+    didAttemptInitialRestore
+      && !isMutatingConfiguration
+      && !requiresConfigurationRecovery
+  }
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -84,6 +96,14 @@ public final class SchneeGlassWorkspaceModel {
 
   public var canAddGlass: Bool {
     canMutateConfiguration
+  }
+
+  public var hasAuthoritativeConfigurationSnapshot: Bool {
+    WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
+      didAttemptInitialRestore: didAttemptInitialRestore,
+      isMutatingConfiguration: isMutatingConfiguration,
+      requiresConfigurationRecovery: requiresConfigurationRecovery
+    )
   }
 
   private let createGlassUseCase: CreateGlassUseCase
