@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
 fail() {
   echo "Production release readiness verification failed: $*" >&2
   exit 1
