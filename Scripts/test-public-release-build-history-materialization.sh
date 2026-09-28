@@ -40,7 +40,35 @@ shift 3
 case "$subcommand" in
   view)
     [[ "$tag" == 'v0.9.0' || "$tag" == 'v0.9.1' ]]
-    printf '%s\n' "${LEGACY_FIXTURE_TARGET:?}"
+    while [[ "$#" -gt 0 ]]; do
+      case "$1" in
+        --repo|--json)
+          shift 2
+          ;;
+        *)
+          echo "unexpected gh release view argument: $1" >&2
+          exit 95
+          ;;
+      esac
+    done
+    case "${LEGACY_FIXTURE_MODE:?}" in
+      legacy)
+        printf '{"targetCommitish":"%s","assets":[{"name":"BUILD_INFO.txt"}]}\n' "${LEGACY_FIXTURE_TARGET:?}"
+        ;;
+      evidence|evidence-missing|evidence-download-failure)
+        printf '{"targetCommitish":"%s","assets":[{"name":"RELEASE_EVIDENCE.txt"}]}\n' "${LEGACY_FIXTURE_TARGET:?}"
+        ;;
+      duplicate-evidence)
+        printf '{"targetCommitish":"%s","assets":[{"name":"RELEASE_EVIDENCE.txt"},{"name":"RELEASE_EVIDENCE.txt"}]}\n' "${LEGACY_FIXTURE_TARGET:?}"
+        ;;
+      malformed-metadata)
+        printf '%s\n' '{"targetCommitish":42,"assets":"not-an-array"}'
+        ;;
+      *)
+        echo "unexpected release view fixture mode: ${LEGACY_FIXTURE_MODE:-}" >&2
+        exit 96
+        ;;
+    esac
     ;;
   download)
     dir=''
@@ -85,6 +113,9 @@ EOF
       evidence-missing:RELEASE_EVIDENCE.txt)
         exit 0
         ;;
+      evidence-download-failure:RELEASE_EVIDENCE.txt)
+        exit 42
+        ;;
       *)
         echo "unexpected materializer fixture mode/pattern: ${LEGACY_FIXTURE_MODE:-}:$pattern" >&2
         exit 93
@@ -121,6 +152,49 @@ STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'reported evidence download success without RELEASE_EVIDENCE.txt' "$FIXTURE/evidence-missing.log"
+
+rm -rf "$HISTORY"
+set +e
+LEGACY_FIXTURE_MODE=evidence-download-failure PATH="$FIXTURE/bin:$PATH" \
+  bash Scripts/materialize-public-release-build-history.sh \
+    example/SchneeGlass \
+    "$TAGS" \
+    "$HISTORY" \
+    "$MANIFEST" \
+    >"$FIXTURE/evidence-download-failure.log" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'declares RELEASE_EVIDENCE.txt but it could not be downloaded' "$FIXTURE/evidence-download-failure.log"
+test ! -e "$HISTORY/1/BUILD_INFO.txt"
+
+rm -rf "$HISTORY"
+set +e
+LEGACY_FIXTURE_MODE=duplicate-evidence PATH="$FIXTURE/bin:$PATH" \
+  bash Scripts/materialize-public-release-build-history.sh \
+    example/SchneeGlass \
+    "$TAGS" \
+    "$HISTORY" \
+    "$MANIFEST" \
+    >"$FIXTURE/duplicate-evidence.log" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'duplicate RELEASE_EVIDENCE.txt assets' "$FIXTURE/duplicate-evidence.log"
+
+rm -rf "$HISTORY"
+set +e
+LEGACY_FIXTURE_MODE=malformed-metadata PATH="$FIXTURE/bin:$PATH" \
+  bash Scripts/materialize-public-release-build-history.sh \
+    example/SchneeGlass \
+    "$TAGS" \
+    "$HISTORY" \
+    "$MANIFEST" \
+    >"$FIXTURE/malformed-metadata.log" 2>&1
+STATUS=$?
+set -e
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'public release metadata is malformed' "$FIXTURE/malformed-metadata.log"
 
 printf '%s\n' 'v0.9.1' > "$TAGS"
 rm -rf "$HISTORY"
