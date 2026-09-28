@@ -106,7 +106,10 @@ struct DesktopGlassSurface: View {
       Button("Cancel", role: .cancel) {}
       Button("Remove Glass", role: .destructive, action: onRemove)
     } message: {
-      Text("This removes the Glass only. The connected folder and its files will not be deleted or moved.")
+      Text(
+        "This removes the Glass only. "
+          + "The connected folder and its files will not be deleted or moved."
+      )
     }
     .accessibilityElement(children: .contain)
   }
@@ -166,7 +169,7 @@ struct DesktopGlassSurface: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-    case let .ready(snapshot):
+    case .ready(let snapshot):
       ScrollView {
         DesktopFileGrid(
           snapshot: snapshot,
@@ -202,7 +205,7 @@ struct DesktopGlassSurface: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-    case let .failed(error):
+    case .failed(let error):
       let presentation = GlassContentFailurePresentation.make(for: error)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
@@ -254,7 +257,7 @@ struct DesktopGlassSurface: View {
         detail: presentation.detail
       )
 
-    case let .dropValid(plan):
+    case .dropValid(let plan):
       if let presentation = GlassInteractionPresentation.dropValid(
         plan: plan,
         glassTitle: entry.title,
@@ -267,7 +270,7 @@ struct DesktopGlassSurface: View {
         )
       }
 
-    case let .dropInvalid(reason):
+    case .dropInvalid(let reason):
       let presentation = GlassInteractionPresentation.dropInvalid(
         reason: reason,
         glassTitle: entry.title,
@@ -279,7 +282,7 @@ struct DesktopGlassSurface: View {
         detail: presentation.detail
       )
 
-    case let .copying(progress):
+    case .copying(let progress):
       let presentation = GlassInteractionPresentation.copying(
         progress: progress,
         glassTitle: entry.title,
@@ -296,7 +299,7 @@ struct DesktopGlassSurface: View {
   }
 
   private func symbolName(from presentation: GlassInteractionPresentation) -> String? {
-    guard case let .symbol(systemImage) = presentation.indicator else {
+    guard case .symbol(let systemImage) = presentation.indicator else {
       return nil
     }
     return systemImage
