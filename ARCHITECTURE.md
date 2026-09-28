@@ -302,7 +302,7 @@ Configuration-owned filesystem I/Oは`SchneeGlassPOSIXSupport`へ委譲します
 - Folder picker
 - Menu Bar controller
 
-Window UXだけに閉じた軽量Preferenceは、user-owned filesystemやGlass configurationとは分離し、macOSの`UserDefaults`へ保存できます。position lock、keep-on-top、opacity preset、compact file-grid density、file sort orderのようなWindow / Presentation behaviorだけを対象とし、folder identity・placement・File Safety authorityはここへ保存しません。
+Window UXだけに閉じた軽量Preferenceは、user-owned filesystemやGlass configurationとは分離し、macOSの`UserDefaults`へ保存できます。position lock、keep-on-top、opacity preset、compact file-grid density、file sort order、folders-first groupingのようなWindow / Presentation behaviorだけを対象とし、folder identity・placement・File Safety authorityはここへ保存しません。
 
 ---
 
