@@ -282,6 +282,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
+    reconcileWindowPreferencesWithCurrentGlasses()
+
     let entriesByID = Dictionary(uniqueKeysWithValues: model.glasses.map { ($0.id, $0) })
 
     for glassID in panels.keys where entriesByID[glassID] == nil {
