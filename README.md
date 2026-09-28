@@ -6,13 +6,13 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1.1 Ad-Hoc Release Published — v0.2 Development Active**
+**v0.1.1 Ad-Hoc Release Published — v0.2.0 / build 3 Release-Candidate Preparation**
 
 `v0.1.1`は、v0.1.0の完全未署名packageをad-hoc署名版へ置き換える互換リリースとしてGitHub Releasesへ公開済みです。ad-hoc署名はApple Developer ID署名・notarizationではないため、初回起動時のGatekeeper UXには制約が残ります。
 
-Developer ID signing / notarization / immutable production publicationのコードは実装済みで、実credential・repository governance・signed candidate Manual QAなどの運用検証はIssue #33で継続します。これとは独立して、v0.2のWindow UX / Glass management開発を進行中です。
+Developer ID signing / notarization / immutable production publicationのコードは実装済みで、実credential・repository governance・signed candidate Manual QAなどの運用検証はIssue #33で継続します。v0.2.0 / build 3ではWindow UX / Glass management / file presentationの主要機能がmainへ入り、非productionのAd-Hoc Release Candidate workflowも実装・PR検証済みです。
 
-v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md) を参照してください。
+v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Draft Release Notesは [`docs/V0.2_RELEASE_NOTES.md`](docs/V0.2_RELEASE_NOTES.md) を参照してください。
 
 実装済み:
 
@@ -54,6 +54,9 @@ v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVE
 - Keep on Top / Show on All Spaces
 - current-display Snap presets
 - compact Window controls
+- per-Glass Compact File Tiles
+- Sort Displayed Files（Name / Modified / Size）
+- per-Glass Folders First
 - per-Glass display-name Rename
 - unavailable Glass source Reconnect
 - connected root folderのread-only Finder表示
@@ -69,6 +72,11 @@ v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVE
 - scheduled/manual ThreadSanitizer package tests
 - scheduled/manual/default-branch Swift CodeQL v4 analysis
 - unsigned Release Candidate validation + SHA-256 manifest
+- non-production Ad-Hoc Release Candidate
+  - ad-hoc signature + Hardened Runtime
+  - App Sandbox / user-selected read-write entitlement再検証
+  - SHA-256 checked Actions artifact
+  - GitHub Release自動作成なし
 - production credential contract / credential-free fail-closed preflight
 - Developer ID signed Release archive workflow
 - post-sign codesign / entitlement / Hardened Runtime verification
@@ -99,7 +107,7 @@ ad-hoc公開済みのv0.1.1とDeveloper ID production pathを混同しないこ�
 
 ## Product Promise
 
-SchneeGlass v0.1 は意図的に **non-destructive** です。
+SchneeGlass v0.2 はv0.1.xの **non-destructive** contractを維持します。
 
 ```text
 User-owned source Move      = 0
@@ -109,7 +117,7 @@ Silent overwrite            = 0
 Unknown partial auto-delete = 0
 ```
 
-v0.1で許可するuser-visible Filesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。Configuration / Pending CopyなどSchneeGlass-owned metadataはApplication Support配下だけで管理し、physical directory / regular-file boundaryを通して保存します。RecoveryのFinder inspectionとDestination Reconnectはuser-owned file内容を変更しません。
+v0.2でも許可するuser-visible Filesystem変更は、選択済みFolderへのregular file Copyと、そのCopy中にSchneeGlass自身が作成したstaging fileのinternal commit、明示Recoveryでownership proofが成立したapp-owned stagingの処理に限定します。Configuration / Pending CopyなどSchneeGlass-owned metadataはApplication Support配下だけで管理し、physical directory / regular-file boundaryを通して保存します。RecoveryのFinder inspectionとDestination Reconnectはuser-owned file内容を変更しません。
 
 ## Architecture
 
@@ -167,6 +175,7 @@ GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibili
 - [UI Gallery](docs/UI_GALLERY.md)
 - [Security](SECURITY.md)
 - [Dependencies](DEPENDENCIES.md)
+- [v0.2 Draft Release Notes](docs/V0.2_RELEASE_NOTES.md)
 - [Release Policy](RELEASE.md)
 - [Install](docs/INSTALL.md)
 - [Manual QA](docs/MANUAL_QA.md)
