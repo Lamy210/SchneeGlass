@@ -65,6 +65,18 @@ enum WorkspaceConfigurationMutationPolicy {
   }
 }
 
+enum WorkspaceConfigurationAuthorityPolicy {
+  static func hasAuthoritativeSnapshot(
+    hasLoadedConfigurationSnapshot: Bool,
+    isMutatingConfiguration: Bool,
+    requiresConfigurationRecovery: Bool
+  ) -> Bool {
+    hasLoadedConfigurationSnapshot
+      && !isMutatingConfiguration
+      && !requiresConfigurationRecovery
+  }
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -86,6 +98,14 @@ public final class SchneeGlassWorkspaceModel {
     canMutateConfiguration
   }
 
+  public var hasAuthoritativeConfigurationSnapshot: Bool {
+    WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
+      hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
+      isMutatingConfiguration: isMutatingConfiguration,
+      requiresConfigurationRecovery: requiresConfigurationRecovery
+    )
+  }
+
   private let createGlassUseCase: CreateGlassUseCase
   private let restoreApplicationUseCase: RestoreApplicationUseCase
   private let reconnectGlassSourceUseCase: ReconnectGlassSourceUseCase
@@ -105,6 +125,7 @@ public final class SchneeGlassWorkspaceModel {
   private var dropExecutionGate = WorkspaceDropExecutionGate()
   private var dropPlanningTracker = WorkspaceDropPlanningTracker()
   private var didAttemptInitialRestore = false
+  private var hasLoadedConfigurationSnapshot = false
 
   public init(
     createGlassUseCase: CreateGlassUseCase,
@@ -152,6 +173,7 @@ public final class SchneeGlassWorkspaceModel {
       let result = try await restoreApplicationUseCase.execute()
       requiresConfigurationRecovery = false
       await applyRestoreResult(result)
+      hasLoadedConfigurationSnapshot = true
     } catch {
       enterConfigurationRecoveryRequiredState()
     }
@@ -194,6 +216,7 @@ public final class SchneeGlassWorkspaceModel {
       let result = try await restoreApplicationUseCase.execute()
       requiresConfigurationRecovery = false
       await applyRestoreResult(result)
+      hasLoadedConfigurationSnapshot = true
       return .restored
     } catch {
       if backupWasRestored {

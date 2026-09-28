@@ -266,8 +266,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
 
   func reconcileWindowPreferencesWithCurrentGlasses() {
     guard !isStopped,
-      !model.isMutatingConfiguration,
-      !model.requiresConfigurationRecovery
+      model.hasAuthoritativeConfigurationSnapshot
     else {
       return
     }
