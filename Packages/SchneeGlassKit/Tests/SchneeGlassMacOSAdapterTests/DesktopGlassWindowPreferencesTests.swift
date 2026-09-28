@@ -231,3 +231,77 @@ func removingCompactFileTilesKeepsOtherWindowPreferences() throws {
   #expect(store.opacityPreset(for: glassID) == .eighty)
   #expect(defaults.object(forKey: "desktopGlass.compactFileTileIDs.v1") == nil)
 }
+
+@Test
+func fileSortPreferencePersistsAcrossStoreInstances() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  #expect(store.fileSortPreference(for: glassID) == .nameAscending)
+  store.setFileSortPreference(.modifiedNewest, for: glassID)
+
+  let restoredStore = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(restoredStore.fileSortPreference(for: glassID) == .modifiedNewest)
+  #expect(!restoredStore.usesCompactFileTiles(for: glassID))
+  #expect(restoredStore.opacityPreset(for: glassID) == .full)
+}
+
+@Test
+func defaultFileSortClearsStoredOverride() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setFileSortPreference(.sizeLargest, for: glassID)
+  store.setFileSortPreference(.nameAscending, for: glassID)
+
+  #expect(store.fileSortPreference(for: glassID) == .nameAscending)
+  #expect(defaults.object(forKey: "desktopGlass.fileSortByID.v1") == nil)
+}
+
+@Test
+func malformedFileSortValuesFallBackToNameAscending() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  defaults.set(
+    [
+      glassID.rawValue.uuidString: "unsupported-sort",
+      "not-a-uuid": DesktopGlassFileSortPreference.sizeLargest.rawValue,
+    ],
+    forKey: "desktopGlass.fileSortByID.v1"
+  )
+
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(store.fileSortPreference(for: glassID) == .nameAscending)
+}
+
+@Test
+func removingFileSortKeepsOtherWindowPreferences() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setPositionLocked(true, for: glassID)
+  store.setOpacityPreset(.eighty, for: glassID)
+  store.setUsesCompactFileTiles(true, for: glassID)
+  store.setFileSortPreference(.modifiedNewest, for: glassID)
+
+  store.removeFileSortPreference(for: glassID)
+
+  #expect(store.fileSortPreference(for: glassID) == .nameAscending)
+  #expect(store.isPositionLocked(for: glassID))
+  #expect(store.opacityPreset(for: glassID) == .eighty)
+  #expect(store.usesCompactFileTiles(for: glassID))
+  #expect(defaults.object(forKey: "desktopGlass.fileSortByID.v1") == nil)
+}
