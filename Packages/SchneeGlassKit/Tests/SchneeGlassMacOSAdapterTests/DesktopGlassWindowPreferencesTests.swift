@@ -103,3 +103,76 @@ func removingKeepOnTopClearsOnlyKeepOnTopPreference() throws {
   #expect(store.isPositionLocked(for: glassID))
   #expect(defaults.object(forKey: "desktopGlass.keepOnTopIDs.v1") == nil)
 }
+
+@Test
+func opacityPresetPersistsAcrossStoreInstances() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  #expect(store.opacityPreset(for: glassID) == .full)
+  store.setOpacityPreset(.eighty, for: glassID)
+
+  let restoredStore = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(restoredStore.opacityPreset(for: glassID) == .eighty)
+  #expect(!restoredStore.isPositionLocked(for: glassID))
+  #expect(!restoredStore.keepsOnTop(glassID))
+}
+
+@Test
+func fullOpacityClearsStoredOverride() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  store.setOpacityPreset(.seventy, for: glassID)
+  store.setOpacityPreset(.full, for: glassID)
+
+  #expect(store.opacityPreset(for: glassID) == .full)
+  #expect(defaults.object(forKey: "desktopGlass.opacityByID.v1") == nil)
+}
+
+@Test
+func malformedOpacityValuesFallBackToFullOpacity() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  defaults.set(
+    [
+      glassID.rawValue.uuidString: 0.42,
+      "not-a-uuid": 0.8,
+    ],
+    forKey: "desktopGlass.opacityByID.v1"
+  )
+
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(store.opacityPreset(for: glassID) == .full)
+}
+
+@Test
+func removingOpacityPresetKeepsOtherWindowPreferences() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setPositionLocked(true, for: glassID)
+  store.setKeepsOnTop(true, for: glassID)
+  store.setOpacityPreset(.ninety, for: glassID)
+
+  store.removeOpacityPreset(for: glassID)
+
+  #expect(store.opacityPreset(for: glassID) == .full)
+  #expect(store.isPositionLocked(for: glassID))
+  #expect(store.keepsOnTop(glassID))
+  #expect(defaults.object(forKey: "desktopGlass.opacityByID.v1") == nil)
+}

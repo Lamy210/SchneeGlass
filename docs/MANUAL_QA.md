@@ -212,6 +212,19 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] configuration mutation中はRename / All Spaces / Snapの実行可否が既存policyに従う
 - [ ] compact化によってfile grid / context menu / drag / resize操作が阻害されない
 
+### 7.7 Per-Glass Opacity Presets (v0.2)
+
+- [ ] Glass window optionsから100% / 90% / 80% / 70%を選べる
+- [ ] 選択したopacityがpanel全体へ即時反映される
+- [ ] 100%へ戻すと保存overrideを削除してdefault behaviorへ戻る
+- [ ] opacity presetがアプリ再起動後も維持される
+- [ ] Glassごとに独立したopacityを設定できる
+- [ ] Position Lock / Keep on Top / All Spacesとは独立して変更できる
+- [ ] malformed / unsupported persisted opacityは100%へfail-safeする
+- [ ] Glass削除時にstale opacity preferenceをcleanupする
+- [ ] 70%でもfile grid / context menu / drag / resize / reconnect操作が利用できる
+- [ ] opacity操作でGlass configurationやuser-owned fileを変更しない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される

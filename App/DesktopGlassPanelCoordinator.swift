@@ -8,6 +8,7 @@ private struct DesktopGlassWindowControls: View {
   let isPositionLocked: Bool
   let keepsOnTop: Bool
   let showsOnAllSpaces: Bool
+  let opacityPreset: DesktopGlassOpacityPreset
   let showsReconnect: Bool
   let canReconnect: Bool
   let canRevealConnectedFolder: Bool
@@ -17,6 +18,7 @@ private struct DesktopGlassWindowControls: View {
   let onTogglePositionLock: @MainActor () -> Void
   let onToggleKeepOnTop: @MainActor () -> Void
   let onToggleSpacesBehavior: @MainActor () -> Void
+  let onSetOpacity: @MainActor (DesktopGlassOpacityPreset) -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
   let onRename: @MainActor () -> Void
@@ -61,6 +63,46 @@ private struct DesktopGlassWindowControls: View {
           )
         }
         .disabled(!canChangeSpacesBehavior)
+
+        Menu {
+          Button {
+            onSetOpacity(.full)
+          } label: {
+            Label(
+              "100%",
+              systemImage: opacityPreset == .full ? "checkmark" : "circle"
+            )
+          }
+          Button {
+            onSetOpacity(.ninety)
+          } label: {
+            Label(
+              "90%",
+              systemImage: opacityPreset == .ninety ? "checkmark" : "circle"
+            )
+          }
+          Button {
+            onSetOpacity(.eighty)
+          } label: {
+            Label(
+              "80%",
+              systemImage: opacityPreset == .eighty ? "checkmark" : "circle"
+            )
+          }
+          Button {
+            onSetOpacity(.seventy)
+          } label: {
+            Label(
+              "70%",
+              systemImage: opacityPreset == .seventy ? "checkmark" : "circle"
+            )
+          }
+        } label: {
+          Label(
+            "Opacity \(opacityPreset.percentageLabel)",
+            systemImage: "circle.lefthalf.filled"
+          )
+        }
 
         Menu {
           Button("Top Left") {
@@ -417,6 +459,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       height: GlassPlacement.minimumHeight
     )
     panel.level = windowPreferences.keepsOnTop(entry.id) ? .floating : .normal
+    panel.alphaValue = CGFloat(windowPreferences.opacityPreset(for: entry.id).rawValue)
 
     panel.standardWindowButton(.closeButton)?.isHidden = true
     panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -439,6 +482,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       isPositionLocked: windowPreferences.isPositionLocked(for: glassID),
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
       showsOnAllSpaces: entry.showOnAllSpaces,
+      opacityPreset: windowPreferences.opacityPreset(for: glassID),
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
       canRevealConnectedFolder:
@@ -465,6 +509,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
             showOnAllSpaces: !currentEntry.showOnAllSpaces
           )
         }
+      },
+      onSetOpacity: { [weak self] preset in
+        self?.setOpacityPreset(preset, for: glassID)
       },
       onReconnect: { [weak self] in
         guard let self else {
@@ -565,6 +612,22 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     configureWindowControlsAccessory(for: panel, entry: entry)
   }
 
+  private func setOpacityPreset(
+    _ preset: DesktopGlassOpacityPreset,
+    for glassID: GlassID
+  ) {
+    guard let panel = panels[glassID]?.panel else {
+      return
+    }
+
+    windowPreferences.setOpacityPreset(preset, for: glassID)
+    panel.alphaValue = CGFloat(preset.rawValue)
+    guard let entry = model.glasses.first(where: { $0.id == glassID }) else {
+      return
+    }
+    configureWindowControlsAccessory(for: panel, entry: entry)
+  }
+
   private func toggleKeepOnTop(for glassID: GlassID) {
     guard let panel = panels[glassID]?.panel else {
       return
@@ -586,6 +649,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     record.persistenceTask?.cancel()
     windowPreferences.removePositionLock(for: glassID)
     windowPreferences.removeKeepOnTop(for: glassID)
+    windowPreferences.removeOpacityPreset(for: glassID)
     record.panel.delegate = nil
     record.panel.close()
   }
