@@ -5,10 +5,10 @@ import Testing
 @Suite
 struct WorkspaceConfigurationAuthorityPolicyTests {
   @Test
-  func blocksAuthorityBeforeInitialRestoreAttempt() {
+  func blocksAuthorityBeforeConfigurationLoadSucceeds() {
     #expect(
       !WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
-        didAttemptInitialRestore: false,
+        hasLoadedConfigurationSnapshot: false,
         isMutatingConfiguration: false,
         requiresConfigurationRecovery: false
       )
@@ -19,7 +19,7 @@ struct WorkspaceConfigurationAuthorityPolicyTests {
   func allowsAuthorityAfterSuccessfulStableRestore() {
     #expect(
       WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
-        didAttemptInitialRestore: true,
+        hasLoadedConfigurationSnapshot: true,
         isMutatingConfiguration: false,
         requiresConfigurationRecovery: false
       )
@@ -30,7 +30,7 @@ struct WorkspaceConfigurationAuthorityPolicyTests {
   func blocksAuthorityWhileConfigurationMutationIsActive() {
     #expect(
       !WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
-        didAttemptInitialRestore: true,
+        hasLoadedConfigurationSnapshot: true,
         isMutatingConfiguration: true,
         requiresConfigurationRecovery: false
       )
@@ -41,7 +41,7 @@ struct WorkspaceConfigurationAuthorityPolicyTests {
   func blocksAuthorityWhileConfigurationRecoveryIsRequired() {
     #expect(
       !WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
-        didAttemptInitialRestore: true,
+        hasLoadedConfigurationSnapshot: true,
         isMutatingConfiguration: false,
         requiresConfigurationRecovery: true
       )
