@@ -65,8 +65,25 @@ After this helper has been merged, run it only from a reviewed and up-to-date `m
 git switch main
 git pull --ff-only
 gh auth status
-bash Scripts/setup-release-governance.sh Lamy210/SchneeGlass
+
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
+bash Scripts/setup-release-governance.sh \
+  Lamy210/SchneeGlass
 ```
+
+`verify-local-release-source.sh` is read-only. Before any repository-administration helper is run, it requires:
+
+```text
+current local branch = main
+working tree = clean
+local HEAD = lowercase 40-hex commit
+live GitHub main SHA = lowercase 40-hex commit
+local HEAD = live GitHub main SHA
+```
+
+A stale checkout, detached/non-main checkout, dirty tracked or untracked state, malformed API response, or Git/GitHub probe failure blocks the operator sequence before governance mutation.
 
 Prerequisites:
 
@@ -102,6 +119,9 @@ The setup is not transactional across GitHub APIs. If ruleset creation succeeds 
 After governance has been applied, use the explicit read-only mode to revalidate the live state without attempting repository mutation:
 
 ```bash
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
 bash Scripts/setup-release-governance.sh \
   Lamy210/SchneeGlass \
   --verify-only
@@ -212,7 +232,7 @@ Before setting:
 confirm_release_governance = true
 ```
 
-first run the administrator-side read-only verification from an up-to-date `main` checkout:
+first prove the local checkout is the exact live `main`, then run the administrator-side read-only governance verification:
 
 ```bash
 bash Scripts/setup-release-governance.sh \
