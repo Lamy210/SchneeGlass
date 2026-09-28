@@ -144,7 +144,7 @@ private struct DesktopGlassWindowControls: View {
             )
           }
         } label: {
-          Label("Sort Files", systemImage: "arrow.up.arrow.down")
+          Label("Sort Displayed Files", systemImage: "arrow.up.arrow.down")
         }
 
         Menu {
