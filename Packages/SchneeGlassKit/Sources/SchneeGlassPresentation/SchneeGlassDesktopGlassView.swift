@@ -7,10 +7,16 @@ import SwiftUI
 public struct SchneeGlassDesktopGlassView: View {
   @Bindable private var model: SchneeGlassWorkspaceModel
   private let glassID: GlassID
+  private let fileGridDensity: DesktopGlassFileGridDensity
 
-  public init(model: SchneeGlassWorkspaceModel, glassID: GlassID) {
+  public init(
+    model: SchneeGlassWorkspaceModel,
+    glassID: GlassID,
+    fileGridDensity: DesktopGlassFileGridDensity = .comfortable
+  ) {
     self._model = Bindable(wrappedValue: model)
     self.glassID = glassID
+    self.fileGridDensity = fileGridDensity
   }
 
   public var body: some View {
@@ -18,6 +24,7 @@ public struct SchneeGlassDesktopGlassView: View {
       if let entry = model.glasses.first(where: { $0.id == glassID }) {
         DesktopGlassSurface(
           entry: entry,
+          fileGridDensity: fileGridDensity,
           canRemove: model.canMutateConfiguration
             && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
           onOpen: model.open,
@@ -61,6 +68,7 @@ public struct SchneeGlassDesktopGlassView: View {
 
 struct DesktopGlassSurface: View {
   let entry: GlassWorkspaceEntry
+  let fileGridDensity: DesktopGlassFileGridDensity
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -173,6 +181,7 @@ struct DesktopGlassSurface: View {
       ScrollView {
         DesktopFileGrid(
           snapshot: snapshot,
+          density: fileGridDensity,
           onOpen: onOpen,
           onReveal: onReveal
         )
@@ -358,22 +367,25 @@ struct DesktopGlassSurface: View {
 
 private struct DesktopFileGrid: View {
   let snapshot: FolderSnapshot
+  let density: DesktopGlassFileGridDensity
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
 
-  private let columns = [
-    GridItem(
-      .adaptive(
-        minimum: SchneeGlassMetrics.desktopFileTileMinimumWidth,
-        maximum: SchneeGlassMetrics.fileTileMaximumWidth
-      ),
-      spacing: SchneeGlassSpacing.fileGridColumn,
-      alignment: .top
-    )
-  ]
+  private var columns: [GridItem] {
+    [
+      GridItem(
+        .adaptive(
+          minimum: density.minimumTileWidth,
+          maximum: density.maximumTileWidth
+        ),
+        spacing: density.columnSpacing,
+        alignment: .top
+      )
+    ]
+  }
 
   var body: some View {
-    LazyVGrid(columns: columns, alignment: .leading, spacing: SchneeGlassSpacing.fileGrid) {
+    LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
       ForEach(snapshot.items) { item in
         let presentation = GlassItemPresentation.make(for: item)
         SchneeGlassFileTile(
