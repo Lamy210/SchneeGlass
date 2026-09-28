@@ -151,7 +151,7 @@ LEGACY_FIXTURE_MODE=evidence-missing PATH="$FIXTURE/bin:$PATH"   bash Scripts/ma
 STATUS=$?
 set -e
 [[ "$STATUS" -ne 0 ]]
-grep -Fq 'reported evidence download success without RELEASE_EVIDENCE.txt' "$FIXTURE/evidence-missing.log"
+grep -Fq 'declared evidence download success without RELEASE_EVIDENCE.txt' "$FIXTURE/evidence-missing.log"
 
 rm -rf "$HISTORY"
 set +e
