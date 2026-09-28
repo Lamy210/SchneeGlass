@@ -6,8 +6,20 @@ public enum DesktopGlassFileSortOrder: String, CaseIterable, Sendable {
   case modifiedNewest
   case sizeLargest
 
-  func sortedItems(_ items: [GlassItem]) -> [GlassItem] {
-    items.sorted(by: areInIncreasingOrder)
+  func sortedItems(
+    _ items: [GlassItem],
+    foldersFirst: Bool = false
+  ) -> [GlassItem] {
+    items.sorted { lhs, rhs in
+      if foldersFirst {
+        let lhsIsFolder = lhs.kind == .directory
+        let rhsIsFolder = rhs.kind == .directory
+        if lhsIsFolder != rhsIsFolder {
+          return lhsIsFolder
+        }
+      }
+      return areInIncreasingOrder(lhs, rhs)
+    }
   }
 
   private func areInIncreasingOrder(_ lhs: GlassItem, _ rhs: GlassItem) -> Bool {

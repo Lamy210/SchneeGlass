@@ -9,17 +9,20 @@ public struct SchneeGlassDesktopGlassView: View {
   private let glassID: GlassID
   private let fileGridDensity: DesktopGlassFileGridDensity
   private let fileSortOrder: DesktopGlassFileSortOrder
+  private let foldersFirst: Bool
 
   public init(
     model: SchneeGlassWorkspaceModel,
     glassID: GlassID,
     fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
-    fileSortOrder: DesktopGlassFileSortOrder = .nameAscending
+    fileSortOrder: DesktopGlassFileSortOrder = .nameAscending,
+    foldersFirst: Bool = false
   ) {
     self._model = Bindable(wrappedValue: model)
     self.glassID = glassID
     self.fileGridDensity = fileGridDensity
     self.fileSortOrder = fileSortOrder
+    self.foldersFirst = foldersFirst
   }
 
   public var body: some View {
@@ -29,6 +32,7 @@ public struct SchneeGlassDesktopGlassView: View {
           entry: entry,
           fileGridDensity: fileGridDensity,
           fileSortOrder: fileSortOrder,
+          foldersFirst: foldersFirst,
           canRemove: model.canMutateConfiguration
             && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
           onOpen: model.open,
@@ -74,6 +78,7 @@ struct DesktopGlassSurface: View {
   let entry: GlassWorkspaceEntry
   let fileGridDensity: DesktopGlassFileGridDensity
   let fileSortOrder: DesktopGlassFileSortOrder?
+  let foldersFirst: Bool
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -89,6 +94,7 @@ struct DesktopGlassSurface: View {
     entry: GlassWorkspaceEntry,
     fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
     fileSortOrder: DesktopGlassFileSortOrder? = nil,
+    foldersFirst: Bool = false,
     canRemove: Bool,
     onOpen: @escaping (GlassItem) -> Void,
     onReveal: @escaping (GlassItem) -> Void,
@@ -101,6 +107,7 @@ struct DesktopGlassSurface: View {
     self.entry = entry
     self.fileGridDensity = fileGridDensity
     self.fileSortOrder = fileSortOrder
+    self.foldersFirst = foldersFirst
     self.canRemove = canRemove
     self.onOpen = onOpen
     self.onReveal = onReveal
@@ -214,6 +221,7 @@ struct DesktopGlassSurface: View {
           snapshot: snapshot,
           density: fileGridDensity,
           sortOrder: fileSortOrder,
+          foldersFirst: foldersFirst,
           onOpen: onOpen,
           onReveal: onReveal
         )
@@ -401,14 +409,20 @@ private struct DesktopFileGrid: View {
   let snapshot: FolderSnapshot
   let density: DesktopGlassFileGridDensity
   let sortOrder: DesktopGlassFileSortOrder?
+  let foldersFirst: Bool
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
 
   private var displayedItems: [GlassItem] {
-    guard let sortOrder else {
+    if let sortOrder {
+      return sortOrder.sortedItems(snapshot.items, foldersFirst: foldersFirst)
+    }
+    guard foldersFirst else {
       return snapshot.items
     }
-    return sortOrder.sortedItems(snapshot.items)
+    let directories = snapshot.items.filter { $0.kind == .directory }
+    let remaining = snapshot.items.filter { $0.kind != .directory }
+    return directories + remaining
   }
 
   private var columns: [GridItem] {

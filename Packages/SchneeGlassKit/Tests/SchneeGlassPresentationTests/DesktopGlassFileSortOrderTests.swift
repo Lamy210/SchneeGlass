@@ -8,6 +8,7 @@ import Testing
 private func sortItem(
   name: String,
   path: String,
+  kind: FileKind = .regular,
   modified: Date? = nil,
   size: Int64? = nil
 ) -> GlassItem {
@@ -16,7 +17,7 @@ private func sortItem(
     id: FileIdentity(resourceIdentifier: path, standardizedURL: url),
     url: url,
     displayName: name,
-    kind: .regular,
+    kind: kind,
     modificationDate: modified,
     fileSize: size,
     isHidden: false
@@ -97,4 +98,74 @@ func sortingPreservesOriginalGlassItemIdentityAndInputSnapshotOrder() {
 
   #expect(input.map(\.id) == [alpha.id, beta.id])
   #expect(sorted.map(\.id) == [beta.id, alpha.id])
+}
+
+@Test
+func foldersFirstGroupsDirectoriesBeforeFilesWhileKeepingSelectedSort() {
+  let directory = sortItem(
+    name: "z-folder",
+    path: "/tmp/z-folder",
+    kind: .directory,
+    size: 1
+  )
+  let largeFile = sortItem(
+    name: "a-large",
+    path: "/tmp/a-large",
+    size: 100
+  )
+  let smallFile = sortItem(
+    name: "b-small",
+    path: "/tmp/b-small",
+    size: 10
+  )
+
+  let sorted = DesktopGlassFileSortOrder.sizeLargest.sortedItems(
+    [smallFile, largeFile, directory],
+    foldersFirst: true
+  )
+
+  #expect(sorted.map(\.id) == [directory.id, largeFile.id, smallFile.id])
+}
+
+@Test
+func foldersFirstDoesNotPromotePackagesOrAliasesToDirectoryGroup() {
+  let directory = sortItem(
+    name: "z-directory",
+    path: "/tmp/z-directory",
+    kind: .directory
+  )
+  let package = sortItem(
+    name: "a-package",
+    path: "/tmp/a-package",
+    kind: .package
+  )
+  let alias = sortItem(
+    name: "b-alias",
+    path: "/tmp/b-alias",
+    kind: .alias
+  )
+
+  let sorted = DesktopGlassFileSortOrder.nameAscending.sortedItems(
+    [package, alias, directory],
+    foldersFirst: true
+  )
+
+  #expect(sorted.map(\.id) == [directory.id, package.id, alias.id])
+}
+
+@Test
+func disablingFoldersFirstUsesPureSelectedSortOrder() {
+  let directory = sortItem(
+    name: "z-folder",
+    path: "/tmp/z-folder",
+    kind: .directory
+  )
+  let file = sortItem(name: "a-file", path: "/tmp/a-file")
+
+  let sorted = DesktopGlassFileSortOrder.nameAscending.sortedItems(
+    [directory, file],
+    foldersFirst: false
+  )
+
+  #expect(sorted.map(\.id) == [file.id, directory.id])
 }

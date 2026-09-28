@@ -305,3 +305,57 @@ func removingFileSortKeepsOtherWindowPreferences() throws {
   #expect(store.usesCompactFileTiles(for: glassID))
   #expect(defaults.object(forKey: "desktopGlass.fileSortByID.v1") == nil)
 }
+
+@Test
+func foldersFirstPersistsAcrossStoreInstances() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  #expect(!store.putsFoldersFirst(for: glassID))
+  store.setFoldersFirst(true, for: glassID)
+
+  let restoredStore = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(restoredStore.putsFoldersFirst(for: glassID))
+  #expect(restoredStore.fileSortPreference(for: glassID) == .nameAscending)
+}
+
+@Test
+func malformedFoldersFirstIdentifiersAreIgnored() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  defaults.set(
+    ["not-a-uuid"],
+    forKey: "desktopGlass.foldersFirstIDs.v1"
+  )
+
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(!store.putsFoldersFirst(for: GlassID()))
+}
+
+@Test
+func removingFoldersFirstKeepsSortAndOtherWindowPreferences() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setPositionLocked(true, for: glassID)
+  store.setOpacityPreset(.eighty, for: glassID)
+  store.setFileSortPreference(.modifiedNewest, for: glassID)
+  store.setFoldersFirst(true, for: glassID)
+
+  store.removeFoldersFirst(for: glassID)
+
+  #expect(!store.putsFoldersFirst(for: glassID))
+  #expect(store.isPositionLocked(for: glassID))
+  #expect(store.opacityPreset(for: glassID) == .eighty)
+  #expect(store.fileSortPreference(for: glassID) == .modifiedNewest)
+  #expect(defaults.object(forKey: "desktopGlass.foldersFirstIDs.v1") == nil)
+}
