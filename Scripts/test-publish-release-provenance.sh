@@ -937,6 +937,7 @@ EOF
                   else
                     printf '101\n'
                   fi
+                  touch "$STATE/release-tag"
                   touch "$STATE/release-public"
                   exit 0
                 fi
