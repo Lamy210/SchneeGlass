@@ -258,7 +258,7 @@ DRAFT_MODE="${GH_FIXTURE_DRAFT_MODE:-exact}"
 PRERELEASE_MODE="${GH_FIXTURE_PRERELEASE_MODE:-stable}"
 IDENTITY_MODE="${GH_FIXTURE_IDENTITY_MODE:-stable}"
 ASSET_MODE="${GH_FIXTURE_ASSET_MODE:-exact}"
-IMMUTABILITY_MODE="${GH_FIXTURE_IMMUTABILITY_MODE:-enabled}"
+PUBLISHED_IMMUTABILITY_MODE="${GH_FIXTURE_PUBLISHED_IMMUTABILITY_MODE:-enabled}"
 GOVERNANCE_MODE="${GH_FIXTURE_GOVERNANCE_MODE:-valid}"
 RUN_ATTEMPT_MODE="${GH_FIXTURE_RUN_ATTEMPT_MODE:-first}"
 printf 'gh ' >> "$LOG"
@@ -548,7 +548,21 @@ case "$COMMAND" in
               fi
             else
               snapshot_draft=false
-              snapshot_immutable=true
+              case "$PUBLISHED_IMMUTABILITY_MODE" in
+                enabled)
+                  snapshot_immutable=true
+                  ;;
+                disabled)
+                  snapshot_immutable=false
+                  ;;
+                malformed)
+                  snapshot_immutable='"unknown"'
+                  ;;
+                *)
+                  echo "unexpected published immutability fixture mode: $PUBLISHED_IMMUTABILITY_MODE" >&2
+                  exit 125
+                  ;;
+              esac
               if [[ "$TARGET_MODE" == 'change-after' ]]; then
                 snapshot_target="$OTHER_SHA"
               fi
@@ -745,25 +759,8 @@ case "$COMMAND" in
         printf '%s\n' '[[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"pull_request","parameters":{"required_approving_review_count":0,"required_review_thread_resolution":true}},{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Canonical / Xcode 26.6 / App Build / Safety Guards","integration_id":15368},{"context":"Compatibility / macOS 15 / App Build","integration_id":15368}],"strict_required_status_checks_policy":true}}]]'
         ;;
       repos/example/SchneeGlass/immutable-releases)
-        case "$IMMUTABILITY_MODE" in
-          enabled)
-            printf '{"enabled":true}\n'
-            ;;
-          disabled)
-            printf '{"enabled":false}\n'
-            ;;
-          malformed)
-            printf '{"enabled":"true"}\n'
-            ;;
-          query-failure)
-            printf '{"enabled":true}\n'
-            exit 42
-            ;;
-          *)
-            echo "unexpected immutability fixture mode: $IMMUTABILITY_MODE" >&2
-            exit 105
-            ;;
-        esac
+        echo 'fixture: publication token must not query the Administration-only immutable-releases endpoint' >&2
+        exit 105
         ;;
       'repos/example/SchneeGlass/releases?per_page=100')
         exit 0
@@ -1980,61 +1977,58 @@ grep -Fq 'Release promotion failed: run-owned draft release snapshot is malforme
 ! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_PRERELEASE_MODE='stable'
 
-# Release immutability can drift after earlier governance checks. A disabled
-# setting must fail before Draft -> public instead of relying on post-publication cleanup.
+# The publication GITHUB_TOKEN intentionally has no repository Administration permission.
+# A successful publication fixture must therefore prove that the release path never calls
+# the Administration-only immutable-releases settings endpoint.
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
 export GH_FIXTURE_DRAFT_MODE='exact'
 export GH_FIXTURE_TAG_MODE='exact'
 export GH_FIXTURE_ASSET_MODE='exact'
-export GH_FIXTURE_IMMUTABILITY_MODE='disabled'
-OUTPUT_IMMUTABILITY_DISABLED="$FIXTURE/output-immutability-disabled-before-publication.log"
+export GH_FIXTURE_PUBLISHED_IMMUTABILITY_MODE='enabled'
+OUTPUT_NO_ADMIN_IMMUTABILITY_PROBE="$FIXTURE/output-no-admin-immutability-probe.log"
 set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_DISABLED" 2>&1
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_NO_ADMIN_IMMUTABILITY_PROBE" 2>&1
+STATUS=$?
+set -e
+if [[ "$STATUS" -ne 0 ]]; then
+  cat "$OUTPUT_NO_ADMIN_IMMUTABILITY_PROBE"
+  cat "$LOG"
+  echo 'Release publication unexpectedly required the Administration-only immutable-releases endpoint.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+if grep -Fq 'repos/example/SchneeGlass/immutable-releases' "$LOG"; then
+  echo 'Publication attempted to query the Administration-only immutable-releases endpoint.' >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Immutability is still a fail-closed publication invariant. If the public Release
+# itself does not report immutable=true after Draft -> public, stop and require
+# manual reconciliation rather than silently accepting a mutable release.
+reset_case
+export GH_FIXTURE_PUBLISHED_IMMUTABILITY_MODE='disabled'
+OUTPUT_PUBLISHED_MUTABLE="$FIXTURE/output-published-mutable.log"
+set +e
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_PUBLISHED_MUTABLE" 2>&1
 STATUS=$?
 set -e
 if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_IMMUTABILITY_DISABLED"
+  cat "$OUTPUT_PUBLISHED_MUTABLE"
   cat "$LOG"
-  echo 'Release publication unexpectedly succeeded with repository immutability disabled.' >&2
+  echo 'Release publication unexpectedly accepted a mutable public Release.' >&2
   FAILURES=$((FAILURES + 1))
 else
-  if ! grep -Fq 'Release promotion failed: release immutability is not enabled before publication' "$OUTPUT_IMMUTABILITY_DISABLED"; then
-    cat "$OUTPUT_IMMUTABILITY_DISABLED"
-    echo 'Disabled release immutability did not fail at the final publication boundary.' >&2
+  if ! grep -Fq 'Release promotion failed: published release is mutable; no automatic remote cleanup was attempted; manual reconciliation required' "$OUTPUT_PUBLISHED_MUTABLE"; then
+    cat "$OUTPUT_PUBLISHED_MUTABLE"
+    echo 'Mutable published Release did not fail with the expected reconciliation error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
-  if grep -Fq 'gh api --method PATCH ' "$LOG"; then
-    echo 'Disabled release immutability reached the Draft-to-public mutation.' >&2
+  if ! grep -Fq 'gh api --method PATCH ' "$LOG"; then
+    echo 'Mutable-publication fixture did not reach the post-publication immutability proof.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
-
-# The final immutability probe itself must fail closed on API error, even when it
-# emits a plausible enabled response first.
-reset_case
-export GH_FIXTURE_IMMUTABILITY_MODE='query-failure'
-OUTPUT_IMMUTABILITY_QUERY_FAILURE="$FIXTURE/output-immutability-query-failure-before-publication.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_QUERY_FAILURE" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: unable to verify release immutability before publication' "$OUTPUT_IMMUTABILITY_QUERY_FAILURE"
-! grep -Fq 'gh api --method PATCH ' "$LOG"
-
-# Malformed API responses are not positive proof that immutability is enabled.
-reset_case
-export GH_FIXTURE_IMMUTABILITY_MODE='malformed'
-OUTPUT_IMMUTABILITY_MALFORMED="$FIXTURE/output-immutability-malformed-before-publication.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_IMMUTABILITY_MALFORMED" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: release immutability response is malformed before publication' "$OUTPUT_IMMUTABILITY_MALFORMED"
-! grep -Fq 'gh api --method PATCH ' "$LOG"
-export GH_FIXTURE_IMMUTABILITY_MODE='enabled'
+export GH_FIXTURE_PUBLISHED_IMMUTABILITY_MODE='enabled'
 
 # Governance can drift while Draft preparation is in progress even when current main
 # remains unchanged. Publication must re-read governance immediately before Draft -> public.
