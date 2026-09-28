@@ -33,6 +33,8 @@ if ! bash Scripts/verify-release-canonical-ruleset.sh "$RULESET_RECIPE"; then
   fail "canonical ruleset recipe does not match the fixed release governance baseline"
 fi
 
+bash Scripts/verify-local-release-source.sh "$REPOSITORY"
+
 TMP="$(mktemp -d)"
 cleanup() {
   rm -rf "$TMP"

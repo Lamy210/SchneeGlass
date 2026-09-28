@@ -208,9 +208,8 @@ JSON
     printf '{"enabled":true,"enforced_by_owner":false}\n'
     ;;
   GET:repos/example/SchneeGlass/branches/main)
-    cat <<'JSON'
-{"name":"main","protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}
-JSON
+    printf '{"name":"main","commit":{"sha":"%s"},"protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n' \
+      "$LOCAL_SOURCE_FIXTURE_REMOTE_SHA"
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
     [[ "$PAGINATE" == true && "$SLURP" == true ]]
@@ -226,6 +225,33 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
 
+cat > "$FIXTURE/bin/git" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  'rev-parse --show-toplevel')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_ROOT:?}"
+    ;;
+  'branch --show-current')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_BRANCH:-main}"
+    ;;
+  'rev-parse HEAD')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_LOCAL_SHA:?}"
+    ;;
+  'status --porcelain=v1 --untracked-files=normal')
+    if [[ -n "${LOCAL_SOURCE_FIXTURE_DIRTY:-}" ]]; then
+      printf '%s\n' ' M .github/rulesets/main-release-governance.json'
+    fi
+    ;;
+  *)
+    echo "unexpected git command: $*" >&2
+    exit 89
+    ;;
+esac
+SHIM
+chmod +x "$FIXTURE/bin/git"
+
 cat > "$FIXTURE/bin/jq" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -240,7 +266,56 @@ SHIM
 chmod +x "$FIXTURE/bin/jq"
 
 export GH_FIXTURE_LOG="$LOG"
+export LOCAL_SOURCE_FIXTURE_ROOT="$ROOT"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
+export LOCAL_SOURCE_FIXTURE_REMOTE_SHA='0123456789abcdef0123456789abcdef01234567'
 export PATH="$FIXTURE/bin:$PATH"
+
+assert_branch_probe_count() {
+  local expected="$1"
+  local count=''
+  local status=0
+
+  set +e
+  count="$(grep -Fc 'api repos/example/SchneeGlass/branches/main ' "$LOG")"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 1 ]]; then
+    count='0'
+  elif [[ "$status" -ne 0 ]]; then
+    echo "Unable to enumerate main branch probes (grep status $status)" >&2
+    return 1
+  fi
+
+  [[ "$count" =~ ^[0-9]+$ ]] || {
+    echo "Main branch probe count is not numeric: $count" >&2
+    return 1
+  }
+  [[ "$count" -eq "$expected" ]] || {
+    echo "Expected $expected main branch probe(s), found $count" >&2
+    return 1
+  }
+}
+
+# Source gate: stale local main must fail before governance mutation.
+: > "$LOG"
+export GH_FIXTURE_MODE='empty'
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='89abcdef0123456789abcdef0123456789abcdef'
+STALE_SOURCE_LOG="$FIXTURE/stale-source.log"
+set +e
+bash Scripts/setup-release-governance.sh example/SchneeGlass >"$STALE_SOURCE_LOG" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Local release source verification failed: local HEAD does not match live remote main' "$STALE_SOURCE_LOG"
+assert_branch_probe_count 1
+! grep -Fq -- '--method POST' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq 'immutable-releases' "$LOG"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
+: > "$LOG"
 
 # Happy path: no rulesets exist, so create once, verify the created canonical ruleset detail,
 # enable immutability, then verify live governance.
@@ -262,8 +337,11 @@ DETAIL_COUNT="$(grep -Fc 'repos/example/SchneeGlass/rulesets/123' "$LOG")"
 INITIAL_DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | sed -n '1s/:.*//p')"
 FINAL_DETAIL_LINE="$(grep -n 'repos/example/SchneeGlass/rulesets/123' "$LOG" | sed -n '$s/:.*//p')"
 PUT_LINE="$(grep -n 'api --method PUT' "$LOG" | cut -d: -f1)"
-BRANCH_LINE="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
-[[ "$POST_LINE" -lt "$INITIAL_DETAIL_LINE" && "$INITIAL_DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$BRANCH_LINE" && "$BRANCH_LINE" -lt "$FINAL_DETAIL_LINE" ]]
+BRANCH_LINES="$(grep -n 'api repos/example/SchneeGlass/branches/main' "$LOG" | cut -d: -f1)"
+assert_branch_probe_count 2
+SOURCE_BRANCH_LINE="$(printf '%s\n' "$BRANCH_LINES" | sed -n '1p')"
+FINAL_BRANCH_LINE="$(printf '%s\n' "$BRANCH_LINES" | sed -n '$p')"
+[[ "$SOURCE_BRANCH_LINE" -lt "$POST_LINE" && "$POST_LINE" -lt "$INITIAL_DETAIL_LINE" && "$INITIAL_DETAIL_LINE" -lt "$PUT_LINE" && "$PUT_LINE" -lt "$FINAL_BRANCH_LINE" && "$FINAL_BRANCH_LINE" -lt "$FINAL_DETAIL_LINE" ]]
 
 # Mutation safety: ruleset exclusivity must be revalidated after canonical detail
 # verification. A concurrent unrelated ruleset appearing after the initial empty
@@ -282,7 +360,7 @@ grep -Fq 'api --method POST repos/example/SchneeGlass/rulesets --input .github/r
 grep -Fq 'repos/example/SchneeGlass/rulesets/123' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Mutation safety: replacing the canonical ruleset with a same-named different
 # identity between detail validation and mutation must fail closed.
@@ -418,7 +496,7 @@ unset GH_FIXTURE_JQ_MODE
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: unable to enumerate repository ruleset count (jq status 42)' "$VERIFY_PARTIAL_COUNT_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Verify-only must fail closed when the canonical ruleset grants a bypass actor.
 : > "$LOG"
@@ -433,7 +511,7 @@ set -e
 grep -Fq 'Release governance setup failed: canonical ruleset must not define bypass actors' "$VERIFY_BYPASS_LOG"
 grep -Fq 'repos/example/SchneeGlass/rulesets/55' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Missing bypass_actors means the administrator helper could not observe the sensitive policy.
 : > "$LOG"
@@ -447,7 +525,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_MISSING_BYPASS_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # A malformed bypass_actors value must also fail closed.
 : > "$LOG"
@@ -461,7 +539,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: canonical ruleset bypass actors are not observable; authenticate with ruleset write access' "$VERIFY_INVALID_BYPASS_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # The detailed canonical ruleset must still target exactly main.
 : > "$LOG"
@@ -475,7 +553,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: canonical ruleset detail does not match the release governance baseline' "$VERIFY_WRONG_TARGET_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # The checked-in mutation recipe must reject bypass actors before any GitHub API call.
 : > "$LOG"
@@ -579,7 +657,7 @@ set -e
 grep -Fq 'Canonical release ruleset verification failed: live ruleset does not match the checked-in canonical recipe' "$VERIFY_DRIFTED_PR_LOG"
 grep -Fq 'Release governance setup failed: canonical ruleset semantics do not match the checked-in recipe' "$VERIFY_DRIFTED_PR_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Normal recovery must also reject a sole canonical-named ruleset with an extra rule
 # before mutating immutability or certifying branch governance.
@@ -597,7 +675,7 @@ grep -Fq 'Release governance setup failed: canonical ruleset semantics do not ma
 ! grep -Fq -- '--method POST' "$LOG"
 ! grep -Fq -- '--method PUT' "$LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Verify-only must fail closed when the canonical ruleset is absent.
 : > "$LOG"
@@ -611,7 +689,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset: SchneeGlass main release governance' "$VERIFY_MISSING_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Paginated ruleset responses must preserve the gh --slurp array-of-arrays shape.
 : > "$LOG"
@@ -655,7 +733,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset to be the only repository ruleset' "$VERIFY_LAYERED_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Verify-only must reject a present-but-inactive canonical ruleset before certifying live governance.
 : > "$LOG"
@@ -669,7 +747,7 @@ set -e
 [[ "$STATUS" -ne 0 ]]
 grep -Fq 'Release governance setup failed: verify-only requires canonical ruleset enforcement=active' "$VERIFY_INACTIVE_LOG"
 ! grep -Fq 'immutable-releases' "$LOG"
-! grep -Fq 'branches/main' "$LOG"
+assert_branch_probe_count 1
 
 # Layering safety: any pre-existing differently named ruleset requires manual review.
 : > "$LOG"
