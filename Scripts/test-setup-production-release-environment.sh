@@ -67,9 +67,9 @@ done
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/branches/main)
     if [[ "$MODE" == 'unprotected' ]]; then
-      printf '{"name":"main","protected":false,"protection":{"enabled":false,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+      printf '{"name":"main","commit":{"sha":"${LOCAL_SOURCE_FIXTURE_REMOTE_SHA:?}"},"protected":false,"protection":{"enabled":false,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
     else
-      printf '{"name":"main","protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+      printf '{"name":"main","commit":{"sha":"${LOCAL_SOURCE_FIXTURE_REMOTE_SHA:?}"},"protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
     fi
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
@@ -168,6 +168,37 @@ JSON
 esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
+
+cat > "$FIXTURE/bin/git" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  'rev-parse --show-toplevel')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_ROOT:?}"
+    ;;
+  'branch --show-current')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_BRANCH:-main}"
+    ;;
+  'rev-parse HEAD')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_LOCAL_SHA:?}"
+    ;;
+  'status --porcelain=v1 --untracked-files=normal')
+    if [[ -n "${LOCAL_SOURCE_FIXTURE_DIRTY:-}" ]]; then
+      printf '%s\n' ' M README.md'
+    fi
+    ;;
+  *)
+    echo "unexpected git command: $*" >&2
+    exit 89
+    ;;
+esac
+SHIM
+chmod +x "$FIXTURE/bin/git"
+
+export LOCAL_SOURCE_FIXTURE_ROOT="$ROOT"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
+export LOCAL_SOURCE_FIXTURE_REMOTE_SHA='0123456789abcdef0123456789abcdef01234567'
 
 export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_POLICY_CREATED="$POLICY_CREATED"
