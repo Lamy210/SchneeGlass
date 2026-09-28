@@ -8,6 +8,7 @@ public final class DesktopGlassWindowPreferences {
   private let opacityKey: String
   private let compactFileTilesKey: String
   private let fileSortKey: String
+  private let foldersFirstKey: String
 
   public init(
     defaults: UserDefaults = .standard,
@@ -15,7 +16,8 @@ public final class DesktopGlassWindowPreferences {
     keepOnTopKey: String = "desktopGlass.keepOnTopIDs.v1",
     opacityKey: String = "desktopGlass.opacityByID.v1",
     compactFileTilesKey: String = "desktopGlass.compactFileTileIDs.v1",
-    fileSortKey: String = "desktopGlass.fileSortByID.v1"
+    fileSortKey: String = "desktopGlass.fileSortByID.v1",
+    foldersFirstKey: String = "desktopGlass.foldersFirstIDs.v1"
   ) {
     self.defaults = defaults
     self.lockedPositionKey = lockedPositionKey
@@ -23,6 +25,7 @@ public final class DesktopGlassWindowPreferences {
     self.opacityKey = opacityKey
     self.compactFileTilesKey = compactFileTilesKey
     self.fileSortKey = fileSortKey
+    self.foldersFirstKey = foldersFirstKey
   }
 
   public func isPositionLocked(for glassID: GlassID) -> Bool {
@@ -147,6 +150,31 @@ public final class DesktopGlassWindowPreferences {
       return
     }
     persistFileSortValues(stored)
+  }
+
+  public func putsFoldersFirst(for glassID: GlassID) -> Bool {
+    storedGlassIDs(forKey: foldersFirstKey).contains(glassID.rawValue)
+  }
+
+  public func setFoldersFirst(
+    _ foldersFirst: Bool,
+    for glassID: GlassID
+  ) {
+    var glassIDs = storedGlassIDs(forKey: foldersFirstKey)
+    if foldersFirst {
+      glassIDs.insert(glassID.rawValue)
+    } else {
+      glassIDs.remove(glassID.rawValue)
+    }
+    persist(glassIDs, forKey: foldersFirstKey)
+  }
+
+  public func removeFoldersFirst(for glassID: GlassID) {
+    var glassIDs = storedGlassIDs(forKey: foldersFirstKey)
+    guard glassIDs.remove(glassID.rawValue) != nil else {
+      return
+    }
+    persist(glassIDs, forKey: foldersFirstKey)
   }
 
   private func storedFileSortValues() -> [String: DesktopGlassFileSortPreference] {
