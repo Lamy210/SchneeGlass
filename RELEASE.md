@@ -59,6 +59,27 @@ subsequent public Release:
 
 Missing, malformed, or unsupported historical evidence fails closed before Draft Release creation.
 
+### Legacy public release history
+
+Public v0.1.0 and v0.1.1 were published before `RELEASE_EVIDENCE.txt` became the production evidence contract. They remain distribution history and must still participate in the monotonic build-number gate.
+
+Their legacy metadata is pinned in:
+
+`docs/release-history/legacy-public-releases.tsv`
+
+Each accepted legacy row binds the exact:
+
+- release tag
+- release target commit SHA
+- marketing version
+- build number
+- distribution type
+- SHA-256 digest of the published `BUILD_INFO.txt`
+
+`Scripts/materialize-public-release-build-history.sh` always prefers normal `RELEASE_EVIDENCE.txt`. Only when that asset is unavailable may it fall back to `BUILD_INFO.txt`, and only if `Scripts/verify-legacy-release-build-info.sh` proves that the tag, live release target, file digest, version, build, source commit, distribution type, and unsigned/notarized flags match the pinned legacy record. Unknown legacy Releases or any mismatch fail closed.
+
+The materializer then emits only the minimal schema/build entry needed by the existing monotonic history validator. This compatibility path does not upgrade a legacy unsigned/ad-hoc Release into production evidence and does not weaken the evidence requirements for newer Releases.
+
 ## Unsigned release candidate validation
 
 `.github/workflows/release-candidate.yml` runs on:

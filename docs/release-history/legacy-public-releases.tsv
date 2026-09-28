@@ -1,0 +1,3 @@
+# tag	target_commit	version	build	distribution	build_info_sha256
+v0.1.0	62cb32cff52dd6cd94008d58ea53430ef9228542	0.1.0	1	github-unsigned	c60be22929fe570060dbc1c6d0875fb356e97acfabe3fbefb6e6d75efc1f0db8
+v0.1.1	cf942622f57d18ad09eb63ffe43f2574e17cf53c	0.1.1	2	github-adhoc	f0c704822637dcd2664f25a6d26b6ff5c004dd0bce5ef2864d4c86a9cb1ce625

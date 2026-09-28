@@ -629,6 +629,32 @@ EOF
       view)
         TAG="${1:-}"
         shift || true
+
+        if [[ "$HISTORY_MODE" == 'concurrent-new-release' && "$TAG" == 'v0.0.9' ]]; then
+          JSON=''
+          while [[ "$#" -gt 0 ]]; do
+            case "$1" in
+              --repo)
+                shift 2
+                ;;
+              --json)
+                JSON="$2"
+                shift 2
+                ;;
+              *)
+                echo "unexpected historical release view argument: $1" >&2
+                exit 96
+                ;;
+            esac
+          done
+          [[ "$JSON" == 'targetCommitish,assets' ]] || {
+            echo "unexpected historical release JSON fields: $JSON" >&2
+            exit 97
+          }
+          printf '%s\n' '{"targetCommitish":"89abcdef0123456789abcdef0123456789abcdef","assets":[{"name":"RELEASE_EVIDENCE.txt"}]}'
+          exit 0
+        fi
+
         if [[ ! -f "$STATE/release-created" ]]; then
           exit 1
         fi
