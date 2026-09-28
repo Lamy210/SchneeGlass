@@ -176,4 +176,3 @@ func removingOpacityPresetKeepsOtherWindowPreferences() throws {
   #expect(store.keepsOnTop(glassID))
   #expect(defaults.object(forKey: "desktopGlass.opacityByID.v1") == nil)
 }
-
