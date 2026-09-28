@@ -360,7 +360,6 @@ func removingFoldersFirstKeepsSortAndOtherWindowPreferences() throws {
   #expect(defaults.object(forKey: "desktopGlass.foldersFirstIDs.v1") == nil)
 }
 
-
 @Test
 func retainingPreferencesRemovesStateForGlassesNoLongerInConfiguration() throws {
   let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
