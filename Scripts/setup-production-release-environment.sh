@@ -20,6 +20,8 @@ MODE="${2:-}"
 
 command -v gh >/dev/null 2>&1 || fail "gh CLI is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
+
+bash Scripts/verify-local-release-source.sh "$REPOSITORY"
 gh auth status >/dev/null
 
 ENVIRONMENT_NAME='production-release'
