@@ -50,6 +50,13 @@ v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVE
   - app-owned state directory / leaf symlinkをfollowしないphysical topology enforcement
 - Desktop上の1 Glass = 1 `NSPanel`
 - move / resize placement persistence
+- Position Lock / reachability recovery
+- Keep on Top / Show on All Spaces
+- current-display Snap presets
+- compact Window controls
+- per-Glass display-name Rename
+- unavailable Glass source Reconnect
+- connected root folderのread-only Finder表示
 - off-screen frame recovery
 - Menu Bar controls
 - Reset Glass Positions

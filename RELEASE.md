@@ -29,7 +29,7 @@ An unsigned CI artifact is for verification only. Do not publish it as a trusted
 
 ## Versioning
 
-v0.1 uses a strict release version format:
+SchneeGlass releases use a strict release version format:
 
 ```text
 MARKETING_VERSION       = X.Y.Z
