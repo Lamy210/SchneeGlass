@@ -177,6 +177,45 @@ public final class DesktopGlassWindowPreferences {
     persist(glassIDs, forKey: foldersFirstKey)
   }
 
+  public func retainPreferences(onlyFor glassIDs: Set<GlassID>) {
+    let retainedIDs = Set(glassIDs.map(\.rawValue))
+
+    persist(
+      lockedPositionIDs().intersection(retainedIDs),
+      forKey: lockedPositionKey
+    )
+    persist(
+      storedGlassIDs(forKey: keepOnTopKey).intersection(retainedIDs),
+      forKey: keepOnTopKey
+    )
+
+    let retainedOpacityValues = storedOpacityValues().filter { key, _ in
+      guard let id = UUID(uuidString: key) else {
+        return false
+      }
+      return retainedIDs.contains(id)
+    }
+    persistOpacityValues(retainedOpacityValues)
+
+    persist(
+      storedGlassIDs(forKey: compactFileTilesKey).intersection(retainedIDs),
+      forKey: compactFileTilesKey
+    )
+
+    let retainedFileSortValues = storedFileSortValues().filter { key, _ in
+      guard let id = UUID(uuidString: key) else {
+        return false
+      }
+      return retainedIDs.contains(id)
+    }
+    persistFileSortValues(retainedFileSortValues)
+
+    persist(
+      storedGlassIDs(forKey: foldersFirstKey).intersection(retainedIDs),
+      forKey: foldersFirstKey
+    )
+  }
+
   private func storedFileSortValues() -> [String: DesktopGlassFileSortPreference] {
     guard let stored = defaults.dictionary(forKey: fileSortKey) else {
       return [:]
