@@ -445,38 +445,24 @@ if ! bash Scripts/verify-current-release-governance.sh "$GITHUB_REPOSITORY"; the
   fail "current release governance is no longer valid before publication"
 fi
 
-PREPUBLICATION_TAG_LINE=''
-PREPUBLICATION_TAG_STATUS=0
+# GitHub Draft Releases do not establish a new Git tag until publication.
+# Re-prove absence immediately before Draft -> public so an independently-created
+# same-name tag cannot silently redirect target_commitish semantics.
 set +e
-PREPUBLICATION_TAG_LINE="$(git ls-remote --exit-code --tags origin "refs/tags/$TAG")"
-PREPUBLICATION_TAG_STATUS=$?
+git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1
+PREPUBLICATION_TAG_PROBE_STATUS=$?
 set -e
 
-[[ "$PREPUBLICATION_TAG_STATUS" -eq 0 ]] \
-  || fail "unable to verify release tag before publication"
-
-PREPUBLICATION_TAG_LINE_COUNT=''
-PREPUBLICATION_TAG_LINE_COUNT_STATUS=0
-set +e
-PREPUBLICATION_TAG_LINE_COUNT="$(printf '%s\n' "$PREPUBLICATION_TAG_LINE" | awk 'END { print NR }')"
-PREPUBLICATION_TAG_LINE_COUNT_STATUS=$?
-set -e
-
-[[ "$PREPUBLICATION_TAG_LINE_COUNT_STATUS" -eq 0 ]] \
-  || fail "unable to enumerate release tag refs before publication"
-[[ "$PREPUBLICATION_TAG_LINE_COUNT" =~ ^[0-9]+$ && "$PREPUBLICATION_TAG_LINE_COUNT" -eq 1 ]] \
-  || fail "release tag returned an invalid remote ref set before publication"
-
-PREPUBLICATION_TAG_SHA=''
-PREPUBLICATION_TAG_REF=''
-PREPUBLICATION_TAG_EXTRA=''
-read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <<< "$PREPUBLICATION_TAG_LINE"
-[[ -z "$PREPUBLICATION_TAG_EXTRA" ]] \
-  || fail "release tag returned an invalid remote ref set before publication"
-[[ "$PREPUBLICATION_TAG_SHA" =~ ^[0-9a-f]{40}$ && "$PREPUBLICATION_TAG_REF" == "refs/tags/$TAG" ]] \
-  || fail "release tag returned an invalid remote ref before publication"
-[[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
-  || fail "release tag no longer resolves to candidate source commit before publication"
+case "$PREPUBLICATION_TAG_PROBE_STATUS" in
+  0)
+    fail "release tag appeared before publication: $TAG"
+    ;;
+  2)
+    ;;
+  *)
+    fail "unable to determine whether release tag exists before publication: $TAG"
+    ;;
+esac
 
 # Repository release-immutability settings require Administration(read), which the
 # deliberately least-privileged publication GITHUB_TOKEN cannot request. The

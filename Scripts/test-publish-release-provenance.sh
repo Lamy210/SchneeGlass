@@ -57,38 +57,48 @@ case "${1:-}" in
     exit 0
     ;;
   ls-remote)
-    if [[ -f "$STATE/release-tag" ]]; then
+    if [[ -f "$STATE/release-public" ]]; then
       case "$TAG_MODE" in
-        exact)
+        mismatch-after-publication)
+          printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
+          ;;
+        *)
           printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
+          ;;
+      esac
+      exit 0
+    fi
+
+    if [[ -f "$STATE/release-created" ]]; then
+      case "$TAG_MODE" in
+        exact|missing-before-publication|mismatch-after-publication)
+          exit 2
           ;;
         retarget-before-publication)
           printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
-          ;;
-        missing-before-publication)
-          exit 2
+          exit 0
           ;;
         ambiguous-before-publication)
           printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
           printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
+          exit 0
           ;;
         malformed-before-publication)
           printf 'not-a-sha\trefs/tags/v0.1.0\n'
+          exit 0
           ;;
-        mismatch-after-publication)
-          if [[ -f "$STATE/release-public" ]]; then
-            printf '%s\trefs/tags/v0.1.0\n' "$OTHER_SHA"
-          else
-            printf '%s\trefs/tags/v0.1.0\n' "$CANDIDATE_SHA"
-          fi
+        probe-failure-before-publication)
+          echo 'fixture: remote tag probe unavailable' >&2
+          exit 42
           ;;
         *)
           echo "unexpected tag fixture mode: $TAG_MODE" >&2
           exit 103
           ;;
       esac
-      exit 0
     fi
+
+    # A new release tag must be absent before the Draft exists.
     exit 2
     ;;
   push)
@@ -320,7 +330,6 @@ case "$COMMAND" in
           [[ "${FIELDS[1]}" == 'prerelease=false' ]]
           [[ "${FIELDS[2]}" == 'generate_release_notes=true' ]]
           touch "$STATE/release-created"
-          touch "$STATE/release-tag"
           printf '101\n' > "$STATE/release-id"
           case "${GH_FIXTURE_CREATE_MODE:-success}" in
             success)
@@ -367,6 +376,7 @@ case "$COMMAND" in
             exit 1
           fi
           rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-tag"
           touch "$STATE/release-public"
           exit 0
           ;;
@@ -379,6 +389,7 @@ case "$COMMAND" in
           [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
           [[ -f "$STATE/release-id" && "$(cat "$STATE/release-id")" == '202' ]]
           rm -f "$STATE/release-prerelease"
+          touch "$STATE/release-tag"
           touch "$STATE/release-public"
           exit 0
           ;;
@@ -475,6 +486,7 @@ case "$COMMAND" in
                 exact)
                   ;;
                 publish-before-publication)
+                  touch "$STATE/release-tag"
                   touch "$STATE/release-public"
                   snapshot_draft=false
                   ;;
@@ -658,6 +670,7 @@ case "$COMMAND" in
               exact|digest-missing-before-publication|digest-mismatch-before-publication|digest-mismatch-after-publication|digest-malformed-after-publication)
                 if [[ "$direct_asset_reads" -eq 2 ]]; then
                   if [[ "$DRAFT_MODE" == 'publish-before-publication' ]]; then
+                    touch "$STATE/release-tag"
                     touch "$STATE/release-public"
                   fi
                   if [[ "$PRERELEASE_MODE" == 'change-before-publication' ]]; then
@@ -924,6 +937,7 @@ EOF
                   else
                     printf '101\n'
                   fi
+                  touch "$STATE/release-tag"
                   touch "$STATE/release-public"
                   exit 0
                 fi
@@ -1001,6 +1015,7 @@ EOF
               exact|digest-missing-before-publication|digest-mismatch-before-publication|digest-mismatch-after-publication|digest-malformed-after-publication)
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt'
                 if [[ "$DRAFT_MODE" == 'publish-before-publication' && "$asset_reads" -ge 2 ]]; then
+                  touch "$STATE/release-tag"
                   touch "$STATE/release-public"
                 fi
                 if [[ "$PRERELEASE_MODE" == 'change-before-publication' && "$asset_reads" -ge 2 ]]; then
@@ -1053,7 +1068,6 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
-        touch "$STATE/release-tag"
         printf '101\n' > "$STATE/release-id"
         if [[ "$IDENTITY_MODE" == 'replace-after-create-before-capture' ]]; then
           printf '202\n' > "$STATE/release-id"
@@ -1076,6 +1090,7 @@ EOF
         if [[ "$FORCE_STABLE" == true ]]; then
           rm -f "$STATE/release-prerelease"
         fi
+        touch "$STATE/release-tag"
         touch "$STATE/release-public"
         ;;
       delete)
@@ -1264,8 +1279,8 @@ if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE 
   echo 'Ambiguous Draft creation failure reached a remote Release mutation.' >&2
   FAILURES=$((FAILURES + 1))
 fi
-if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" || ! -f "$GH_FIXTURE_STATE/release-id" ]]; then
-  echo 'Ambiguous remote Draft state was not preserved after create response failure.' >&2
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-id" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Ambiguous remote Draft state did not preserve Draft-without-tag semantics after create response failure.' >&2
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_CREATE_MODE='success'
@@ -1284,8 +1299,8 @@ if grep -Fq 'gh api --method PATCH ' "$LOG" || grep -Fq 'gh api --method DELETE 
   echo 'Malformed create-response identity reached a remote Release mutation.' >&2
   FAILURES=$((FAILURES + 1))
 fi
-if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
-  echo 'Draft state was not preserved after malformed create-response identity.' >&2
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Draft-without-tag state was not preserved after malformed create-response identity.' >&2
   FAILURES=$((FAILURES + 1))
 fi
 export GH_FIXTURE_CREATE_MODE='success'
@@ -1467,14 +1482,14 @@ grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTP
 ! grep -Fq 'gh api --method DELETE' "$LOG"
 ! grep -Fq 'git push --force-with-lease=' "$LOG"
 [[ -f "$GH_FIXTURE_STATE/release-created" ]]
-[[ -f "$GH_FIXTURE_STATE/release-tag" ]]
+[[ ! -f "$GH_FIXTURE_STATE/release-tag" ]]
 [[ -f "$GH_FIXTURE_STATE/release-id" ]]
 [[ "$(cat "$GH_FIXTURE_STATE/release-id")" == '101' ]]
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_ASSET_MODE='exact'
 
 # Normal pre-publication failure is intentionally non-destructive. The run-owned
-# Draft/tag remain for an operator to inspect and reconcile manually.
+# Draft remains for an operator to inspect and reconcile manually; no tag exists yet.
 reset_case
 export GH_FIXTURE_IDENTITY_MODE='stable'
 export GH_FIXTURE_DELETE_MODE='success'
@@ -1492,7 +1507,7 @@ grep -Fq 'no remote Release/tag cleanup was attempted; manual reconciliation req
 ! grep -Fq 'gh api --method DELETE' "$LOG"
 ! grep -Fq 'git push --force-with-lease=' "$LOG"
 [[ -f "$GH_FIXTURE_STATE/release-created" ]]
-[[ -f "$GH_FIXTURE_STATE/release-tag" ]]
+[[ ! -f "$GH_FIXTURE_STATE/release-tag" ]]
 [[ -f "$GH_FIXTURE_STATE/release-id" ]]
 [[ "$(cat "$GH_FIXTURE_STATE/release-id")" == '101' ]]
 export GH_FIXTURE_ASSET_MODE='exact'
@@ -2059,89 +2074,62 @@ else
 fi
 export GH_FIXTURE_GOVERNANCE_MODE='valid'
 
-# Draft tag provenance must be re-read before publication. A retargeted tag must
-# fail before the Draft-to-public mutation, not only after publication.
+# A new tag is expected to remain absent while the Release is still a Draft.
+# If the name appears before publication, another actor has raced this workflow and
+# target_commitish can no longer establish the intended tag provenance.
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
 export GH_FIXTURE_TAG_MODE='retarget-before-publication'
 export GH_FIXTURE_GOVERNANCE_MODE='valid'
-OUTPUT_TAG_RETARGETED="$FIXTURE/output-tag-retargeted-before-publication.log"
+OUTPUT_TAG_APPEARED="$FIXTURE/output-tag-appeared-before-publication.log"
 set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_RETARGETED" 2>&1
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_APPEARED" 2>&1
 STATUS=$?
 set -e
 if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_TAG_RETARGETED"
+  cat "$OUTPUT_TAG_APPEARED"
   cat "$LOG"
-  echo 'Release publication unexpectedly succeeded with a retargeted Draft tag.' >&2
+  echo 'Release publication unexpectedly accepted a tag that appeared while the Release was still a Draft.' >&2
   FAILURES=$((FAILURES + 1))
 else
-  if ! grep -Fq 'Release promotion failed: release tag no longer resolves to candidate source commit before publication' "$OUTPUT_TAG_RETARGETED"; then
-    cat "$OUTPUT_TAG_RETARGETED"
-    echo 'Retargeted Draft tag did not fail with the expected pre-publication error.' >&2
+  if ! grep -Fq 'Release promotion failed: release tag appeared before publication: v0.1.0' "$OUTPUT_TAG_APPEARED"; then
+    cat "$OUTPUT_TAG_APPEARED"
+    echo 'Concurrent tag creation did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
   if grep -Fq 'gh api --method PATCH ' "$LOG"; then
-    echo 'Retargeted Draft tag reached the Draft-to-public mutation.' >&2
+    echo 'Concurrent tag creation reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
 
-# The same final boundary must fail closed if the Draft-associated tag disappears.
+# Failure to prove tag absence is not equivalent to absence. Preserve fail-closed
+# behavior when the remote tag probe itself fails.
 reset_case
 export GH_FIXTURE_TARGET_MODE='exact'
-export GH_FIXTURE_TAG_MODE='missing-before-publication'
+export GH_FIXTURE_TAG_MODE='probe-failure-before-publication'
 export GH_FIXTURE_GOVERNANCE_MODE='valid'
-OUTPUT_TAG_MISSING="$FIXTURE/output-tag-missing-before-publication.log"
+OUTPUT_TAG_PROBE_FAILURE="$FIXTURE/output-tag-probe-failure-before-publication.log"
 set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_MISSING" 2>&1
+bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_PROBE_FAILURE" 2>&1
 STATUS=$?
 set -e
 if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT_TAG_MISSING"
+  cat "$OUTPUT_TAG_PROBE_FAILURE"
   cat "$LOG"
-  echo 'Release publication unexpectedly succeeded after the Draft tag disappeared.' >&2
+  echo 'Release publication unexpectedly accepted an indeterminate pre-publication tag probe.' >&2
   FAILURES=$((FAILURES + 1))
 else
-  if ! grep -Fq 'Release promotion failed: unable to verify release tag before publication' "$OUTPUT_TAG_MISSING"; then
-    cat "$OUTPUT_TAG_MISSING"
-    echo 'Missing Draft tag did not fail with the expected pre-publication error.' >&2
+  if ! grep -Fq 'Release promotion failed: unable to determine whether release tag exists before publication: v0.1.0' "$OUTPUT_TAG_PROBE_FAILURE"; then
+    cat "$OUTPUT_TAG_PROBE_FAILURE"
+    echo 'Tag probe failure did not fail with the expected pre-publication error.' >&2
     FAILURES=$((FAILURES + 1))
   fi
   if grep -Fq 'gh api --method PATCH ' "$LOG"; then
-    echo 'Missing Draft tag reached the Draft-to-public mutation.' >&2
+    echo 'Indeterminate tag probe reached the Draft-to-public mutation.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
-export GH_FIXTURE_TAG_MODE='exact'
-
-# Multiple remote refs are ambiguous and must fail before publication.
-reset_case
-export GH_FIXTURE_TARGET_MODE='exact'
-export GH_FIXTURE_TAG_MODE='ambiguous-before-publication'
-export GH_FIXTURE_GOVERNANCE_MODE='valid'
-OUTPUT_TAG_AMBIGUOUS="$FIXTURE/output-tag-ambiguous-before-publication.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_AMBIGUOUS" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: release tag returned an invalid remote ref set before publication' "$OUTPUT_TAG_AMBIGUOUS"
-! grep -Fq 'gh api --method PATCH ' "$LOG"
-
-# Malformed tag provenance must also fail before publication.
-reset_case
-export GH_FIXTURE_TARGET_MODE='exact'
-export GH_FIXTURE_TAG_MODE='malformed-before-publication'
-export GH_FIXTURE_GOVERNANCE_MODE='valid'
-OUTPUT_TAG_MALFORMED="$FIXTURE/output-tag-malformed-before-publication.log"
-set +e
-bash Scripts/publish-notarized-release.sh >"$OUTPUT_TAG_MALFORMED" 2>&1
-STATUS=$?
-set -e
-[[ "$STATUS" -ne 0 ]]
-grep -Fq 'Release promotion failed: release tag returned an invalid remote ref before publication' "$OUTPUT_TAG_MALFORMED"
-! grep -Fq 'gh api --method PATCH ' "$LOG"
 export GH_FIXTURE_TAG_MODE='exact'
 
 # The Draft target can be correct and still change after publication. The final public
