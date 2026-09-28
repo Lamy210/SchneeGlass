@@ -72,8 +72,10 @@ enum WorkspaceConfigurationAuthorityPolicy {
     requiresConfigurationRecovery: Bool
   ) -> Bool {
     hasLoadedConfigurationSnapshot
-      && !isMutatingConfiguration
-      && !requiresConfigurationRecovery
+      && WorkspaceConfigurationMutationPolicy.allowsMutation(
+        isMutatingConfiguration: isMutatingConfiguration,
+        requiresConfigurationRecovery: requiresConfigurationRecovery
+      )
   }
 }
 
@@ -88,10 +90,7 @@ public final class SchneeGlassWorkspaceModel {
   public private(set) var userMessage: String?
 
   public var canMutateConfiguration: Bool {
-    WorkspaceConfigurationMutationPolicy.allowsMutation(
-      isMutatingConfiguration: isMutatingConfiguration,
-      requiresConfigurationRecovery: requiresConfigurationRecovery
-    )
+    hasAuthoritativeConfigurationSnapshot
   }
 
   public var canAddGlass: Bool {
