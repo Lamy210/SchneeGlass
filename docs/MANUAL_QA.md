@@ -252,6 +252,19 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] sort操作でFolderSnapshot本体 / Glass configuration / source folderを変更しない
 - [ ] sort操作でuser-owned fileを作成・移動・rename・deleteしない
 
+### 7.10 Folders First (v0.2)
+
+- [ ] Glass window optionsからFolders FirstをON/OFFできる
+- [ ] ONではdirectoryだけがfile/package/aliasより前へ表示される
+- [ ] package / alias / symbolic linkをdirectory groupへ誤分類しない
+- [ ] directory group内・file group内では選択中のName / Modified / Size sortを維持する
+- [ ] OFFでは純粋な選択中sort orderへ戻る
+- [ ] settingがGlass単位で独立し、アプリ再起動後も維持される
+- [ ] File Sort / Compact File Tiles / Opacityなど他Preferenceと独立する
+- [ ] Glass削除時にstale Folders First preferenceをcleanupする
+- [ ] grouping操作でFolderSnapshot / Glass configuration / source folderを変更しない
+- [ ] grouping操作でuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
