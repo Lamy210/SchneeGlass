@@ -73,7 +73,7 @@ bash Scripts/setup-release-governance.sh \
   Lamy210/SchneeGlass
 ```
 
-`verify-local-release-source.sh` is read-only. Before any repository-administration helper is run, it requires:
+`verify-local-release-source.sh` is read-only. `setup-release-governance.sh` also invokes this verifier internally after validating the checked-in ruleset recipe and before any live ruleset / immutability mutation. The explicit operator-side verifier remains defense in depth. Before any repository-administration helper is run, it requires:
 
 ```text
 current local branch = main
@@ -127,7 +127,7 @@ bash Scripts/setup-release-governance.sh \
   --verify-only
 ```
 
-`--verify-only` performs GET/read operations only. It requires all of the following before reporting success:
+`--verify-only` performs GET/read operations only. The helper still requires the local checkout to match exact live `main` before administrator-side attestation. It requires all of the following before reporting success:
 
 ```text
 exactly one repository ruleset exists
