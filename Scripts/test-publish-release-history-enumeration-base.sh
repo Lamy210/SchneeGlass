@@ -289,7 +289,6 @@ case "$COMMAND" in
           [[ "${FIELDS[1]}" == 'prerelease=false' ]]
           [[ "${FIELDS[2]}" == 'generate_release_notes=true' ]]
           touch "$STATE/release-created"
-          touch "$STATE/release-tag"
           printf '101\n'
           exit 0
           ;;
@@ -309,6 +308,7 @@ case "$COMMAND" in
           [[ "${#RAW_FIELDS[@]}" -eq 1 ]]
           [[ "${RAW_FIELDS[0]}" == 'make_latest=true' ]]
           [[ -f "$STATE/release-created" ]]
+          touch "$STATE/release-tag"
           touch "$STATE/release-public"
           exit 0
           ;;
@@ -371,6 +371,7 @@ case "$COMMAND" in
                   ;;
                 extra-before)
                   if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                    touch "$STATE/release-tag"
                     touch "$STATE/release-public"
                     snapshot_draft=false
                   fi
@@ -434,6 +435,7 @@ case "$COMMAND" in
               extra-before)
                 if [[ ! -f "$STATE/release-public" ]]; then
                   if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                    touch "$STATE/release-tag"
                     touch "$STATE/release-public"
                   fi
                   printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
@@ -696,6 +698,7 @@ EOF
                 ;;
               extra-before)
                 if [[ "$CLEANUP_RACE_MODE" == 'external-public-before-asset-mismatch' ]]; then
+                  touch "$STATE/release-tag"
                   touch "$STATE/release-public"
                 fi
                 printf '%s\n' 'SchneeGlass-0.1.0.zip' 'SHA256SUMS' 'RELEASE_EVIDENCE.txt' 'unexpected.txt'
@@ -741,7 +744,6 @@ EOF
         ;;
       create)
         touch "$STATE/release-created"
-        touch "$STATE/release-tag"
         ;;
       upload)
         [[ -f "$STATE/release-created" ]]
@@ -751,6 +753,7 @@ EOF
         ;;
       edit)
         [[ -f "$STATE/release-created" ]]
+        touch "$STATE/release-tag"
         touch "$STATE/release-public"
         ;;
       download)
@@ -967,7 +970,7 @@ export GH_FIXTURE_HISTORY_MODE='empty'
 
 # If main advances after the initial freshness check while the Draft is prepared, the
 # candidate is stale at publication time. A final pre-publication check must stop before
-# the ID-addressed publication mutation and leave the run-owned Draft/tag for manual reconciliation.
+# the ID-addressed publication mutation and leave the run-owned Draft (without a tag yet) for manual reconciliation.
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
 mkdir -p "$GH_FIXTURE_STATE"
@@ -999,8 +1002,8 @@ fi
 ! grep -Fq 'git push --force-with-lease=' "$LOG"
 grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_MAIN_ADVANCED"
 grep -Fq 'manual reconciliation required' "$OUTPUT_MAIN_ADVANCED"
-if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
-  echo 'Run-owned Draft/tag did not survive final main freshness failure.' >&2
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+  echo 'Run-owned Draft-without-tag state did not survive final main freshness failure.' >&2
   exit 1
 fi
 if ! assert_main_fetch_count 2; then
@@ -1186,7 +1189,7 @@ grep -Fq 'Release promotion failed: candidate source commit does not match curre
 ! grep -Fq 'gh api --method POST -H X-GitHub-Api-Version:\ 2026-03-10 repos/example/SchneeGlass/releases ' "$LOG"
 export GH_FIXTURE_CURRENT_MAIN_SHA='0123456789abcdef0123456789abcdef01234567'
 
-# An unexpected Draft asset must stop publication and preserve the run-owned Draft/tag for manual reconciliation.
+# An unexpected Draft asset must stop publication and preserve the run-owned Draft without materializing a tag.
 FAILURES=0
 : > "$LOG"
 rm -rf "$GH_FIXTURE_STATE"
@@ -1221,8 +1224,8 @@ else
   fi
   grep -Fq 'Release cleanup is non-destructive for v0.1.0 (release ID 101)' "$OUTPUT_EXTRA_BEFORE"
   grep -Fq 'manual reconciliation required' "$OUTPUT_EXTRA_BEFORE"
-  if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
-    echo 'Run-owned Draft/tag did not survive pre-publication asset mismatch.' >&2
+  if [[ ! -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+    echo 'Run-owned Draft-without-tag state did not survive pre-publication asset mismatch.' >&2
     FAILURES=$((FAILURES + 1))
   fi
 fi
@@ -1261,10 +1264,10 @@ if "$REAL_GREP" -Fq 'gh api --method DELETE' "$LOG"   || "$REAL_GREP" -Fq 'git p
   echo 'Pre-publication failure reached destructive remote cleanup.' >&2
   exit 1
 fi
-if [[ ! -f "$GH_FIXTURE_STATE/release-created" || ! -f "$GH_FIXTURE_STATE/release-tag" ]]; then
+if [[ ! -f "$GH_FIXTURE_STATE/release-created" || -f "$GH_FIXTURE_STATE/release-tag" ]]; then
   cat "$OUTPUT_NO_DELETE"
   cat "$LOG"
-  echo 'Run-owned Draft/tag did not survive non-destructive pre-publication cleanup.' >&2
+  echo 'Run-owned Draft-without-tag state did not survive non-destructive pre-publication cleanup.' >&2
   exit 1
 fi
 export GH_FIXTURE_DELETE_MODE='success'
