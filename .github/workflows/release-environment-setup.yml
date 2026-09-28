@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/release-environment-setup.yml'
       - 'Scripts/setup-production-release-environment.sh'
+      - 'Scripts/verify-local-release-source.sh'
+      - 'Scripts/test-verify-local-release-source.sh'
       - 'Scripts/test-setup-production-release-environment.sh'
       - 'Scripts/test-setup-production-release-environment-existing.sh'
       - 'Scripts/test-production-release-environment-credential-names.sh'
@@ -28,9 +30,14 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/setup-production-release-environment.sh
+          bash -n Scripts/verify-local-release-source.sh
+          bash -n Scripts/test-verify-local-release-source.sh
           bash -n Scripts/test-setup-production-release-environment.sh
           bash -n Scripts/test-setup-production-release-environment-existing.sh
           bash -n Scripts/test-production-release-environment-credential-names.sh
+
+      - name: Local release source fixture
+        run: bash Scripts/test-verify-local-release-source.sh
 
       - name: Governance and creation fixtures
         run: bash Scripts/test-setup-production-release-environment.sh
