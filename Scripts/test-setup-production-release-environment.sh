@@ -67,9 +67,9 @@ done
 case "$METHOD:$ENDPOINT" in
   GET:repos/example/SchneeGlass/branches/main)
     if [[ "$MODE" == 'unprotected' ]]; then
-      printf '{"name":"main","protected":false,"protection":{"enabled":false,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+      printf '{"name":"main","commit":{"sha":"%s"},"protected":false,"protection":{"enabled":false,"required_status_checks":{"contexts":[],"checks":[]}}}\n' "$LOCAL_SOURCE_FIXTURE_REMOTE_SHA"
     else
-      printf '{"name":"main","protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n'
+      printf '{"name":"main","commit":{"sha":"%s"},"protected":true,"protection":{"enabled":true,"required_status_checks":{"contexts":[],"checks":[]}}}\n' "$LOCAL_SOURCE_FIXTURE_REMOTE_SHA"
     fi
     ;;
   GET:repos/example/SchneeGlass/rules/branches/main?per_page=100)
@@ -169,6 +169,37 @@ esac
 SHIM
 chmod +x "$FIXTURE/bin/gh"
 
+cat > "$FIXTURE/bin/git" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "$*" in
+  'rev-parse --show-toplevel')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_ROOT:?}"
+    ;;
+  'branch --show-current')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_BRANCH:-main}"
+    ;;
+  'rev-parse HEAD')
+    printf '%s\n' "${LOCAL_SOURCE_FIXTURE_LOCAL_SHA:?}"
+    ;;
+  'status --porcelain=v1 --untracked-files=normal')
+    if [[ -n "${LOCAL_SOURCE_FIXTURE_DIRTY:-}" ]]; then
+      printf '%s\n' ' M README.md'
+    fi
+    ;;
+  *)
+    echo "unexpected git command: $*" >&2
+    exit 89
+    ;;
+esac
+SHIM
+chmod +x "$FIXTURE/bin/git"
+
+export LOCAL_SOURCE_FIXTURE_ROOT="$ROOT"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
+export LOCAL_SOURCE_FIXTURE_REMOTE_SHA='0123456789abcdef0123456789abcdef01234567'
+
 export GH_FIXTURE_LOG="$LOG"
 export GH_FIXTURE_POLICY_CREATED="$POLICY_CREATED"
 export PATH="$FIXTURE/bin:$PATH"
@@ -189,6 +220,24 @@ diagnose_on_exit() {
   exit "$status"
 }
 trap diagnose_on_exit EXIT
+
+# Source gate: a stale local main must stop before Environment setup can mutate.
+: > "$LOG"
+export GH_FIXTURE_MODE='create-environment'
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='89abcdef0123456789abcdef0123456789abcdef'
+OUTPUT="$FIXTURE/stale-local-main.log"
+CURRENT_OUTPUT="$OUTPUT"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Local release source verification failed: local HEAD does not match live remote main' "$OUTPUT"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
 
 # Safety gate 1: an unprotected main must stop before any Environment mutation.
 export GH_FIXTURE_MODE='unprotected'

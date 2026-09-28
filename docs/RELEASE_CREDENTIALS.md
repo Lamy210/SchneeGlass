@@ -49,11 +49,22 @@ solo-maintainer運用で、workflowを起動する本人しかreviewerになれ�
 ```bash
 git switch main
 git pull --ff-only
-bash Scripts/setup-release-governance.sh Lamy210/SchneeGlass
-bash Scripts/setup-production-release-environment.sh Lamy210/SchneeGlass
+gh auth status
+
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
+bash Scripts/setup-release-governance.sh \
+  Lamy210/SchneeGlass
+
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
+bash Scripts/setup-production-release-environment.sh \
+  Lamy210/SchneeGlass
 ```
 
-helperはEnvironmentへ変更を加える前にlive `main`を読み直し、次を既存のproduction publication validatorで要求する。
+helperは最初に`Scripts/verify-local-release-source.sh`を実行し、local branchがexact `main`、working treeがclean、local HEADがlive GitHub `main` SHAとexact matchすることを要求する。このsource proofが失敗した場合、Environment APIやcredential-name列挙へ進まない。source proof通過後、helperはEnvironmentへ変更を加える前にlive `main`を読み直し、次を既存のproduction publication validatorで要求する。
 
 ```text
 main protected=true
@@ -79,9 +90,12 @@ exact main deployment policy (type=branch)
 
 GitHubのdeployment branch policy list/read responseはpolicyの`name`を返す一方、作成時に指定した`type=branch|tag`をread-backできない。したがって既存Environmentについてhelperが証明できるのは「policyが1件だけでnameが`main`」までであり、既存の同名tag policyをAPI read-backだけでbranch policyと識別できない。初回自動作成と0-policy recoveryではrequestで`type=branch`を明示する。既存Environmentを引き継ぐ場合はGitHub Settingsでも`main`がBranch ruleであることをhuman-attestする。
 
-Environment secrets / variablesを登録した後は次で**名前だけ**を確認できる。
+Environment secrets / variablesを登録した後は、local checkoutを再証明してから**名前だけ**を確認できる。
 
 ```bash
+bash Scripts/verify-local-release-source.sh \
+  Lamy210/SchneeGlass
+
 bash Scripts/setup-production-release-environment.sh \
   Lamy210/SchneeGlass \
   --verify-credential-names
