@@ -225,6 +225,18 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] 70%でもfile grid / context menu / drag / resize / reconnect操作が利用できる
 - [ ] opacity操作でGlass configurationやuser-owned fileを変更しない
 
+### 7.8 Compact File Tiles (v0.2)
+
+- [ ] Glass window optionsからCompact File TilesをON/OFFできる
+- [ ] compact ONで同じGlass幅により多くのfile tileを表示できる
+- [ ] compact OFFで従来のcomfortable layoutへ戻る
+- [ ] file icon / title / double-click / context menuの意味と操作は変わらない
+- [ ] settingがGlass単位で独立し、アプリ再起動後も維持される
+- [ ] Position Lock / Keep on Top / All Spaces / Opacityとは独立して変更できる
+- [ ] Glass削除時にstale compact-file preferenceをcleanupする
+- [ ] density切替でsource folder / Glass configuration / placementを変更しない
+- [ ] density切替でuser-owned fileを作成・移動・rename・deleteしない
+
 ## 8. Recovery manual inspection
 
 - [ ] `Show Incomplete Copy` がfresh assessment後だけ実行される
