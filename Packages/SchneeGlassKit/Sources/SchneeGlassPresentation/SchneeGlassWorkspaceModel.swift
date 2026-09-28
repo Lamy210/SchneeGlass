@@ -67,11 +67,11 @@ enum WorkspaceConfigurationMutationPolicy {
 
 enum WorkspaceConfigurationAuthorityPolicy {
   static func hasAuthoritativeSnapshot(
-    didAttemptInitialRestore: Bool,
+    hasLoadedConfigurationSnapshot: Bool,
     isMutatingConfiguration: Bool,
     requiresConfigurationRecovery: Bool
   ) -> Bool {
-    didAttemptInitialRestore
+    hasLoadedConfigurationSnapshot
       && !isMutatingConfiguration
       && !requiresConfigurationRecovery
   }
@@ -100,7 +100,7 @@ public final class SchneeGlassWorkspaceModel {
 
   public var hasAuthoritativeConfigurationSnapshot: Bool {
     WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
-      didAttemptInitialRestore: didAttemptInitialRestore,
+      hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
       isMutatingConfiguration: isMutatingConfiguration,
       requiresConfigurationRecovery: requiresConfigurationRecovery
     )
@@ -125,6 +125,7 @@ public final class SchneeGlassWorkspaceModel {
   private var dropExecutionGate = WorkspaceDropExecutionGate()
   private var dropPlanningTracker = WorkspaceDropPlanningTracker()
   private var didAttemptInitialRestore = false
+  private var hasLoadedConfigurationSnapshot = false
 
   public init(
     createGlassUseCase: CreateGlassUseCase,
@@ -172,6 +173,7 @@ public final class SchneeGlassWorkspaceModel {
       let result = try await restoreApplicationUseCase.execute()
       requiresConfigurationRecovery = false
       await applyRestoreResult(result)
+      hasLoadedConfigurationSnapshot = true
     } catch {
       enterConfigurationRecoveryRequiredState()
     }
@@ -214,6 +216,7 @@ public final class SchneeGlassWorkspaceModel {
       let result = try await restoreApplicationUseCase.execute()
       requiresConfigurationRecovery = false
       await applyRestoreResult(result)
+      hasLoadedConfigurationSnapshot = true
       return .restored
     } catch {
       if backupWasRestored {
