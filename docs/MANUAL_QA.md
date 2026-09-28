@@ -239,7 +239,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 ### 7.9 Per-Glass File Sorting (v0.2)
 
-- [ ] Glass window optionsのSort FilesからName / Modified / Sizeを切り替えられる
+- [ ] Glass window optionsのSort Displayed FilesからName / Modified / Sizeを切り替えられる
 - [ ] NameはFinder風の自然順で表示され、同名時も表示順が安定する
 - [ ] Modifiedは更新日時が新しいitemから並び、日時不明itemは末尾へ送られる
 - [ ] Sizeはsizeが大きいitemから並び、size不明itemは末尾へ送られる
@@ -248,6 +248,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] Compact File Tiles / Opacity / Position Lockなど他のWindow UX preferenceと独立する
 - [ ] Glass削除時にstale sort preferenceをcleanupする
 - [ ] FSEvents refresh後も選択済みsort orderで再表示される
+- [ ] 500-item safety limitを超えるfolderでは、sortが取得済みsnapshotだけへ適用されることを誤認させない
 - [ ] sort操作でFolderSnapshot本体 / Glass configuration / source folderを変更しない
 - [ ] sort操作でuser-owned fileを作成・移動・rename・deleteしない
 
