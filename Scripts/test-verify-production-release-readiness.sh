@@ -90,9 +90,13 @@ assert_count() {
   }
 }
 
-# Happy path: both read-only authority checks run in order.
+# Happy path: all read-only checks run in order even from a nested working directory.
 export READINESS_FIXTURE_MODE='success'
-"$REAL_BASH" Scripts/verify-production-release-readiness.sh   example/SchneeGlass   >"$FIXTURE/success.log" 2>&1
+(
+  cd Scripts
+  "$REAL_BASH" "$ROOT/Scripts/verify-production-release-readiness.sh" \
+    example/SchneeGlass
+) >"$FIXTURE/success.log" 2>&1
 
 grep -Fq 'Production release readiness verified:' "$FIXTURE/success.log"
 assert_count 1 'Scripts/verify-local-release-source.sh example/SchneeGlass'
