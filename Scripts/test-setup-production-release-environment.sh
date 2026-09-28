@@ -221,6 +221,24 @@ diagnose_on_exit() {
 }
 trap diagnose_on_exit EXIT
 
+# Source gate: a stale local main must stop before Environment setup can mutate.
+: > "$LOG"
+export GH_FIXTURE_MODE='create-environment'
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='89abcdef0123456789abcdef0123456789abcdef'
+OUTPUT="$FIXTURE/stale-local-main.log"
+CURRENT_OUTPUT="$OUTPUT"
+set +e
+bash Scripts/setup-production-release-environment.sh example/SchneeGlass >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+[[ "$STATUS" -ne 0 ]]
+grep -Fq 'Local release source verification failed: local HEAD does not match live remote main' "$OUTPUT"
+grep -Fq 'api repos/example/SchneeGlass/branches/main' "$LOG"
+! grep -Fq -- '--method PUT' "$LOG"
+! grep -Fq -- '--method POST' "$LOG"
+export LOCAL_SOURCE_FIXTURE_LOCAL_SHA='0123456789abcdef0123456789abcdef01234567'
+
 # Safety gate 1: an unprotected main must stop before any Environment mutation.
 export GH_FIXTURE_MODE='unprotected'
 OUTPUT="$FIXTURE/unprotected.log"
