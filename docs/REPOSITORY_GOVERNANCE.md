@@ -264,4 +264,4 @@ If the desired governance policy changes:
 2. pass Bootstrap CI and Publish Production Release preflight;
 3. apply the reviewed change in GitHub Settings or with the administrator helper where its zero-ruleset or sole-active-canonical recovery contract applies;
 4. re-read the effective rules for `main` (prefer `--verify-only` once the canonical ruleset exists);
-5. keep Issue #33 open until the first signed/notarized immutable v0.1 release is successfully published.
+5. keep Issue #33 open until the Developer ID signed/notarized immutable v0.2.0 production Release is successfully published and verified.

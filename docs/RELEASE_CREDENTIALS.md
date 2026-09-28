@@ -110,6 +110,15 @@ gh variable list --env production-release --repo Lamy210/SchneeGlass --json name
 
 secret/variableの値は取得せず、必須3 secret名＋3 variable名の存在だけを確認する。追加のEnvironment secret/variableが存在しても拒否しない。実credentialの内容・Apple側との整合性はproduction candidate runで初めて検証する。
 
+governanceとEnvironment credential-nameの両方をread-onlyでまとめて再確認する場合は、exact current `main` checkoutから次を実行する。
+
+```bash
+bash Scripts/verify-production-release-readiness.sh \
+  Lamy210/SchneeGlass
+```
+
+このhelperは`setup-release-governance.sh --verify-only`の成功後に`setup-production-release-environment.sh --verify-credential-names`を実行し、前段が失敗した場合は後段へ進まない。repository ruleset、release immutability、Environment、secret/variableを作成・更新しない。
+
 ## Secrets
 
 以下は**Environment secrets**として`production-release`に登録する。
