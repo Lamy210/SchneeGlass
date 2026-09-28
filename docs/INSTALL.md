@@ -1,6 +1,6 @@
 # Installing SchneeGlass
 
-SchneeGlass v0.1 is designed for **Developer ID direct distribution outside the Mac App Store**.
+SchneeGlass production releases are designed for **Developer ID direct distribution outside the Mac App Store**.
 
 This document applies to a signed, notarized, stapled production Release published through the repository's production release workflow. An unsigned CI artifact is not an end-user production release.
 
