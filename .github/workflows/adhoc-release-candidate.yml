@@ -1,0 +1,107 @@
+name: Ad-Hoc Release Candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-release-candidate.yml'
+      - 'Scripts/build-adhoc-release-candidate.sh'
+      - 'Scripts/verify-adhoc-signature-details.sh'
+      - 'Scripts/test-adhoc-signature-details.sh'
+      - 'Scripts/resolve-release-version.sh'
+      - 'Scripts/verify-release-metadata.sh'
+      - 'Scripts/verify-required-plist-value.sh'
+      - 'Scripts/verify-optional-release-entitlements.sh'
+      - 'Scripts/verify-xcode-version.sh'
+      - 'App/SchneeGlass.entitlements'
+      - 'SchneeGlass.xcodeproj/project.pbxproj'
+      - 'RELEASE.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Expected X.Y.Z version. Leave empty to use the project version.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adhoc-release-candidate-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Ad-Hoc Release Candidate / Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Toolchain
+        run: |
+          bash Scripts/verify-xcode-version.sh 'Xcode 26.6'
+          swift --version
+
+      - name: Resolve and validate release version
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$(bash Scripts/resolve-release-version.sh)"
+
+          if [[ -n "${REQUESTED_VERSION:-}" && "$REQUESTED_VERSION" != "$VERSION" ]]; then
+            echo "Requested version $REQUESTED_VERSION does not match project version $VERSION" >&2
+            exit 1
+          fi
+
+          bash Scripts/verify-release-metadata.sh "v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/build-adhoc-release-candidate.sh
+          bash -n Scripts/verify-adhoc-signature-details.sh
+          bash -n Scripts/test-adhoc-signature-details.sh
+
+      - name: Ad-hoc signature-details fixture
+        run: bash Scripts/test-adhoc-signature-details.sh
+
+      - name: Swift package tests
+        run: swift test --package-path Packages/SchneeGlassKit
+
+      - name: Build and verify ad-hoc candidate
+        run: |
+          bash Scripts/build-adhoc-release-candidate.sh \
+            '${{ steps.release.outputs.version }}' \
+            adhoc-release-output
+
+      - name: Verify candidate artifact set
+        run: |
+          set -euo pipefail
+          VERSION='${{ steps.release.outputs.version }}'
+          test -f "adhoc-release-output/SchneeGlass-$VERSION-adhoc-candidate.zip"
+          test -f adhoc-release-output/SHA256SUMS
+          test -f adhoc-release-output/BUILD_INFO.txt
+          test -f adhoc-release-output/README.txt
+          test -f adhoc-release-output/CODESIGN_DETAILS.txt
+          test -f adhoc-release-output/ENTITLEMENTS.plist
+
+          grep -Fx "version=$VERSION" adhoc-release-output/BUILD_INFO.txt >/dev/null
+          grep -Fx "source_commit=$GITHUB_SHA" adhoc-release-output/BUILD_INFO.txt >/dev/null
+          grep -Fx 'code_signature=adhoc' adhoc-release-output/BUILD_INFO.txt >/dev/null
+          grep -Fx 'apple_developer_id_signed=false' adhoc-release-output/BUILD_INFO.txt >/dev/null
+          grep -Fx 'apple_notarized=false' adhoc-release-output/BUILD_INFO.txt >/dev/null
+          grep -Fx 'distribution=github-adhoc-candidate' adhoc-release-output/BUILD_INFO.txt >/dev/null
+
+      - name: Upload ad-hoc candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SchneeGlass-${{ steps.release.outputs.version }}-adhoc-candidate
+          path: adhoc-release-output
+          if-no-files-found: error
+          retention-days: 14

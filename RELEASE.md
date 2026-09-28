@@ -1,10 +1,10 @@
 # SchneeGlass Release Policy
 
-This document defines the v0.1 release baseline. An unsigned build is never a public production release.
+This document defines the SchneeGlass release baseline. Unsigned or ad-hoc test artifacts are never public production releases.
 
 ## Current state
 
-The v0.1 production release automation is **code complete**.
+The production release automation is **code complete**; `v0.2.0 / build 3` is the current production candidate line.
 
 SchneeGlass currently has CI and workflows for:
 
@@ -23,7 +23,7 @@ SchneeGlass currently has CI and workflows for:
 - source-bound Bootstrap CI governance validation before production publication
 - Manual QA-gated promotion to an immutable GitHub Release
 
-The remaining production gates are operational validation: configure the protected release environment and credentials, configure repository release governance, produce the first real signed/notarized candidate, complete Manual QA, and publish the first immutable v0.1 Release. These are tracked in Issue #33.
+The remaining production gates are operational validation: configure the protected release environment and credentials, configure repository release governance, produce a real Developer ID signed/notarized `v0.2.0 / build 3` candidate from current `main`, complete Manual QA, and publish the first Developer ID signed/notarized immutable production Release. These are tracked in Issue #33.
 
 An unsigned CI artifact is for verification only. Do not publish it as a trusted end-user release.
 
@@ -103,6 +103,40 @@ The workflow:
 The workflow has read-only repository permissions and does not create a GitHub Release.
 
 For pull requests, Release Candidate Validation uses PR-scoped concurrency and cancels superseded runs when a newer commit is pushed to the same PR. Tag-triggered and manual validations use a per-run concurrency key, so separate release validations remain independent.
+
+## Ad-hoc release candidate
+
+`.github/workflows/adhoc-release-candidate.yml` produces an **Actions artifact for testing only**. It never creates or modifies a GitHub Release.
+
+The workflow:
+
+1. resolves the current project `X.Y.Z` version and validates release metadata
+2. runs Swift Package tests
+3. builds the Release app with normal code signing disabled
+4. applies an ad-hoc signature with Hardened Runtime and the checked-in Sandbox entitlements
+5. verifies:
+   - `Signature=adhoc`
+   - no certificate authority is present
+   - Hardened Runtime is enabled
+   - App Sandbox remains enabled
+   - user-selected read/write entitlement remains enabled
+   - unexpected network-client entitlement is absent
+   - `get-task-allow=true` is absent
+6. packages `SchneeGlass-X.Y.Z-adhoc-candidate.zip`
+7. creates and self-verifies `SHA256SUMS`
+8. records non-production `BUILD_INFO.txt`
+9. uploads the candidate as a short-lived Actions artifact
+
+The ad-hoc candidate is useful for Manual QA before Developer ID credentials are available, but it is **not** production evidence:
+
+- it is not Developer ID signed
+- it is not Apple notarized
+- Gatekeeper may block first launch
+- it must not be passed to the immutable production publication workflow
+- its `BUILD_INFO.txt` does not satisfy the production `RELEASE_EVIDENCE.txt` contract
+
+Production publication still requires a fresh successful `Production Release Candidate` from current `main` plus the Issue #33 governance / credential / Manual QA gates.
+
 
 ## Production candidate workflow
 
