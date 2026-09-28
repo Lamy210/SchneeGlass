@@ -356,9 +356,10 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 - candidate source SHA / evidence / checksum再検証
 - candidate commitがDraft作成前とDraft asset validation後の公開直前に、それぞれfreshly fetched current `main`とexact matchすることを検証
 - public Release build history gate
-  - first Releaseはhistory 0件でPASS
-  - 2回目以降は`candidate bundle_build > max(public release bundle_build)`必須
-  - missing/malformed historical evidenceはfail-closed
+  - normal production Releaseは`RELEASE_EVIDENCE.txt`からbuild historyを検証
+  - pre-evidence v0.1.0 / v0.1.1はpinned legacy manifest + live Release target + published `BUILD_INFO.txt` SHA-256/contentをexact validation
+  - candidate `bundle_build > max(public release bundle_build)`必須
+  - unknown / modified / missing / malformed historical evidenceはfail-closed
 - pre-existing tag / release拒否
 - asset-free Draft作成 → exact target SHA検証
 - Draft asset verification
@@ -373,12 +374,12 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 - `main` branch protection / required checkなどrelease governanceを確認
 - 最初のcredentialed signed/notarized candidateを成功させる
 - signed candidateで`docs/MANUAL_QA.md`を完走
-- 最初のimmutable v0.1 Releaseをpublishして検証
+- current `0.2.0 / build 3` candidateをDeveloper ID signed / notarized immutable Releaseとしてpublishして検証
 
 これらはIssue #33で追跡する。実credential値をRepositoryへcommitしない。
 
 ### TASK-019 — Documentation
-Status: **DONE for v0.1 code/document baseline / release record pending**
+Status: **DONE for current code/document baseline / production release record pending**
 
 実装済み:
 
@@ -405,19 +406,21 @@ Release時に残る記録:
 
 ---
 
-## v0.1 Next Order
+## Current Release Next Order
+
+Current project metadata is `0.2.0 / build 3`. Public v0.1.0 build 1 and v0.1.1 build 2 already exist as legacy unsigned/ad-hoc Releases.
 
 現時点の優先順位:
 
 ```text
 1. Issue #33: production-release credential / governance setup
-2. First credentialed Developer ID + notarized candidate
-3. Signed candidate Manual QA
-4. First immutable v0.1 GitHub Release publication
+2. 0.2.0 / build 3 Developer ID + notarized candidate
+3. Exact signed candidate Manual QA
+4. Immutable 0.2.0 GitHub Release publication
 5. Release recordをDocumentationへ反映
 ```
 
-Core / Recovery / v0.1 automated quality / release automation codeは完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
+Core / Recovery / automated quality / release automation codeはcurrent baselineとして完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
 
 ---
 
