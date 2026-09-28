@@ -176,3 +176,58 @@ func removingOpacityPresetKeepsOtherWindowPreferences() throws {
   #expect(store.keepsOnTop(glassID))
   #expect(defaults.object(forKey: "desktopGlass.opacityByID.v1") == nil)
 }
+@Test
+func compactFileTilesPersistAcrossStoreInstances() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+
+  #expect(!store.usesCompactFileTiles(for: glassID))
+  store.setUsesCompactFileTiles(true, for: glassID)
+
+  let restoredStore = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(restoredStore.usesCompactFileTiles(for: glassID))
+  #expect(!restoredStore.isPositionLocked(for: glassID))
+  #expect(!restoredStore.keepsOnTop(glassID))
+  #expect(restoredStore.opacityPreset(for: glassID) == .full)
+}
+
+@Test
+func malformedCompactFileTileIdentifiersAreIgnored() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  defaults.set(
+    ["not-a-uuid"],
+    forKey: "desktopGlass.compactFileTileIDs.v1"
+  )
+
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(!store.usesCompactFileTiles(for: GlassID()))
+}
+
+@Test
+func removingCompactFileTilesKeepsOtherWindowPreferences() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  store.setPositionLocked(true, for: glassID)
+  store.setKeepsOnTop(true, for: glassID)
+  store.setOpacityPreset(.eighty, for: glassID)
+  store.setUsesCompactFileTiles(true, for: glassID)
+
+  store.removeCompactFileTiles(for: glassID)
+
+  #expect(!store.usesCompactFileTiles(for: glassID))
+  #expect(store.isPositionLocked(for: glassID))
+  #expect(store.keepsOnTop(glassID))
+  #expect(store.opacityPreset(for: glassID) == .eighty)
+  #expect(defaults.object(forKey: "desktopGlass.compactFileTileIDs.v1") == nil)
+}

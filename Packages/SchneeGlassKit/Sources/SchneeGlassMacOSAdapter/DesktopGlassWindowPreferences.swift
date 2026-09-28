@@ -6,17 +6,20 @@ public final class DesktopGlassWindowPreferences {
   private let lockedPositionKey: String
   private let keepOnTopKey: String
   private let opacityKey: String
+  private let compactFileTilesKey: String
 
   public init(
     defaults: UserDefaults = .standard,
     lockedPositionKey: String = "desktopGlass.lockedPositionIDs.v1",
     keepOnTopKey: String = "desktopGlass.keepOnTopIDs.v1",
-    opacityKey: String = "desktopGlass.opacityByID.v1"
+    opacityKey: String = "desktopGlass.opacityByID.v1",
+    compactFileTilesKey: String = "desktopGlass.compactFileTileIDs.v1"
   ) {
     self.defaults = defaults
     self.lockedPositionKey = lockedPositionKey
     self.keepOnTopKey = keepOnTopKey
     self.opacityKey = opacityKey
+    self.compactFileTilesKey = compactFileTilesKey
   }
 
   public func isPositionLocked(for glassID: GlassID) -> Bool {
@@ -91,6 +94,31 @@ public final class DesktopGlassWindowPreferences {
       return
     }
     persistOpacityValues(stored)
+  }
+
+  public func usesCompactFileTiles(for glassID: GlassID) -> Bool {
+    storedGlassIDs(forKey: compactFileTilesKey).contains(glassID.rawValue)
+  }
+
+  public func setUsesCompactFileTiles(
+    _ usesCompactFileTiles: Bool,
+    for glassID: GlassID
+  ) {
+    var glassIDs = storedGlassIDs(forKey: compactFileTilesKey)
+    if usesCompactFileTiles {
+      glassIDs.insert(glassID.rawValue)
+    } else {
+      glassIDs.remove(glassID.rawValue)
+    }
+    persist(glassIDs, forKey: compactFileTilesKey)
+  }
+
+  public func removeCompactFileTiles(for glassID: GlassID) {
+    var glassIDs = storedGlassIDs(forKey: compactFileTilesKey)
+    guard glassIDs.remove(glassID.rawValue) != nil else {
+      return
+    }
+    persist(glassIDs, forKey: compactFileTilesKey)
   }
 
   private func storedOpacityValues() -> [String: Double] {

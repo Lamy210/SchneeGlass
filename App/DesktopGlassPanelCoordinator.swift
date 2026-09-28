@@ -9,6 +9,7 @@ private struct DesktopGlassWindowControls: View {
   let keepsOnTop: Bool
   let showsOnAllSpaces: Bool
   let opacityPreset: DesktopGlassOpacityPreset
+  let usesCompactFileTiles: Bool
   let showsReconnect: Bool
   let canReconnect: Bool
   let canRevealConnectedFolder: Bool
@@ -19,6 +20,7 @@ private struct DesktopGlassWindowControls: View {
   let onToggleKeepOnTop: @MainActor () -> Void
   let onToggleSpacesBehavior: @MainActor () -> Void
   let onSetOpacity: @MainActor (DesktopGlassOpacityPreset) -> Void
+  let onToggleCompactFileTiles: @MainActor () -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
   let onRename: @MainActor () -> Void
@@ -103,6 +105,16 @@ private struct DesktopGlassWindowControls: View {
             systemImage: "circle.lefthalf.filled"
           )
         }
+
+        Button(action: onToggleCompactFileTiles) {
+          Label(
+            "Compact File Tiles",
+            systemImage: usesCompactFileTiles ? "checkmark.circle.fill" : "circle"
+          )
+        }
+        .accessibilityLabel(
+          usesCompactFileTiles ? "Disable Compact File Tiles" : "Enable Compact File Tiles"
+        )
 
         Menu {
           Button("Top Left") {
@@ -407,7 +419,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     configure(panel, for: entry)
     panel.delegate = self
     panel.contentView = NSHostingView(
-      rootView: SchneeGlassDesktopGlassView(model: model, glassID: entry.id)
+      rootView: desktopGlassView(for: entry.id)
     )
     configureWindowControlsAccessory(for: panel, entry: entry)
 
@@ -483,6 +495,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       keepsOnTop: windowPreferences.keepsOnTop(glassID),
       showsOnAllSpaces: entry.showOnAllSpaces,
       opacityPreset: windowPreferences.opacityPreset(for: glassID),
+      usesCompactFileTiles: windowPreferences.usesCompactFileTiles(for: glassID),
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
       canRevealConnectedFolder:
@@ -513,6 +526,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       onSetOpacity: { [weak self] preset in
         self?.setOpacityPreset(preset, for: glassID)
       },
+      onToggleCompactFileTiles: { [weak self] in
+        self?.toggleCompactFileTiles(for: glassID)
+      },
       onReconnect: { [weak self] in
         guard let self else {
           return
@@ -542,6 +558,24 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     controller.view = NSHostingView(rootView: rootView)
     panel.addTitlebarAccessoryViewController(controller)
     panel.windowControlsAccessoryController = controller
+  }
+
+  private func desktopGlassView(for glassID: GlassID) -> SchneeGlassDesktopGlassView {
+    SchneeGlassDesktopGlassView(
+      model: model,
+      glassID: glassID,
+      fileGridDensity:
+        windowPreferences.usesCompactFileTiles(for: glassID) ? .compact : .comfortable
+    )
+  }
+
+  private func refreshDesktopGlassContent(for panel: DesktopGlassPanel) {
+    let rootView = desktopGlassView(for: panel.glassID)
+    if let hostingView = panel.contentView as? NSHostingView<SchneeGlassDesktopGlassView> {
+      hostingView.rootView = rootView
+    } else {
+      panel.contentView = NSHostingView(rootView: rootView)
+    }
   }
 
   private func snapGlass(
@@ -628,6 +662,20 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     configureWindowControlsAccessory(for: panel, entry: entry)
   }
 
+  private func toggleCompactFileTiles(for glassID: GlassID) {
+    guard let panel = panels[glassID]?.panel else {
+      return
+    }
+
+    let usesCompactFileTiles = !windowPreferences.usesCompactFileTiles(for: glassID)
+    windowPreferences.setUsesCompactFileTiles(usesCompactFileTiles, for: glassID)
+    refreshDesktopGlassContent(for: panel)
+    guard let entry = model.glasses.first(where: { $0.id == glassID }) else {
+      return
+    }
+    configureWindowControlsAccessory(for: panel, entry: entry)
+  }
+
   private func toggleKeepOnTop(for glassID: GlassID) {
     guard let panel = panels[glassID]?.panel else {
       return
@@ -650,6 +698,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     windowPreferences.removePositionLock(for: glassID)
     windowPreferences.removeKeepOnTop(for: glassID)
     windowPreferences.removeOpacityPreset(for: glassID)
+    windowPreferences.removeCompactFileTiles(for: glassID)
     record.panel.delegate = nil
     record.panel.close()
   }
