@@ -478,19 +478,12 @@ read -r PREPUBLICATION_TAG_SHA PREPUBLICATION_TAG_REF PREPUBLICATION_TAG_EXTRA <
 [[ "$PREPUBLICATION_TAG_SHA" == "$RUN_HEAD_SHA" ]] \
   || fail "release tag no longer resolves to candidate source commit before publication"
 
-PREPUBLICATION_IMMUTABILITY_JSON="$CANDIDATE_DIR/prepublication-immutable-releases.json"
-if ! gh api \
-  -H 'X-GitHub-Api-Version: 2026-03-10' \
-  "repos/$GITHUB_REPOSITORY/immutable-releases" \
-  > "$PREPUBLICATION_IMMUTABILITY_JSON"; then
-  fail "unable to verify release immutability before publication"
-fi
-jq -e 'type == "object" and has("enabled") and (.enabled | type == "boolean")' \
-  "$PREPUBLICATION_IMMUTABILITY_JSON" >/dev/null \
-  || fail "release immutability response is malformed before publication"
-jq -e '.enabled == true' "$PREPUBLICATION_IMMUTABILITY_JSON" >/dev/null \
-  || fail "release immutability is not enabled before publication"
-
+# Repository release-immutability settings require Administration(read), which the
+# deliberately least-privileged publication GITHUB_TOKEN cannot request. The
+# administrator-side production-readiness verifier is the pre-publication authority,
+# together with the explicit CONFIRM_IMMUTABLE_RELEASES attestation above. After the
+# Draft -> public transition, the Release object itself must still prove immutable=true;
+# that fail-closed verification remains mandatory below.
 FINAL_PUBLISHED_TAGS="$CANDIDATE_DIR/final-published-release-tags.txt"
 FINAL_HISTORY_DIR="$CANDIDATE_DIR/final-published-build-history"
 rm -rf "$FINAL_HISTORY_DIR"
