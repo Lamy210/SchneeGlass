@@ -7,19 +7,22 @@ public final class DesktopGlassWindowPreferences {
   private let keepOnTopKey: String
   private let opacityKey: String
   private let compactFileTilesKey: String
+  private let fileSortKey: String
 
   public init(
     defaults: UserDefaults = .standard,
     lockedPositionKey: String = "desktopGlass.lockedPositionIDs.v1",
     keepOnTopKey: String = "desktopGlass.keepOnTopIDs.v1",
     opacityKey: String = "desktopGlass.opacityByID.v1",
-    compactFileTilesKey: String = "desktopGlass.compactFileTileIDs.v1"
+    compactFileTilesKey: String = "desktopGlass.compactFileTileIDs.v1",
+    fileSortKey: String = "desktopGlass.fileSortByID.v1"
   ) {
     self.defaults = defaults
     self.lockedPositionKey = lockedPositionKey
     self.keepOnTopKey = keepOnTopKey
     self.opacityKey = opacityKey
     self.compactFileTilesKey = compactFileTilesKey
+    self.fileSortKey = fileSortKey
   }
 
   public func isPositionLocked(for glassID: GlassID) -> Bool {
@@ -119,6 +122,62 @@ public final class DesktopGlassWindowPreferences {
       return
     }
     persist(glassIDs, forKey: compactFileTilesKey)
+  }
+
+  public func fileSortPreference(for glassID: GlassID) -> DesktopGlassFileSortPreference {
+    storedFileSortValues()[glassID.rawValue.uuidString] ?? .nameAscending
+  }
+
+  public func setFileSortPreference(
+    _ preference: DesktopGlassFileSortPreference,
+    for glassID: GlassID
+  ) {
+    var stored = storedFileSortValues()
+    if preference == .nameAscending {
+      stored.removeValue(forKey: glassID.rawValue.uuidString)
+    } else {
+      stored[glassID.rawValue.uuidString] = preference
+    }
+    persistFileSortValues(stored)
+  }
+
+  public func removeFileSortPreference(for glassID: GlassID) {
+    var stored = storedFileSortValues()
+    guard stored.removeValue(forKey: glassID.rawValue.uuidString) != nil else {
+      return
+    }
+    persistFileSortValues(stored)
+  }
+
+  private func storedFileSortValues() -> [String: DesktopGlassFileSortPreference] {
+    guard let stored = defaults.dictionary(forKey: fileSortKey) else {
+      return [:]
+    }
+
+    var result: [String: DesktopGlassFileSortPreference] = [:]
+    for (key, value) in stored {
+      guard UUID(uuidString: key) != nil,
+        let rawValue = value as? String,
+        let preference = DesktopGlassFileSortPreference(rawValue: rawValue)
+      else {
+        continue
+      }
+      result[key] = preference
+    }
+    return result
+  }
+
+  private func persistFileSortValues(
+    _ values: [String: DesktopGlassFileSortPreference]
+  ) {
+    guard !values.isEmpty else {
+      defaults.removeObject(forKey: fileSortKey)
+      return
+    }
+    defaults.set(
+      values.mapValues(\.rawValue),
+      forKey: fileSortKey
+    )
   }
 
   private func storedOpacityValues() -> [String: Double] {

@@ -10,6 +10,7 @@ private struct DesktopGlassWindowControls: View {
   let showsOnAllSpaces: Bool
   let opacityPreset: DesktopGlassOpacityPreset
   let usesCompactFileTiles: Bool
+  let fileSortPreference: DesktopGlassFileSortPreference
   let showsReconnect: Bool
   let canReconnect: Bool
   let canRevealConnectedFolder: Bool
@@ -21,6 +22,7 @@ private struct DesktopGlassWindowControls: View {
   let onToggleSpacesBehavior: @MainActor () -> Void
   let onSetOpacity: @MainActor (DesktopGlassOpacityPreset) -> Void
   let onToggleCompactFileTiles: @MainActor () -> Void
+  let onSetFileSort: @MainActor (DesktopGlassFileSortPreference) -> Void
   let onReconnect: @MainActor () -> Void
   let onRevealConnectedFolder: @MainActor () -> Void
   let onRename: @MainActor () -> Void
@@ -115,6 +117,35 @@ private struct DesktopGlassWindowControls: View {
         .accessibilityLabel(
           usesCompactFileTiles ? "Disable Compact File Tiles" : "Enable Compact File Tiles"
         )
+
+        Menu {
+          Button {
+            onSetFileSort(.nameAscending)
+          } label: {
+            Label(
+              "Name",
+              systemImage: fileSortPreference == .nameAscending ? "checkmark" : "circle"
+            )
+          }
+          Button {
+            onSetFileSort(.modifiedNewest)
+          } label: {
+            Label(
+              "Modified",
+              systemImage: fileSortPreference == .modifiedNewest ? "checkmark" : "circle"
+            )
+          }
+          Button {
+            onSetFileSort(.sizeLargest)
+          } label: {
+            Label(
+              "Size",
+              systemImage: fileSortPreference == .sizeLargest ? "checkmark" : "circle"
+            )
+          }
+        } label: {
+          Label("Sort Displayed Files", systemImage: "arrow.up.arrow.down")
+        }
 
         Menu {
           Button("Top Left") {
@@ -496,6 +527,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       showsOnAllSpaces: entry.showOnAllSpaces,
       opacityPreset: windowPreferences.opacityPreset(for: glassID),
       usesCompactFileTiles: windowPreferences.usesCompactFileTiles(for: glassID),
+      fileSortPreference: windowPreferences.fileSortPreference(for: glassID),
       showsReconnect: showsReconnect,
       canReconnect: showsReconnect && model.canReconnectSource(glassID: glassID),
       canRevealConnectedFolder:
@@ -528,6 +560,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       },
       onToggleCompactFileTiles: { [weak self] in
         self?.toggleCompactFileTiles(for: glassID)
+      },
+      onSetFileSort: { [weak self] preference in
+        self?.setFileSortPreference(preference, for: glassID)
       },
       onReconnect: { [weak self] in
         guard let self else {
@@ -565,7 +600,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       model: model,
       glassID: glassID,
       fileGridDensity:
-        windowPreferences.usesCompactFileTiles(for: glassID) ? .compact : .comfortable
+        windowPreferences.usesCompactFileTiles(for: glassID) ? .compact : .comfortable,
+      fileSortOrder: Self.presentationSortOrder(
+        for: windowPreferences.fileSortPreference(for: glassID)
+      )
     )
   }
 
@@ -676,6 +714,22 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     configureWindowControlsAccessory(for: panel, entry: entry)
   }
 
+  private func setFileSortPreference(
+    _ preference: DesktopGlassFileSortPreference,
+    for glassID: GlassID
+  ) {
+    guard let panel = panels[glassID]?.panel else {
+      return
+    }
+
+    windowPreferences.setFileSortPreference(preference, for: glassID)
+    refreshDesktopGlassContent(for: panel)
+    guard let entry = model.glasses.first(where: { $0.id == glassID }) else {
+      return
+    }
+    configureWindowControlsAccessory(for: panel, entry: entry)
+  }
+
   private func toggleKeepOnTop(for glassID: GlassID) {
     guard let panel = panels[glassID]?.panel else {
       return
@@ -699,6 +753,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     windowPreferences.removeKeepOnTop(for: glassID)
     windowPreferences.removeOpacityPreset(for: glassID)
     windowPreferences.removeCompactFileTiles(for: glassID)
+    windowPreferences.removeFileSortPreference(for: glassID)
     record.panel.delegate = nil
     record.panel.close()
   }
@@ -765,6 +820,19 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       visibleFrames: NSScreen.screens.map(\.visibleFrame),
       preferredVisibleFrame: NSScreen.main?.visibleFrame
     )
+  }
+
+  private static func presentationSortOrder(
+    for preference: DesktopGlassFileSortPreference
+  ) -> DesktopGlassFileSortOrder {
+    switch preference {
+    case .nameAscending:
+      return .nameAscending
+    case .modifiedNewest:
+      return .modifiedNewest
+    case .sizeLargest:
+      return .sizeLargest
+    }
   }
 
   private static func showsReconnect(for entry: GlassWorkspaceEntry) -> Bool {
