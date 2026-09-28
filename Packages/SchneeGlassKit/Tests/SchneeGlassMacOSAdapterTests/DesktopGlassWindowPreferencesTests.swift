@@ -196,6 +196,21 @@ func compactFileTilesPersistAcrossStoreInstances() throws {
 }
 
 @Test
+func malformedCompactFileTileIdentifiersAreIgnored() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  defaults.set(
+    ["not-a-uuid"],
+    forKey: "desktopGlass.compactFileTileIDs.v1"
+  )
+
+  let store = DesktopGlassWindowPreferences(defaults: defaults)
+  #expect(!store.usesCompactFileTiles(for: GlassID()))
+}
+
+@Test
 func removingCompactFileTilesKeepsOtherWindowPreferences() throws {
   let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
   let defaults = try #require(UserDefaults(suiteName: suiteName))
