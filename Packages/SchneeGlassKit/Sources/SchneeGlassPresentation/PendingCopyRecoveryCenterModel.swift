@@ -28,10 +28,12 @@ public final class PendingCopyRecoveryCenterModel {
   }
 
   public func refresh() async {
-    guard PendingCopyRecoveryActivityPolicy.canStart(
-      isLoading: isLoading,
-      activeOperationID: activeOperationID
-    ) else {
+    guard
+      PendingCopyRecoveryActivityPolicy.canStart(
+        isLoading: isLoading,
+        activeOperationID: activeOperationID
+      )
+    else {
       return
     }
     guard !workspaceModel.isMutatingConfiguration else {
@@ -60,10 +62,12 @@ public final class PendingCopyRecoveryCenterModel {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async -> Bool {
-    guard PendingCopyRecoveryActivityPolicy.canStart(
-      isLoading: isLoading,
-      activeOperationID: activeOperationID
-    ) else {
+    guard
+      PendingCopyRecoveryActivityPolicy.canStart(
+        isLoading: isLoading,
+        activeOperationID: activeOperationID
+      )
+    else {
       if isLoading {
         message =
           "Wait for the current Pending Copy Recovery refresh to finish before changing recovery state."
@@ -101,10 +105,12 @@ public final class PendingCopyRecoveryCenterModel {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async -> Bool {
-    guard PendingCopyRecoveryActivityPolicy.canStart(
-      isLoading: isLoading,
-      activeOperationID: activeOperationID
-    ) else {
+    guard
+      PendingCopyRecoveryActivityPolicy.canStart(
+        isLoading: isLoading,
+        activeOperationID: activeOperationID
+      )
+    else {
       if isLoading {
         message =
           "Wait for the current Pending Copy Recovery refresh to finish before inspecting a recovery item."
@@ -141,10 +147,12 @@ public final class PendingCopyRecoveryCenterModel {
   }
 
   public func reconnectDestination(operationID: UUID) async -> Bool {
-    guard PendingCopyRecoveryActivityPolicy.canStart(
-      isLoading: isLoading,
-      activeOperationID: activeOperationID
-    ) else {
+    guard
+      PendingCopyRecoveryActivityPolicy.canStart(
+        isLoading: isLoading,
+        activeOperationID: activeOperationID
+      )
+    else {
       if isLoading {
         message =
           "Wait for the current Pending Copy Recovery refresh to finish before reconnecting a destination."
@@ -196,7 +204,8 @@ public final class PendingCopyRecoveryCenterModel {
   private func refreshAfterMutation() async {
     do {
       items = try await useCase.loadItems()
-      message = "Recovery action completed. Final user-visible files were not deleted or overwritten."
+      message =
+        "Recovery action completed. Final user-visible files were not deleted or overwritten."
     } catch let error as PendingCopyRecoveryCenterError {
       discardStaleItemsAfterPostActionReloadFailure()
       message = Self.message(for: error)
