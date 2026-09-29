@@ -257,4 +257,3 @@ func pinnedSourceCopyCancellationInterruptsCurrentFileAndPreservesRecoveryState(
   #expect(records.first?.operationID == plan.items[0].operationID)
   #expect(records.first?.state == .staging)
 }
-
