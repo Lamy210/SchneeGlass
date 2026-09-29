@@ -1,15 +1,15 @@
 public protocol PendingCopyOwnedStagingCleaning: Sendable {
-    func removeOwnedStaging(
-        record: PendingCopyRecord,
-        destinationAccess: FolderAccessHandle
-    ) async throws
+  func removeOwnedStaging(
+    record: PendingCopyRecord,
+    destinationAccess: FolderAccessHandle
+  ) async throws
 }
 
 public enum PendingCopyRecoveryExecutionError: Error, Hashable, Sendable {
-    case unsupportedAction
-    case actionNotEligible
-    case metadataMutationFailed
-    case ownedStagingCleanupFailed
+  case unsupportedAction
+  case actionNotEligible
+  case metadataMutationFailed
+  case ownedStagingCleanupFailed
 }
 
 /// Executes only the mutation-capable subset of an already modeled Recovery action.
@@ -18,61 +18,61 @@ public enum PendingCopyRecoveryExecutionError: Error, Hashable, Sendable {
 /// The concrete owned-staging cleaner must independently revalidate ownership at the filesystem
 /// boundary; the planner result alone is never treated as deletion authority.
 public actor PendingCopyRecoveryExecutionUseCase {
-    private let pendingCopyStore: any PendingCopyRecording
-    private let recoveryInspector: any PendingCopyRecoveryInspecting
-    private let ownedStagingCleaner: any PendingCopyOwnedStagingCleaning
+  private let pendingCopyStore: any PendingCopyRecording
+  private let recoveryInspector: any PendingCopyRecoveryInspecting
+  private let ownedStagingCleaner: any PendingCopyOwnedStagingCleaning
 
-    public init(
-        pendingCopyStore: any PendingCopyRecording,
-        recoveryInspector: any PendingCopyRecoveryInspecting,
-        ownedStagingCleaner: any PendingCopyOwnedStagingCleaning
-    ) {
-        self.pendingCopyStore = pendingCopyStore
-        self.recoveryInspector = recoveryInspector
-        self.ownedStagingCleaner = ownedStagingCleaner
+  public init(
+    pendingCopyStore: any PendingCopyRecording,
+    recoveryInspector: any PendingCopyRecoveryInspecting,
+    ownedStagingCleaner: any PendingCopyOwnedStagingCleaning
+  ) {
+    self.pendingCopyStore = pendingCopyStore
+    self.recoveryInspector = recoveryInspector
+    self.ownedStagingCleaner = ownedStagingCleaner
+  }
+
+  public func execute(
+    action: PendingCopyRecoveryAction,
+    record: PendingCopyRecord,
+    destinationAccess: FolderAccessHandle
+  ) async throws {
+    switch action {
+    case .discardMetadata, .removeOwnedStaging:
+      break
+    case .revealStaging, .revealFinal, .reconnectDestination:
+      throw PendingCopyRecoveryExecutionError.unsupportedAction
     }
 
-    public func execute(
-        action: PendingCopyRecoveryAction,
-        record: PendingCopyRecord,
-        destinationAccess: FolderAccessHandle
-    ) async throws {
-        switch action {
-        case .discardMetadata, .removeOwnedStaging:
-            break
-        case .revealStaging, .revealFinal, .reconnectDestination:
-            throw PendingCopyRecoveryExecutionError.unsupportedAction
-        }
+    let assessment = await recoveryInspector.assess(
+      record,
+      destinationAccess: destinationAccess
+    )
+    let plan = PendingCopyRecoveryActionPlanner.plan(for: assessment)
+    guard plan.actions.contains(action) else {
+      throw PendingCopyRecoveryExecutionError.actionNotEligible
+    }
 
-        let assessment = await recoveryInspector.assess(
-            record,
-            destinationAccess: destinationAccess
+    switch action {
+    case .discardMetadata:
+      do {
+        try await pendingCopyStore.remove(operationID: record.operationID)
+      } catch {
+        throw PendingCopyRecoveryExecutionError.metadataMutationFailed
+      }
+
+    case .removeOwnedStaging:
+      do {
+        try await ownedStagingCleaner.removeOwnedStaging(
+          record: record,
+          destinationAccess: destinationAccess
         )
-        let plan = PendingCopyRecoveryActionPlanner.plan(for: assessment)
-        guard plan.actions.contains(action) else {
-            throw PendingCopyRecoveryExecutionError.actionNotEligible
-        }
+      } catch {
+        throw PendingCopyRecoveryExecutionError.ownedStagingCleanupFailed
+      }
 
-        switch action {
-        case .discardMetadata:
-            do {
-                try await pendingCopyStore.remove(operationID: record.operationID)
-            } catch {
-                throw PendingCopyRecoveryExecutionError.metadataMutationFailed
-            }
-
-        case .removeOwnedStaging:
-            do {
-                try await ownedStagingCleaner.removeOwnedStaging(
-                    record: record,
-                    destinationAccess: destinationAccess
-                )
-            } catch {
-                throw PendingCopyRecoveryExecutionError.ownedStagingCleanupFailed
-            }
-
-        case .revealStaging, .revealFinal, .reconnectDestination:
-            throw PendingCopyRecoveryExecutionError.unsupportedAction
-        }
+    case .revealStaging, .revealFinal, .reconnectDestination:
+      throw PendingCopyRecoveryExecutionError.unsupportedAction
     }
+  }
 }
