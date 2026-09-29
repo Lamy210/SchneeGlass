@@ -184,6 +184,8 @@ public final class SchneeGlassWorkspaceModel {
       requiresConfigurationRecovery = false
       await applyRestoreResult(result)
       hasLoadedConfigurationSnapshot = true
+    } catch is CancellationError {
+      didAttemptInitialRestore = false
     } catch {
       enterConfigurationRecoveryRequiredState()
     }
