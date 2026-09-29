@@ -118,18 +118,29 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     source: FolderSource,
     glassID: GlassID
   ) async throws -> FolderAccessAcquisition {
+    try Task.checkCancellation()
+
     let resolved: ResolvedSecurityScopedResource
     do {
       resolved = try await resourceAccessor.resolveBookmark(source.bookmarkData)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
+      try Task.checkCancellation()
       throw FolderAccessError.bookmarkResolutionFailed
     }
 
-    guard await resourceAccessor.startAccessing(resolved.url) else {
+    try Task.checkCancellation()
+
+    let didStartAccessing = await resourceAccessor.startAccessing(resolved.url)
+    guard didStartAccessing else {
+      try Task.checkCancellation()
       throw FolderAccessError.accessDenied
     }
+    try await checkCancellationWhileAccessing(resolved.url)
 
     let actualRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(for: resolved.url)
+    try await checkCancellationWhileAccessing(resolved.url)
 
     // Descriptor-derived POSIX identity is the primary live-operation proof. Foundation's
     // opaque identifiers are observed only when that stronger runtime identity is unavailable.
@@ -137,9 +148,14 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     if actualRuntimeDirectoryIdentity == nil {
       do {
         actualFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+      } catch is CancellationError {
+        await resourceAccessor.stopAccessing(resolved.url)
+        throw CancellationError()
       } catch {
+        try await checkCancellationWhileAccessing(resolved.url)
         actualFingerprint = nil
       }
+      try await checkCancellationWhileAccessing(resolved.url)
     } else {
       actualFingerprint = nil
     }
@@ -147,7 +163,12 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     let actualPersistentIdentity: PersistentFolderIdentity?
     do {
       actualPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
+    } catch is CancellationError {
+      await resourceAccessor.stopAccessing(resolved.url)
+      throw CancellationError()
     } catch {
+      try await checkCancellationWhileAccessing(resolved.url)
+
       // Restart-safe metadata is supplemental when no persisted proof exists. If a previous
       // configuration did persist such proof, inability to re-observe it must fail closed.
       if source.persistentIdentity != nil {
@@ -156,6 +177,7 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
       }
       actualPersistentIdentity = nil
     }
+    try await checkCancellationWhileAccessing(resolved.url)
 
     // A security-scoped bookmark is the primary persistent resource reference. When a source
     // also carries restart-safe metadata, every recorded dimension must still be observable and
@@ -181,21 +203,27 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
       let refreshedBookmark: Data
       do {
         refreshedBookmark = try await resourceAccessor.createBookmark(for: resolved.url)
+      } catch is CancellationError {
+        await resourceAccessor.stopAccessing(resolved.url)
+        throw CancellationError()
       } catch {
+        try await checkCancellationWhileAccessing(resolved.url)
         await resourceAccessor.stopAccessing(resolved.url)
         throw FolderAccessError.bookmarkResolutionFailed
       }
+      try await checkCancellationWhileAccessing(resolved.url)
 
       // Prefer descriptor-derived POSIX identity around the bookmark refresh boundary. It
       // observes the opened directory object directly instead of depending on Foundation's
       // opaque identifiers. The Foundation fingerprint remains a compatibility fallback when
       // descriptor identity is unavailable on the current filesystem/location.
       if let actualRuntimeDirectoryIdentity {
-        guard
-          let refreshedRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(
-            for: resolved.url
-          )
-        else {
+        let refreshedRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(
+          for: resolved.url
+        )
+        try await checkCancellationWhileAccessing(resolved.url)
+
+        guard let refreshedRuntimeDirectoryIdentity else {
           await resourceAccessor.stopAccessing(resolved.url)
           throw FolderAccessError.bookmarkResolutionFailed
         }
@@ -207,10 +235,15 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         let refreshedFingerprint: ResourceFingerprint?
         do {
           refreshedFingerprint = try await resourceAccessor.fingerprint(for: resolved.url)
+        } catch is CancellationError {
+          await resourceAccessor.stopAccessing(resolved.url)
+          throw CancellationError()
         } catch {
+          try await checkCancellationWhileAccessing(resolved.url)
           await resourceAccessor.stopAccessing(resolved.url)
           throw FolderAccessError.bookmarkResolutionFailed
         }
+        try await checkCancellationWhileAccessing(resolved.url)
 
         if Self.runtimeIdentityVerificationIsUnavailable(
           expected: actualFingerprint,
@@ -234,13 +267,18 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(
           for: resolved.url
         )
+      } catch is CancellationError {
+        await resourceAccessor.stopAccessing(resolved.url)
+        throw CancellationError()
       } catch {
+        try await checkCancellationWhileAccessing(resolved.url)
         if actualPersistentIdentity != nil {
           await resourceAccessor.stopAccessing(resolved.url)
           throw FolderAccessError.bookmarkResolutionFailed
         }
         refreshedPersistentIdentity = nil
       }
+      try await checkCancellationWhileAccessing(resolved.url)
 
       if Self.persistentIdentityVerificationIsUnavailable(
         expected: actualPersistentIdentity,
@@ -279,6 +317,8 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
       refreshedSource = nil
     }
 
+    try await checkCancellationWhileAccessing(resolved.url)
+
     let handle = FolderAccessHandle(
       glassID: glassID,
       url: resolved.url,
@@ -310,6 +350,15 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     activeAccesses.removeAll(keepingCapacity: false)
     for access in active {
       await resourceAccessor.stopAccessing(access.url)
+    }
+  }
+
+  private func checkCancellationWhileAccessing(_ url: URL) async throws {
+    do {
+      try Task.checkCancellation()
+    } catch {
+      await resourceAccessor.stopAccessing(url)
+      throw error
     }
   }
 
