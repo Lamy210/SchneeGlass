@@ -5,6 +5,10 @@ import SchneeGlassPOSIXSupport
 public actor JSONPendingCopyStore: PendingCopyRecording {
   public static let filename = "pending-copies.json"
 
+  private enum ValidationError: Error {
+    case duplicateOperationID
+  }
+
   private let stateStore: PhysicalStateStore
   private let directoryComponents: [String]
   private let encoder: JSONEncoder
@@ -66,10 +70,14 @@ public actor JSONPendingCopyStore: PendingCopyRecording {
     else {
       return []
     }
-    return try decoder.decode([PendingCopyRecord].self, from: data)
+    let records = try decoder.decode([PendingCopyRecord].self, from: data)
+    try Self.validateUniqueOperationIDs(records)
+    return records
   }
 
   private func persist(_ records: [PendingCopyRecord]) throws {
+    try Self.validateUniqueOperationIDs(records)
+
     let sorted = records.sorted {
       if $0.createdAt == $1.createdAt {
         return $0.operationID.uuidString < $1.operationID.uuidString
@@ -82,5 +90,11 @@ public actor JSONPendingCopyStore: PendingCopyRecording {
       in: directoryComponents,
       named: Self.filename
     )
+  }
+
+  private static func validateUniqueOperationIDs(_ records: [PendingCopyRecord]) throws {
+    guard Set(records.map(\.operationID)).count == records.count else {
+      throw ValidationError.duplicateOperationID
+    }
   }
 }
