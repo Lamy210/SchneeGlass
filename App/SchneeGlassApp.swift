@@ -324,7 +324,7 @@ private struct SchneeGlassSettingsView: View {
                                     await restore(backup)
                                 }
                             }
-                            .disabled(model.isMutatingConfiguration || isRestoringBackup)
+                            .disabled(!model.canRestoreConfigurationBackup || isRestoringBackup)
                         }
                     }
                 }
@@ -517,8 +517,12 @@ private struct SchneeGlassSettingsView: View {
         guard !isRestoringBackup else {
             return
         }
-        guard !model.isMutatingConfiguration else {
-            recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+        guard model.canRestoreConfigurationBackup else {
+            if model.isMutatingConfiguration {
+                recoveryMessage = "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+            } else {
+                recoveryMessage = "Wait for SchneeGlass to finish loading its saved configuration before restoring a backup."
+            }
             return
         }
 
@@ -538,6 +542,10 @@ private struct SchneeGlassSettingsView: View {
         case .restoredNeedsRestart:
             recoveryMessage = "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
             await refreshBackups()
+
+        case .initialLoadPending:
+            panelCoordinator.showAll()
+            recoveryMessage = "Wait for SchneeGlass to finish loading its saved configuration before restoring a backup."
 
         case .busy:
             panelCoordinator.showAll()
