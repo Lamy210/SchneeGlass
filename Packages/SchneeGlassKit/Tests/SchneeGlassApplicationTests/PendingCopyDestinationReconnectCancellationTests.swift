@@ -246,6 +246,7 @@ private func destinationReconnectCancellationFixture(
 ) throws -> (
   useCase: PendingCopyDestinationReconnectUseCase,
   record: PendingCopyRecord,
+  recordStore: DestinationReconnectCancellationRecordStore,
   store: DestinationReconnectCancellationConfigurationStore,
   sourceCreator: DestinationReconnectCancellationSourceCreator,
   access: DestinationReconnectCancellationAccess,
@@ -286,7 +287,28 @@ private func destinationReconnectCancellationFixture(
     accessController: access,
     activityGate: gate
   )
-  return (useCase, record, store, sourceCreator, access, gate)
+  return (useCase, record, recordStore, store, sourceCreator, access, gate)
+}
+
+@Test
+@MainActor
+func preCancelledReconnectStopsBeforeRecoveryStateRead() async throws {
+  let fixture = try destinationReconnectCancellationFixture()
+
+  let task = Task {
+    withUnsafeCurrentTask { current in
+      current?.cancel()
+    }
+    return try await fixture.useCase.execute(operationID: fixture.record.operationID)
+  }
+
+  let result = try await task.value
+
+  #expect(!result)
+  #expect(await fixture.recordStore.calls() == 0)
+  #expect(await fixture.store.counts().loads == 0)
+  #expect(await fixture.sourceCreator.count() == 0)
+  #expect(!(await fixture.gate.hasActiveRecoveryMutation()))
 }
 
 @Test
