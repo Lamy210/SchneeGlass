@@ -154,14 +154,14 @@ public actor GlassRuntimeSession {
       throw GlassCopyExecutionError.copyInProgress
     }
     guard plan.destination.glassID == access.glassID,
-       plan.destination.url.standardizedFileURL == access.url.standardizedFileURL
+      plan.destination.url.standardizedFileURL == access.url.standardizedFileURL
     else {
       await abandonPendingPlanIfOwned(plan)
       throw GlassCopyExecutionError.destinationMismatch
     }
 
     if pendingCopyCancellationBatchIDs.contains(plan.batchID),
-     pendingAuthoritativePlans[plan.batchID] == plan
+      pendingAuthoritativePlans[plan.batchID] == plan
     {
       pendingCopyCancellationBatchIDs.remove(plan.batchID)
       await abandonPendingPlanIfOwned(plan)
@@ -192,7 +192,7 @@ public actor GlassRuntimeSession {
     }
 
     guard pendingAuthoritativePlans.count == 1,
-       let batchID = pendingAuthoritativePlans.keys.first
+      let batchID = pendingAuthoritativePlans.keys.first
     else {
       return
     }
