@@ -457,8 +457,10 @@ func cancellationDuringSuccessfulRevealDoesNotTurnCommittedRevealIntoFailure() a
   let completed = try await task.value
 
   #expect(completed)
-  #expect(fixture.fileActor.revealedURLs == [
-    URL(fileURLWithPath: "/tmp/RecoveryNavigation/report.txt").standardizedFileURL
-  ])
+  #expect(
+    fixture.fileActor.revealedURLs == [
+      URL(fileURLWithPath: "/tmp/RecoveryNavigation/report.txt").standardizedFileURL
+    ]
+  )
   #expect(await fixture.access.counts().released == 1)
 }
