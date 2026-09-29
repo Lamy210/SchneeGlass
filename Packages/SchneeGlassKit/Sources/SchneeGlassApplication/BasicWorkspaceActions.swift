@@ -23,12 +23,18 @@ public actor RemoveGlassUseCase {
   }
 
   public func execute(glassID: GlassID) async throws -> Bool {
+    try Task.checkCancellation()
+
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw RemoveGlassError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard configurations.contains(where: { $0.id == glassID }) else {
       return false
@@ -37,9 +43,13 @@ public actor RemoveGlassUseCase {
     let pendingCopies: [PendingCopyRecord]
     do {
       pendingCopies = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw RemoveGlassError.pendingCopyLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard !pendingCopies.contains(where: { $0.destinationGlassID == glassID }) else {
       throw RemoveGlassError.pendingCopyRecoveryRequired
@@ -53,6 +63,8 @@ public actor RemoveGlassUseCase {
       ) else {
         throw RemoveGlassError.configurationChanged
       }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as RemoveGlassError {
       throw error
     } catch {
