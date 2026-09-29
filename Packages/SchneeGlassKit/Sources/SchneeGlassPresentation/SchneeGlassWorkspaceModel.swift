@@ -101,7 +101,7 @@ public final class SchneeGlassWorkspaceModel {
   public private(set) var userMessage: String?
 
   public var canMutateConfiguration: Bool {
-    hasAuthoritativeConfigurationSnapshot
+    !isShuttingDown && hasAuthoritativeConfigurationSnapshot
   }
 
   public var canAddGlass: Bool {
@@ -136,6 +136,8 @@ public final class SchneeGlassWorkspaceModel {
   private var dropPlanningTracker = WorkspaceDropPlanningTracker()
   private var didAttemptInitialRestore = false
   private var hasLoadedConfigurationSnapshot = false
+  private let initialRestoreTaskCoordinator = WorkspaceInitialRestoreTaskCoordinator()
+  private var isShuttingDown = false
 
   public init(
     createGlassUseCase: CreateGlassUseCase,
@@ -166,7 +168,10 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func restoreIfNeeded() async {
-    guard !didAttemptInitialRestore, !isMutatingConfiguration else {
+    guard !isShuttingDown,
+      !didAttemptInitialRestore,
+      !isMutatingConfiguration
+    else {
       return
     }
 
@@ -179,15 +184,21 @@ public final class SchneeGlassWorkspaceModel {
       isMutatingConfiguration = false
     }
 
-    do {
-      let result = try await restoreApplicationUseCase.execute()
-      requiresConfigurationRecovery = false
-      await applyRestoreResult(result)
-      hasLoadedConfigurationSnapshot = true
-    } catch is CancellationError {
-      didAttemptInitialRestore = false
-    } catch {
-      enterConfigurationRecoveryRequiredState()
+    await initialRestoreTaskCoordinator.run { [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        let result = try await restoreApplicationUseCase.execute()
+        requiresConfigurationRecovery = false
+        await applyRestoreResult(result)
+        hasLoadedConfigurationSnapshot = true
+      } catch is CancellationError {
+        didAttemptInitialRestore = false
+      } catch {
+        enterConfigurationRecoveryRequiredState()
+      }
     }
   }
 
@@ -202,6 +213,9 @@ public final class SchneeGlassWorkspaceModel {
   public func restoreConfigurationBackup(
     id: String
   ) async -> ConfigurationBackupRestoreResult {
+    guard !isShuttingDown else {
+      return .busy
+    }
     guard
       WorkspaceConfigurationBackupRestorePolicy.allowsRestore(
         hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
@@ -373,6 +387,9 @@ public final class SchneeGlassWorkspaceModel {
   public func resetGlassPositions(
     placements: [GlassID: GlassPlacement]
   ) async -> GlassPositionResetResult {
+    guard !isShuttingDown else {
+      return .busy
+    }
     guard !glasses.isEmpty else {
       return .noGlasses
     }
@@ -758,7 +775,26 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
   }
 
+  public func prepareForTermination() {
+    isShuttingDown = true
+  }
+
   public func shutdown() async {
+    prepareForTermination()
+
+    // An initial restore can own security-scoped access and event subscriptions before a runtime
+    // session has been activated. Cancel and join it so AppKit cannot terminate the process before
+    // RestoreApplicationUseCase finishes its cancellation cleanup.
+    await initialRestoreTaskCoordinator.cancelAndWait()
+
+    // Application termination is different from configuration recovery: an active user copy must
+    // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
+    // finish naturally.
+    let activeSessions = Array(sessions.values)
+    for session in activeSessions {
+      await session.cancelCopy()
+    }
+
     await deactivateAllSessions()
   }
 
@@ -778,6 +814,8 @@ public final class SchneeGlassWorkspaceModel {
     for seed in result.seeds {
       do {
         try await activate(seed)
+      } catch is CancellationError {
+        continue
       } catch {
         upsert(
           GlassWorkspaceEntry(
@@ -819,8 +857,17 @@ public final class SchneeGlassWorkspaceModel {
   private func activate(_ seed: CreatedGlassRuntimeSeed) async throws {
     let session = runtimeSessionFactory.makeSession(from: seed)
 
+    guard !isShuttingDown else {
+      await session.stop()
+      throw CancellationError()
+    }
+
     do {
       let states = try await session.start()
+      guard !isShuttingDown else {
+        throw CancellationError()
+      }
+
       let glassID = seed.configuration.id
 
       sessions[glassID] = session
