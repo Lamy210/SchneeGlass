@@ -73,9 +73,13 @@ public actor RestoreApplicationUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw RestoreApplicationError.configurationLoadFailed
     }
+
+    try await checkCancellation(cleaning: [])
 
     guard !configurations.isEmpty else {
       return ApplicationRestoreResult(
@@ -91,12 +95,17 @@ public actor RestoreApplicationUseCase {
     var refreshedConfigurationExists = false
 
     for (index, configuration) in configurations.enumerated() {
+      try await checkCancellation(cleaning: seeds)
+
       let acquisition: FolderAccessAcquisition
       do {
         acquisition = try await accessController.acquire(
           source: configuration.source,
           glassID: configuration.id
         )
+      } catch is CancellationError {
+        await cleanup(seeds)
+        throw CancellationError()
       } catch let error as FolderAccessError {
         failures.append(
           Self.failure(for: configuration, reason: .folderAccess(error))
@@ -112,11 +121,20 @@ public actor RestoreApplicationUseCase {
         continue
       }
 
+      try await checkCancellation(
+        cleaning: seeds,
+        currentAccess: acquisition.handle
+      )
+
       let subscription: FileEventSubscription
       do {
         subscription = try await eventStreaming.subscribe(
           for: acquisition.handle
         )
+      } catch is CancellationError {
+        await accessController.release(handleID: acquisition.handle.id)
+        await cleanup(seeds)
+        throw CancellationError()
       } catch {
         await accessController.release(handleID: acquisition.handle.id)
         failures.append(
@@ -125,12 +143,23 @@ public actor RestoreApplicationUseCase {
         continue
       }
 
+      try await checkCancellation(
+        cleaning: seeds,
+        currentAccess: acquisition.handle,
+        currentSubscription: subscription
+      )
+
       let snapshot: FolderSnapshot
       do {
         snapshot = try await snapshotReader.snapshot(
           for: acquisition.handle,
           generation: 1
         )
+      } catch is CancellationError {
+        await eventStreaming.stop(subscriptionID: subscription.id)
+        await accessController.release(handleID: acquisition.handle.id)
+        await cleanup(seeds)
+        throw CancellationError()
       } catch {
         await eventStreaming.stop(subscriptionID: subscription.id)
         await accessController.release(handleID: acquisition.handle.id)
@@ -139,6 +168,12 @@ public actor RestoreApplicationUseCase {
         )
         continue
       }
+
+      try await checkCancellation(
+        cleaning: seeds,
+        currentAccess: acquisition.handle,
+        currentSubscription: subscription
+      )
 
       var effectiveConfiguration = configuration
       if let refreshedSource = acquisition.refreshedSource {
@@ -176,6 +211,8 @@ public actor RestoreApplicationUseCase {
       )
     }
 
+    try await checkCancellation(cleaning: seeds)
+
     var refreshedConfigurationSavePending = false
     if refreshedConfigurationExists {
       do {
@@ -184,16 +221,47 @@ public actor RestoreApplicationUseCase {
           ifCurrentMatches: configurations
         )
         refreshedConfigurationSavePending = !didSave
+      } catch is CancellationError {
+        await cleanup(seeds)
+        throw CancellationError()
       } catch {
         refreshedConfigurationSavePending = true
       }
     }
+
+    try await checkCancellation(cleaning: seeds)
 
     return ApplicationRestoreResult(
       seeds: seeds,
       failures: failures,
       refreshedConfigurationSavePending: refreshedConfigurationSavePending
     )
+  }
+
+  private func checkCancellation(
+    cleaning seeds: [CreatedGlassRuntimeSeed],
+    currentAccess: FolderAccessHandle? = nil,
+    currentSubscription: FileEventSubscription? = nil
+  ) async throws {
+    do {
+      try Task.checkCancellation()
+    } catch {
+      if let currentSubscription {
+        await eventStreaming.stop(subscriptionID: currentSubscription.id)
+      }
+      if let currentAccess {
+        await accessController.release(handleID: currentAccess.id)
+      }
+      await cleanup(seeds)
+      throw error
+    }
+  }
+
+  private func cleanup(_ seeds: [CreatedGlassRuntimeSeed]) async {
+    for seed in seeds.reversed() {
+      await eventStreaming.stop(subscriptionID: seed.eventSubscription.id)
+      await accessController.release(handleID: seed.access.id)
+    }
   }
 
   private static func failure(
