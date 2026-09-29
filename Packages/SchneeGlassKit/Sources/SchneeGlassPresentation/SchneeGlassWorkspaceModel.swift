@@ -203,6 +203,9 @@ public final class SchneeGlassWorkspaceModel {
   public func restoreConfigurationBackup(
     id: String
   ) async -> ConfigurationBackupRestoreResult {
+    guard !isShuttingDown else {
+      return .busy
+    }
     guard
       WorkspaceConfigurationBackupRestorePolicy.allowsRestore(
         hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
@@ -374,6 +377,9 @@ public final class SchneeGlassWorkspaceModel {
   public func resetGlassPositions(
     placements: [GlassID: GlassPlacement]
   ) async -> GlassPositionResetResult {
+    guard !isShuttingDown else {
+      return .busy
+    }
     guard !glasses.isEmpty else {
       return .noGlasses
     }
