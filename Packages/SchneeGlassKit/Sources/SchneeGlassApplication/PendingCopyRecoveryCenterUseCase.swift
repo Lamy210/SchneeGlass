@@ -64,34 +64,47 @@ public actor PendingCopyRecoveryCenterUseCase {
   }
 
   public func loadItems() async throws -> [PendingCopyRecoveryCenterItem] {
+    try Task.checkCancellation()
+
     if await activityGate.hasActiveCopies() {
       throw PendingCopyRecoveryCenterError.copyInProgress
     }
+    try Task.checkCancellation()
+
     if await activityGate.hasActiveRecoveryMutation() {
       throw PendingCopyRecoveryCenterError.recoveryInProgress
     }
+    try Task.checkCancellation()
 
     let records: [PendingCopyRecord]
     do {
       records = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryCenterError.recordsLoadFailed
     }
+    try Task.checkCancellation()
 
     guard !records.isEmpty else { return [] }
 
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryCenterError.configurationLoadFailed
     }
+    try Task.checkCancellation()
 
     let byGlassID = Dictionary(uniqueKeysWithValues: configurations.map { ($0.id, $0) })
     var items: [PendingCopyRecoveryCenterItem] = []
     items.reserveCapacity(records.count)
 
     for record in records.sorted(by: Self.recoveryRecordOrder) {
+      try Task.checkCancellation()
+
       guard let configuration = byGlassID[record.destinationGlassID] else {
         items.append(
           PendingCopyRecoveryCenterItem(
@@ -110,6 +123,8 @@ public actor PendingCopyRecoveryCenterUseCase {
           source: configuration.source,
           glassID: configuration.id
         )
+      } catch is CancellationError {
+        throw CancellationError()
       } catch {
         items.append(
           PendingCopyRecoveryCenterItem(
@@ -122,11 +137,19 @@ public actor PendingCopyRecoveryCenterUseCase {
         continue
       }
 
+      do {
+        try Task.checkCancellation()
+      } catch {
+        await accessController.release(handleID: acquisition.handle.id)
+        throw error
+      }
+
       let assessment = await recoveryInspector.assess(
         record,
         destinationAccess: acquisition.handle
       )
       await accessController.release(handleID: acquisition.handle.id)
+      try Task.checkCancellation()
 
       items.append(
         PendingCopyRecoveryCenterItem(
@@ -145,6 +168,8 @@ public actor PendingCopyRecoveryCenterUseCase {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async throws {
+    try Task.checkCancellation()
+
     switch await activityGate.beginRecoveryMutation() {
     case .granted:
       break
@@ -155,6 +180,7 @@ public actor PendingCopyRecoveryCenterUseCase {
     }
 
     do {
+      try Task.checkCancellation()
       try await executeMutationWithLease(action: action, operationID: operationID)
       await activityGate.endRecoveryMutation()
     } catch {
@@ -170,9 +196,13 @@ public actor PendingCopyRecoveryCenterUseCase {
     let records: [PendingCopyRecord]
     do {
       records = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryCenterError.recordsLoadFailed
     }
+    try Task.checkCancellation()
+
     guard let record = records.first(where: { $0.operationID == operationID }) else {
       throw PendingCopyRecoveryCenterError.recordMissing
     }
@@ -180,9 +210,13 @@ public actor PendingCopyRecoveryCenterUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryCenterError.configurationLoadFailed
     }
+    try Task.checkCancellation()
+
     guard
       let configuration = configurations.first(where: { $0.id == record.destinationGlassID })
     else {
@@ -195,8 +229,17 @@ public actor PendingCopyRecoveryCenterUseCase {
         source: configuration.source,
         glassID: configuration.id
       )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryCenterError.destinationUnavailable
+    }
+
+    do {
+      try Task.checkCancellation()
+    } catch {
+      await accessController.release(handleID: acquisition.handle.id)
+      throw error
     }
 
     do {
@@ -206,6 +249,9 @@ public actor PendingCopyRecoveryCenterUseCase {
         destinationAccess: acquisition.handle
       )
       await accessController.release(handleID: acquisition.handle.id)
+    } catch is CancellationError {
+      await accessController.release(handleID: acquisition.handle.id)
+      throw CancellationError()
     } catch {
       await accessController.release(handleID: acquisition.handle.id)
       throw PendingCopyRecoveryCenterError.mutationFailed
