@@ -176,10 +176,10 @@ actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
     let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: url)
 
     guard attributes[.type] as? FileAttributeType == .typeRegular,
-       RegularSourceSemanticClassifier.isPlainFile(
-         isAlias: semanticMetadata.isAlias,
-         isPackage: semanticMetadata.isPackage
-       )
+      RegularSourceSemanticClassifier.isPlainFile(
+        isAlias: semanticMetadata.isAlias,
+        isPackage: semanticMetadata.isPackage
+      )
     else {
       throw CopyFileSystemError.unsupportedItem
     }
@@ -340,10 +340,11 @@ actor SafeFileCopyEngine: FileCopying {
 
   private func preflight(_ request: AuthorizedCopyBatchRequest) async -> PreflightResult {
     guard request.destinationAccess.glassID == request.plan.destination.glassID,
-       request.destinationAccess.url.standardizedFileURL == request.plan.destination.url.standardizedFileURL,
-       request.plan.destination.capabilities.locationKind != .network,
-       request.plan.destination.capabilities.isWritable,
-       await fileSystem.isWritableDirectory(at: request.destinationAccess.url)
+      request.destinationAccess.url.standardizedFileURL
+        == request.plan.destination.url.standardizedFileURL,
+      request.plan.destination.capabilities.locationKind != .network,
+      request.plan.destination.capabilities.isWritable,
+      await fileSystem.isWritableDirectory(at: request.destinationAccess.url)
     else {
       return .failed(
         index: 0,
@@ -382,9 +383,9 @@ actor SafeFileCopyEngine: FileCopying {
         .standardizedFileURL
 
       guard !item.destinationFilename.isEmpty,
-         (item.destinationFilename as NSString).lastPathComponent == item.destinationFilename,
-         finalURL.deletingLastPathComponent() == destinationDirectory,
-         stagingURL.deletingLastPathComponent() == destinationDirectory
+        (item.destinationFilename as NSString).lastPathComponent == item.destinationFilename,
+        finalURL.deletingLastPathComponent() == destinationDirectory,
+        stagingURL.deletingLastPathComponent() == destinationDirectory
       else {
         return .failed(
           index: index,
@@ -481,7 +482,7 @@ actor SafeFileCopyEngine: FileCopying {
       try await recoveryStore.upsert(verifiedRecord)
 
       guard stagedSize == item.sourceSize,
-         let stagingResourceIdentifier
+        let stagingResourceIdentifier
       else {
         throw CopyFileSystemError.verificationFailed
       }
