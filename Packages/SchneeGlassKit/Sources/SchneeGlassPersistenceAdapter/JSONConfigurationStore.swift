@@ -231,6 +231,8 @@ public actor JSONConfigurationStore: ConditionalConfigurationPersisting,
   }
 
   private func validatedEncodedData(_ configurations: [GlassConfiguration]) throws -> Data {
+    try Self.validateUniqueGlassIDs(configurations)
+
     let envelope = Envelope(
       schemaVersion: Self.schemaVersion,
       glasses: configurations
@@ -251,7 +253,15 @@ public actor JSONConfigurationStore: ConditionalConfigurationPersisting,
     guard envelope.schemaVersion == Self.schemaVersion else {
       throw DecodingFailure.unsupportedSchema(envelope.schemaVersion)
     }
+
+    try Self.validateUniqueGlassIDs(envelope.glasses)
     return envelope
+  }
+
+  private static func validateUniqueGlassIDs(_ configurations: [GlassConfiguration]) throws {
+    guard Set(configurations.map(\.id)).count == configurations.count else {
+      throw DecodingFailure.corrupt
+    }
   }
 
   private func ensureStorageDirectories() throws {
