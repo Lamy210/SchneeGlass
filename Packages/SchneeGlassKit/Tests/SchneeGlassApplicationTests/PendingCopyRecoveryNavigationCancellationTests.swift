@@ -464,3 +464,30 @@ func cancellationDuringSuccessfulRevealDoesNotTurnCommittedRevealIntoFailure() a
   )
   #expect(await fixture.access.counts().released == 1)
 }
+
+@Test
+@MainActor
+func mainActorRevealBoundaryRejectsCancelledTaskBeforeFinderSideEffect() async throws {
+  let fileActor = RecoveryNavigationCancellationFileActor()
+  let url = URL(fileURLWithPath: "/tmp/RecoveryNavigation/report.txt")
+
+  let task = Task { @MainActor in
+    withUnsafeCurrentTask { current in
+      current?.cancel()
+    }
+    try revealRecoveryItemUnlessCancelled(
+      fileActor: fileActor,
+      url: url
+    )
+  }
+
+  do {
+    try await task.value
+    Issue.record("Expected cancellation")
+  } catch is CancellationError {
+  } catch {
+    Issue.record("Unexpected error: \(error)")
+  }
+
+  #expect(fileActor.revealedURLs.isEmpty)
+}
