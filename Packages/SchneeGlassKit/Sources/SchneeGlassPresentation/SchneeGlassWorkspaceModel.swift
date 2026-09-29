@@ -647,6 +647,8 @@ public final class SchneeGlassWorkspaceModel {
       }
 
       glasses[index].showOnAllSpaces = showOnAllSpaces
+    } catch is CancellationError {
+      return
     } catch let error as UpdateGlassSpacesBehaviorError {
       switch error {
       case .configurationLoadFailed:
