@@ -76,12 +76,12 @@ public enum DropPlanner {
         return .reject(.unsupportedItem)
       }
 
-      if context.collidingSourceURLs.contains(sourceURL) {
-        return .reject(.collision)
-      }
-
-      if sourceURL.deletingLastPathComponent().standardizedFileURL == standardizedDestination {
+      let isSameDirectory =
+        sourceURL.deletingLastPathComponent().standardizedFileURL == standardizedDestination
+      if isSameDirectory {
         sameDirectoryCount += 1
+      } else if context.collidingSourceURLs.contains(sourceURL) {
+        return .reject(.collision)
       }
 
       let filename = sourceURL.lastPathComponent
