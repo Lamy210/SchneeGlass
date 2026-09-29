@@ -3,611 +3,611 @@ import FileDomain
 import SchneeGlassApplication
 
 struct CopySourceMetadata: Hashable, Sendable {
-    let size: Int64
+  let size: Int64
 }
 
 enum CopyFileSystemError: Error, Hashable, Sendable {
-    case sourceUnavailable
-    case unsupportedItem
-    case destinationUnavailable
-    case permissionDenied
-    case insufficientSpace
-    case collision
-    case verificationFailed
-    case unexpected
+  case sourceUnavailable
+  case unsupportedItem
+  case destinationUnavailable
+  case permissionDenied
+  case insufficientSpace
+  case collision
+  case verificationFailed
+  case unexpected
 }
 
 protocol CopyFileSystemAccessing: Sendable {
-    func sourceMetadata(at url: URL) async throws -> CopySourceMetadata
-    func isWritableDirectory(at url: URL) async -> Bool
-    func supportsCaseSensitiveNames(at url: URL) async -> Bool?
-    func itemExists(at url: URL) async -> Bool
-    func itemExists(at url: URL, operationID: UUID) async -> Bool
-    func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
-    func regularFileSize(at url: URL) async throws -> Int64
-    func resourceIdentifier(at url: URL) async -> String?
+  func sourceMetadata(at url: URL) async throws -> CopySourceMetadata
+  func isWritableDirectory(at url: URL) async -> Bool
+  func supportsCaseSensitiveNames(at url: URL) async -> Bool?
+  func itemExists(at url: URL) async -> Bool
+  func itemExists(at url: URL, operationID: UUID) async -> Bool
+  func copyItem(at sourceURL: URL, to stagingURL: URL) async throws
+  func regularFileSize(at url: URL) async throws -> Int64
+  func resourceIdentifier(at url: URL) async -> String?
 }
 
 actor FoundationCopyFileSystemAccessor: CopyFileSystemAccessing {
-    private let fileManager: FileManager
-    private let sourceSemanticMetadataReader: any SourceSemanticMetadataReading
+  private let fileManager: FileManager
+  private let sourceSemanticMetadataReader: any SourceSemanticMetadataReading
 
-    init(
-        fileManager: FileManager = .default,
-        sourceSemanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
-    ) {
-        self.fileManager = fileManager
-        self.sourceSemanticMetadataReader = sourceSemanticMetadataReader
+  init(
+    fileManager: FileManager = .default,
+    sourceSemanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
+  ) {
+    self.fileManager = fileManager
+    self.sourceSemanticMetadataReader = sourceSemanticMetadataReader
+  }
+
+  func sourceMetadata(at url: URL) throws -> CopySourceMetadata {
+    let sourceURL = url.standardizedFileURL
+    let didStart = sourceURL.startAccessingSecurityScopedResource()
+    defer {
+      if didStart {
+        sourceURL.stopAccessingSecurityScopedResource()
+      }
     }
 
-    func sourceMetadata(at url: URL) throws -> CopySourceMetadata {
-        let sourceURL = url.standardizedFileURL
-        let didStart = sourceURL.startAccessingSecurityScopedResource()
-        defer {
-            if didStart {
-                sourceURL.stopAccessingSecurityScopedResource()
-            }
-        }
+    do {
+      return try Self.readRegularSourceMetadata(
+        at: sourceURL,
+        fileManager: fileManager,
+        sourceSemanticMetadataReader: sourceSemanticMetadataReader
+      )
+    } catch let error as CopyFileSystemError {
+      throw error
+    } catch {
+      throw Self.map(error)
+    }
+  }
 
-        do {
-            return try Self.readRegularSourceMetadata(
-                at: sourceURL,
-                fileManager: fileManager,
-                sourceSemanticMetadataReader: sourceSemanticMetadataReader
-            )
-        } catch let error as CopyFileSystemError {
-            throw error
-        } catch {
-            throw Self.map(error)
-        }
+  func isWritableDirectory(at url: URL) -> Bool {
+    var isDirectory: ObjCBool = false
+    let path = url.standardizedFileURL.path
+    guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+      return false
+    }
+    return fileManager.isWritableFile(atPath: path)
+  }
+
+  func supportsCaseSensitiveNames(at url: URL) -> Bool? {
+    do {
+      let values = try url.standardizedFileURL.resourceValues(
+        forKeys: [.volumeSupportsCaseSensitiveNamesKey]
+      )
+      return values.volumeSupportsCaseSensitiveNames
+    } catch {
+      return nil
+    }
+  }
+
+  func itemExists(at url: URL) -> Bool {
+    fileManager.fileExists(atPath: url.standardizedFileURL.path)
+  }
+
+  func copyItem(at sourceURL: URL, to stagingURL: URL) throws {
+    let source = sourceURL.standardizedFileURL
+    let staging = stagingURL.standardizedFileURL
+    let destinationDirectory = staging.deletingLastPathComponent()
+    let didStart = source.startAccessingSecurityScopedResource()
+    defer {
+      if didStart {
+        source.stopAccessingSecurityScopedResource()
+      }
     }
 
-    func isWritableDirectory(at url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        let path = url.standardizedFileURL.path
-        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return false
-        }
-        return fileManager.isWritableFile(atPath: path)
+    guard !fileManager.fileExists(atPath: staging.path) else {
+      throw CopyFileSystemError.collision
     }
 
-    func supportsCaseSensitiveNames(at url: URL) -> Bool? {
-        do {
-            let values = try url.standardizedFileURL.resourceValues(
-                forKeys: [.volumeSupportsCaseSensitiveNamesKey]
-            )
-            return values.volumeSupportsCaseSensitiveNames
-        } catch {
-            return nil
-        }
+    let coordinator = NSFileCoordinator(filePresenter: nil)
+    var coordinationError: NSError?
+    var operationError: Error?
+    let fileManager = self.fileManager
+    let sourceSemanticMetadataReader = self.sourceSemanticMetadataReader
+
+    coordinator.coordinate(
+      readingItemAt: source,
+      options: [],
+      writingItemAt: destinationDirectory,
+      options: [],
+      error: &coordinationError
+    ) { coordinatedSource, coordinatedDirectory in
+      let coordinatedStaging = coordinatedDirectory
+        .appendingPathComponent(staging.lastPathComponent, isDirectory: false)
+      do {
+        _ = try Self.readRegularSourceMetadata(
+          at: coordinatedSource,
+          fileManager: fileManager,
+          sourceSemanticMetadataReader: sourceSemanticMetadataReader
+        )
+        try fileManager.copyItem(at: coordinatedSource, to: coordinatedStaging)
+      } catch {
+        operationError = error
+      }
     }
 
-    func itemExists(at url: URL) -> Bool {
-        fileManager.fileExists(atPath: url.standardizedFileURL.path)
+    if let operationError {
+      if let copyError = operationError as? CopyFileSystemError {
+        throw copyError
+      }
+      throw Self.map(operationError)
     }
-
-    func copyItem(at sourceURL: URL, to stagingURL: URL) throws {
-        let source = sourceURL.standardizedFileURL
-        let staging = stagingURL.standardizedFileURL
-        let destinationDirectory = staging.deletingLastPathComponent()
-        let didStart = source.startAccessingSecurityScopedResource()
-        defer {
-            if didStart {
-                source.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        guard !fileManager.fileExists(atPath: staging.path) else {
-            throw CopyFileSystemError.collision
-        }
-
-        let coordinator = NSFileCoordinator(filePresenter: nil)
-        var coordinationError: NSError?
-        var operationError: Error?
-        let fileManager = self.fileManager
-        let sourceSemanticMetadataReader = self.sourceSemanticMetadataReader
-
-        coordinator.coordinate(
-            readingItemAt: source,
-            options: [],
-            writingItemAt: destinationDirectory,
-            options: [],
-            error: &coordinationError
-        ) { coordinatedSource, coordinatedDirectory in
-            let coordinatedStaging = coordinatedDirectory
-                .appendingPathComponent(staging.lastPathComponent, isDirectory: false)
-            do {
-                _ = try Self.readRegularSourceMetadata(
-                    at: coordinatedSource,
-                    fileManager: fileManager,
-                    sourceSemanticMetadataReader: sourceSemanticMetadataReader
-                )
-                try fileManager.copyItem(at: coordinatedSource, to: coordinatedStaging)
-            } catch {
-                operationError = error
-            }
-        }
-
-        if let operationError {
-            if let copyError = operationError as? CopyFileSystemError {
-                throw copyError
-            }
-            throw Self.map(operationError)
-        }
-        if let coordinationError {
-            throw Self.map(coordinationError)
-        }
+    if let coordinationError {
+      throw Self.map(coordinationError)
     }
+  }
 
-    func regularFileSize(at url: URL) throws -> Int64 {
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: url.standardizedFileURL.path)
-            guard attributes[.type] as? FileAttributeType == .typeRegular else {
-                throw CopyFileSystemError.verificationFailed
-            }
-            return (attributes[.size] as? NSNumber)?.int64Value ?? 0
-        } catch let error as CopyFileSystemError {
-            throw error
-        } catch {
-            throw Self.map(error)
-        }
+  func regularFileSize(at url: URL) throws -> Int64 {
+    do {
+      let attributes = try fileManager.attributesOfItem(atPath: url.standardizedFileURL.path)
+      guard attributes[.type] as? FileAttributeType == .typeRegular else {
+        throw CopyFileSystemError.verificationFailed
+      }
+      return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    } catch let error as CopyFileSystemError {
+      throw error
+    } catch {
+      throw Self.map(error)
     }
+  }
 
-    func resourceIdentifier(at url: URL) -> String? {
-        do {
-            return try PendingCopyFileIdentity.createToken(
-                at: url.standardizedFileURL,
-                fileManager: fileManager
-            )
-        } catch {
-            return nil
-        }
+  func resourceIdentifier(at url: URL) -> String? {
+    do {
+      return try PendingCopyFileIdentity.createToken(
+        at: url.standardizedFileURL,
+        fileManager: fileManager
+      )
+    } catch {
+      return nil
     }
+  }
 
-    private static func readRegularSourceMetadata(
-        at url: URL,
-        fileManager: FileManager,
-        sourceSemanticMetadataReader: any SourceSemanticMetadataReading
-    ) throws -> CopySourceMetadata {
-        let attributes = try fileManager.attributesOfItem(atPath: url.path)
-        let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: url)
+  private static func readRegularSourceMetadata(
+    at url: URL,
+    fileManager: FileManager,
+    sourceSemanticMetadataReader: any SourceSemanticMetadataReading
+  ) throws -> CopySourceMetadata {
+    let attributes = try fileManager.attributesOfItem(atPath: url.path)
+    let semanticMetadata = try sourceSemanticMetadataReader.metadata(at: url)
 
-        guard attributes[.type] as? FileAttributeType == .typeRegular,
+    guard attributes[.type] as? FileAttributeType == .typeRegular,
               RegularSourceSemanticClassifier.isPlainFile(
                   isAlias: semanticMetadata.isAlias,
                   isPackage: semanticMetadata.isPackage
               )
-        else {
-            throw CopyFileSystemError.unsupportedItem
-        }
-
-        return CopySourceMetadata(
-            size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
-        )
+    else {
+      throw CopyFileSystemError.unsupportedItem
     }
 
-    private static func map(_ error: Error) -> CopyFileSystemError {
-        let cocoa = error as NSError
-        guard cocoa.domain == NSCocoaErrorDomain else {
-            return .unexpected
-        }
+    return CopySourceMetadata(
+      size: (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    )
+  }
 
-        switch cocoa.code {
-        case CocoaError.Code.fileReadNoPermission.rawValue,
+  private static func map(_ error: Error) -> CopyFileSystemError {
+    let cocoa = error as NSError
+    guard cocoa.domain == NSCocoaErrorDomain else {
+      return .unexpected
+    }
+
+    switch cocoa.code {
+    case CocoaError.Code.fileReadNoPermission.rawValue,
              CocoaError.Code.fileWriteNoPermission.rawValue:
-            return .permissionDenied
-        case CocoaError.Code.fileWriteOutOfSpace.rawValue:
-            return .insufficientSpace
-        case CocoaError.Code.fileWriteFileExists.rawValue:
-            return .collision
-        case CocoaError.Code.fileNoSuchFile.rawValue,
+      return .permissionDenied
+    case CocoaError.Code.fileWriteOutOfSpace.rawValue:
+      return .insufficientSpace
+    case CocoaError.Code.fileWriteFileExists.rawValue:
+      return .collision
+    case CocoaError.Code.fileNoSuchFile.rawValue,
              CocoaError.Code.fileReadNoSuchFile.rawValue:
-            return .sourceUnavailable
-        default:
-            return .unexpected
-        }
+      return .sourceUnavailable
+    default:
+      return .unexpected
     }
+  }
 }
 
 /// Internal Safe Copy orchestration. Production composition must enter through
 /// `PinnedSourceFileCopying` so source and staging identity are both descriptor-bound.
 actor SafeFileCopyEngine: FileCopying {
-    private struct PreparedItem: Sendable {
-        let plan: CopyItemPlan
-        let sourceSize: Int64
-        let stagingURL: URL
-        let finalURL: URL
-    }
+  private struct PreparedItem: Sendable {
+    let plan: CopyItemPlan
+    let sourceSize: Int64
+    let stagingURL: URL
+    let finalURL: URL
+  }
 
-    private enum PreflightResult: Sendable {
-        case ready([PreparedItem])
-        case failed(index: Int, failure: CopyItemFailure)
-    }
+  private enum PreflightResult: Sendable {
+    case ready([PreparedItem])
+    case failed(index: Int, failure: CopyItemFailure)
+  }
 
-    private let fileSystem: any CopyFileSystemAccessing
-    private let committer: any StagingCommitting
-    private let recoveryStore: any PendingCopyRecording
+  private let fileSystem: any CopyFileSystemAccessing
+  private let committer: any StagingCommitting
+  private let recoveryStore: any PendingCopyRecording
 
-    init(recoveryStore: any PendingCopyRecording) {
-        self.fileSystem = FoundationCopyFileSystemAccessor()
-        self.committer = InternalStagingCommitter()
-        self.recoveryStore = recoveryStore
-    }
+  init(recoveryStore: any PendingCopyRecording) {
+    self.fileSystem = FoundationCopyFileSystemAccessor()
+    self.committer = InternalStagingCommitter()
+    self.recoveryStore = recoveryStore
+  }
 
-    init(
-        fileSystem: any CopyFileSystemAccessing,
-        committer: any StagingCommitting,
-        recoveryStore: any PendingCopyRecording
-    ) {
-        self.fileSystem = fileSystem
-        self.committer = committer
-        self.recoveryStore = recoveryStore
-    }
+  init(
+    fileSystem: any CopyFileSystemAccessing,
+    committer: any StagingCommitting,
+    recoveryStore: any PendingCopyRecording
+  ) {
+    self.fileSystem = fileSystem
+    self.committer = committer
+    self.recoveryStore = recoveryStore
+  }
 
-    func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
-        await copy(request, onProgress: { _ in })
-    }
+  func copy(_ request: AuthorizedCopyBatchRequest) async -> CopyBatchResult {
+    await copy(request, onProgress: { _ in })
+  }
 
-    func copy(
-        _ request: AuthorizedCopyBatchRequest,
-        onProgress: @escaping CopyProgressHandler
-    ) async -> CopyBatchResult {
-        switch await preflight(request) {
-        case let .failed(index, failure):
-            return CopyBatchResult(
-                batchID: request.plan.batchID,
-                succeeded: [],
-                failed: failure,
-                notAttempted: request.plan.items.enumerated().compactMap { offset, item in
-                    offset == index ? nil : item
-                }
-            )
-
-        case let .ready(preparedItems):
-            var succeeded: [CopyItemSuccess] = []
-            succeeded.reserveCapacity(preparedItems.count)
-
-            for (index, item) in preparedItems.enumerated() {
-                if Task.isCancelled {
-                    return Self.cancelledResult(
-                        request: request,
-                        preparedItems: preparedItems,
-                        cancelledIndex: index,
-                        succeeded: succeeded
-                    )
-                }
-
-                await onProgress(
-                    CopyProgress(
-                        currentIndex: index + 1,
-                        totalCount: preparedItems.count,
-                        currentFilename: item.plan.destinationFilename
-                    )
-                )
-
-                if Task.isCancelled {
-                    return Self.cancelledResult(
-                        request: request,
-                        preparedItems: preparedItems,
-                        cancelledIndex: index,
-                        succeeded: succeeded
-                    )
-                }
-
-                let result = await execute(item, request: request)
-                switch result {
-                case let .success(success):
-                    succeeded.append(success)
-                case let .failure(failure):
-                    let notAttempted = preparedItems.dropFirst(index + 1).map(\.plan)
-                    return CopyBatchResult(
-                        batchID: request.plan.batchID,
-                        succeeded: succeeded,
-                        failed: failure,
-                        notAttempted: notAttempted
-                    )
-                }
-            }
-
-            return CopyBatchResult(
-                batchID: request.plan.batchID,
-                succeeded: succeeded,
-                failed: nil,
-                notAttempted: []
-            )
+  func copy(
+    _ request: AuthorizedCopyBatchRequest,
+    onProgress: @escaping CopyProgressHandler
+  ) async -> CopyBatchResult {
+    switch await preflight(request) {
+    case let .failed(index, failure):
+      return CopyBatchResult(
+        batchID: request.plan.batchID,
+        succeeded: [],
+        failed: failure,
+        notAttempted: request.plan.items.enumerated().compactMap { offset, item in
+          offset == index ? nil : item
         }
-    }
+      )
 
-    private static func cancelledResult(
-        request: AuthorizedCopyBatchRequest,
-        preparedItems: [PreparedItem],
-        cancelledIndex: Int,
-        succeeded: [CopyItemSuccess]
-    ) -> CopyBatchResult {
-        CopyBatchResult(
+    case let .ready(preparedItems):
+      var succeeded: [CopyItemSuccess] = []
+      succeeded.reserveCapacity(preparedItems.count)
+
+      for (index, item) in preparedItems.enumerated() {
+        if Task.isCancelled {
+          return Self.cancelledResult(
+            request: request,
+            preparedItems: preparedItems,
+            cancelledIndex: index,
+            succeeded: succeeded
+          )
+        }
+
+        await onProgress(
+          CopyProgress(
+            currentIndex: index + 1,
+            totalCount: preparedItems.count,
+            currentFilename: item.plan.destinationFilename
+          )
+        )
+
+        if Task.isCancelled {
+          return Self.cancelledResult(
+            request: request,
+            preparedItems: preparedItems,
+            cancelledIndex: index,
+            succeeded: succeeded
+          )
+        }
+
+        let result = await execute(item, request: request)
+        switch result {
+        case let .success(success):
+          succeeded.append(success)
+        case let .failure(failure):
+          let notAttempted = preparedItems.dropFirst(index + 1).map(\.plan)
+          return CopyBatchResult(
             batchID: request.plan.batchID,
             succeeded: succeeded,
-            failed: CopyItemFailure(
-                operationID: preparedItems[cancelledIndex].plan.operationID,
-                reason: .cancelled
-            ),
-            notAttempted: preparedItems.dropFirst(cancelledIndex + 1).map(\.plan)
-        )
-    }
+            failed: failure,
+            notAttempted: notAttempted
+          )
+        }
+      }
 
-    private func preflight(_ request: AuthorizedCopyBatchRequest) async -> PreflightResult {
-        guard request.destinationAccess.glassID == request.plan.destination.glassID,
+      return CopyBatchResult(
+        batchID: request.plan.batchID,
+        succeeded: succeeded,
+        failed: nil,
+        notAttempted: []
+      )
+    }
+  }
+
+  private static func cancelledResult(
+    request: AuthorizedCopyBatchRequest,
+    preparedItems: [PreparedItem],
+    cancelledIndex: Int,
+    succeeded: [CopyItemSuccess]
+  ) -> CopyBatchResult {
+    CopyBatchResult(
+      batchID: request.plan.batchID,
+      succeeded: succeeded,
+      failed: CopyItemFailure(
+        operationID: preparedItems[cancelledIndex].plan.operationID,
+        reason: .cancelled
+      ),
+      notAttempted: preparedItems.dropFirst(cancelledIndex + 1).map(\.plan)
+    )
+  }
+
+  private func preflight(_ request: AuthorizedCopyBatchRequest) async -> PreflightResult {
+    guard request.destinationAccess.glassID == request.plan.destination.glassID,
               request.destinationAccess.url.standardizedFileURL == request.plan.destination.url.standardizedFileURL,
               request.plan.destination.capabilities.locationKind != .network,
               request.plan.destination.capabilities.isWritable,
               await fileSystem.isWritableDirectory(at: request.destinationAccess.url)
-        else {
-            return .failed(
-                index: 0,
-                failure: CopyItemFailure(
-                    operationID: request.plan.items[0].operationID,
-                    reason: .destinationUnavailable
-                )
-            )
-        }
-
-        let destinationDirectory = request.destinationAccess.url.standardizedFileURL
-        let observedCaseSensitivity = await fileSystem.supportsCaseSensitiveNames(
-            at: destinationDirectory
+    else {
+      return .failed(
+        index: 0,
+        failure: CopyItemFailure(
+          operationID: request.plan.items[0].operationID,
+          reason: .destinationUnavailable
         )
-        let supportsCaseSensitiveNames =
-            observedCaseSensitivity
-            ?? request.plan.destination.capabilities.supportsCaseSensitiveNames
-            ?? false
+      )
+    }
 
-        var prepared: [PreparedItem] = []
-        prepared.reserveCapacity(request.plan.items.count)
-        var plannedDestinationNames: Set<String> = []
+    let destinationDirectory = request.destinationAccess.url.standardizedFileURL
+    let observedCaseSensitivity = await fileSystem.supportsCaseSensitiveNames(
+      at: destinationDirectory
+    )
+    let supportsCaseSensitiveNames =
+      observedCaseSensitivity
+      ?? request.plan.destination.capabilities.supportsCaseSensitiveNames
+      ?? false
 
-        for (index, item) in request.plan.items.enumerated() {
-            let source = item.sourceURL.standardizedFileURL
-            let finalURL = destinationDirectory
-                .appendingPathComponent(item.destinationFilename, isDirectory: false)
-                .standardizedFileURL
-            let stagingURL = destinationDirectory
-                .appendingPathComponent(
-                    ".schneeglass-copy-\(item.operationID.uuidString.lowercased()).partial",
-                    isDirectory: false
-                )
-                .standardizedFileURL
+    var prepared: [PreparedItem] = []
+    prepared.reserveCapacity(request.plan.items.count)
+    var plannedDestinationNames: Set<String> = []
 
-            guard !item.destinationFilename.isEmpty,
+    for (index, item) in request.plan.items.enumerated() {
+      let source = item.sourceURL.standardizedFileURL
+      let finalURL = destinationDirectory
+        .appendingPathComponent(item.destinationFilename, isDirectory: false)
+        .standardizedFileURL
+      let stagingURL = destinationDirectory
+        .appendingPathComponent(
+          ".schneeglass-copy-\(item.operationID.uuidString.lowercased()).partial",
+          isDirectory: false
+        )
+        .standardizedFileURL
+
+      guard !item.destinationFilename.isEmpty,
                   (item.destinationFilename as NSString).lastPathComponent == item.destinationFilename,
                   finalURL.deletingLastPathComponent() == destinationDirectory,
                   stagingURL.deletingLastPathComponent() == destinationDirectory
-            else {
-                return .failed(
-                    index: index,
-                    failure: CopyItemFailure(operationID: item.operationID, reason: .unsupportedItem)
-                )
-            }
+      else {
+        return .failed(
+          index: index,
+          failure: CopyItemFailure(operationID: item.operationID, reason: .unsupportedItem)
+        )
+      }
 
-            let destinationNameKey = Self.destinationCollisionKey(
-                item.destinationFilename,
-                supportsCaseSensitiveNames: supportsCaseSensitiveNames
-            )
-            guard plannedDestinationNames.insert(destinationNameKey).inserted else {
-                return .failed(
-                    index: index,
-                    failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
-                )
-            }
+      let destinationNameKey = Self.destinationCollisionKey(
+        item.destinationFilename,
+        supportsCaseSensitiveNames: supportsCaseSensitiveNames
+      )
+      guard plannedDestinationNames.insert(destinationNameKey).inserted else {
+        return .failed(
+          index: index,
+          failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
+        )
+      }
 
-            guard source.deletingLastPathComponent() != destinationDirectory else {
-                return .failed(
-                    index: index,
-                    failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
-                )
-            }
+      guard source.deletingLastPathComponent() != destinationDirectory else {
+        return .failed(
+          index: index,
+          failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
+        )
+      }
 
-            let metadata: CopySourceMetadata
-            do {
-                metadata = try await fileSystem.sourceMetadata(at: source)
-            } catch {
-                return .failed(
-                    index: index,
-                    failure: CopyItemFailure(
-                        operationID: item.operationID,
-                        reason: Self.failureReason(for: error)
-                    )
-                )
-            }
+      let metadata: CopySourceMetadata
+      do {
+        metadata = try await fileSystem.sourceMetadata(at: source)
+      } catch {
+        return .failed(
+          index: index,
+          failure: CopyItemFailure(
+            operationID: item.operationID,
+            reason: Self.failureReason(for: error)
+          )
+        )
+      }
 
-            let finalExists = await fileSystem.itemExists(
-                at: finalURL,
-                operationID: item.operationID
-            )
-            let stagingExists = await fileSystem.itemExists(
-                at: stagingURL,
-                operationID: item.operationID
-            )
-            if finalExists || stagingExists {
-                return .failed(
-                    index: index,
-                    failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
-                )
-            }
+      let finalExists = await fileSystem.itemExists(
+        at: finalURL,
+        operationID: item.operationID
+      )
+      let stagingExists = await fileSystem.itemExists(
+        at: stagingURL,
+        operationID: item.operationID
+      )
+      if finalExists || stagingExists {
+        return .failed(
+          index: index,
+          failure: CopyItemFailure(operationID: item.operationID, reason: .collision)
+        )
+      }
 
-            prepared.append(
-                PreparedItem(
-                    plan: item,
-                    sourceSize: metadata.size,
-                    stagingURL: stagingURL,
-                    finalURL: finalURL
-                )
-            )
-        }
-
-        return .ready(prepared)
+      prepared.append(
+        PreparedItem(
+          plan: item,
+          sourceSize: metadata.size,
+          stagingURL: stagingURL,
+          finalURL: finalURL
+        )
+      )
     }
 
-    private func execute(
-        _ item: PreparedItem,
-        request: AuthorizedCopyBatchRequest
-    ) async -> Result<CopyItemSuccess, CopyItemFailure> {
-        let baseRecord = PendingCopyRecord(
-            operationID: item.plan.operationID,
-            batchID: request.plan.batchID,
-            destinationGlassID: request.destinationAccess.glassID,
-            stagingFilename: item.stagingURL.lastPathComponent,
-            finalFilename: item.finalURL.lastPathComponent,
-            expectedSize: item.sourceSize,
-            state: .recorded
-        )
+    return .ready(prepared)
+  }
 
-        var verifiedRecord = baseRecord
-        let commitAuthorization: StagingCommitAuthorization
-        do {
-            try await recoveryStore.upsert(baseRecord)
-            try await recoveryStore.upsert(baseRecord.updating(state: .staging))
-            try await fileSystem.copyItem(at: item.plan.sourceURL, to: item.stagingURL)
+  private func execute(
+    _ item: PreparedItem,
+    request: AuthorizedCopyBatchRequest
+  ) async -> Result<CopyItemSuccess, CopyItemFailure> {
+    let baseRecord = PendingCopyRecord(
+      operationID: item.plan.operationID,
+      batchID: request.plan.batchID,
+      destinationGlassID: request.destinationAccess.glassID,
+      stagingFilename: item.stagingURL.lastPathComponent,
+      finalFilename: item.finalURL.lastPathComponent,
+      expectedSize: item.sourceSize,
+      state: .recorded
+    )
 
-            let stagedSize = try await fileSystem.regularFileSize(at: item.stagingURL)
-            let stagingResourceIdentifier = await fileSystem.resourceIdentifier(at: item.stagingURL)
-            verifiedRecord = baseRecord
-                .recordingStagingResourceIdentifier(stagingResourceIdentifier)
-                .updating(state: .verifying)
-            try await recoveryStore.upsert(verifiedRecord)
+    var verifiedRecord = baseRecord
+    let commitAuthorization: StagingCommitAuthorization
+    do {
+      try await recoveryStore.upsert(baseRecord)
+      try await recoveryStore.upsert(baseRecord.updating(state: .staging))
+      try await fileSystem.copyItem(at: item.plan.sourceURL, to: item.stagingURL)
 
-            guard stagedSize == item.sourceSize,
+      let stagedSize = try await fileSystem.regularFileSize(at: item.stagingURL)
+      let stagingResourceIdentifier = await fileSystem.resourceIdentifier(at: item.stagingURL)
+      verifiedRecord = baseRecord
+        .recordingStagingResourceIdentifier(stagingResourceIdentifier)
+        .updating(state: .verifying)
+      try await recoveryStore.upsert(verifiedRecord)
+
+      guard stagedSize == item.sourceSize,
                   let stagingResourceIdentifier
-            else {
-                throw CopyFileSystemError.verificationFailed
-            }
+      else {
+        throw CopyFileSystemError.verificationFailed
+      }
 
-            commitAuthorization = StagingCommitAuthorization(
-                expectedSize: stagedSize,
-                expectedResourceIdentifier: stagingResourceIdentifier
-            )
-        } catch {
-            await removeStaleRecordWhenNoStagingExists(
-                operationID: item.plan.operationID,
-                stagingURL: item.stagingURL
-            )
-            return .failure(
-                CopyItemFailure(
-                    operationID: item.plan.operationID,
-                    reason: Self.failureReason(for: error)
-                )
-            )
-        }
-
-        if await fileSystem.itemExists(
-            at: item.finalURL,
-            operationID: item.plan.operationID
-        ) {
-            return .failure(
-                CopyItemFailure(operationID: item.plan.operationID, reason: .collision)
-            )
-        }
-
-        do {
-            try await recoveryStore.upsert(verifiedRecord.updating(state: .committing))
-            try await committer.commit(
-                stagingURL: item.stagingURL,
-                finalURL: item.finalURL,
-                authorization: commitAuthorization
-            )
-        } catch {
-            return .failure(
-                CopyItemFailure(
-                    operationID: item.plan.operationID,
-                    reason: Self.failureReason(for: error)
-                )
-            )
-        }
-
-        var cleanupPending = false
-        do {
-            try await recoveryStore.remove(operationID: item.plan.operationID)
-        } catch {
-            cleanupPending = true
-        }
-
-        return .success(
-            CopyItemSuccess(
-                operationID: item.plan.operationID,
-                destinationURL: item.finalURL,
-                recoveryMetadataCleanupPending: cleanupPending
-            )
+      commitAuthorization = StagingCommitAuthorization(
+        expectedSize: stagedSize,
+        expectedResourceIdentifier: stagingResourceIdentifier
+      )
+    } catch {
+      await removeStaleRecordWhenNoStagingExists(
+        operationID: item.plan.operationID,
+        stagingURL: item.stagingURL
+      )
+      return .failure(
+        CopyItemFailure(
+          operationID: item.plan.operationID,
+          reason: Self.failureReason(for: error)
         )
+      )
     }
 
-    private func removeStaleRecordWhenNoStagingExists(
-        operationID: UUID,
-        stagingURL: URL
-    ) async {
-        guard !(await fileSystem.itemExists(
-            at: stagingURL,
-            operationID: operationID
-        )) else {
-            return
-        }
-
-        do {
-            try await recoveryStore.remove(operationID: operationID)
-        } catch {
-            // Keep stale metadata. Startup recovery can discard a record when
-            // neither staging nor final data exists.
-        }
+    if await fileSystem.itemExists(
+      at: item.finalURL,
+      operationID: item.plan.operationID
+    ) {
+      return .failure(
+        CopyItemFailure(operationID: item.plan.operationID, reason: .collision)
+      )
     }
 
-    private static func destinationCollisionKey(
-        _ filename: String,
-        supportsCaseSensitiveNames: Bool
-    ) -> String {
-        let canonicallyNormalized = filename.precomposedStringWithCanonicalMapping
-        if supportsCaseSensitiveNames {
-            return canonicallyNormalized
-        }
-        return canonicallyNormalized.lowercased()
+    do {
+      try await recoveryStore.upsert(verifiedRecord.updating(state: .committing))
+      try await committer.commit(
+        stagingURL: item.stagingURL,
+        finalURL: item.finalURL,
+        authorization: commitAuthorization
+      )
+    } catch {
+      return .failure(
+        CopyItemFailure(
+          operationID: item.plan.operationID,
+          reason: Self.failureReason(for: error)
+        )
+      )
     }
 
-    private static func failureReason(for error: Error) -> CopyItemFailure.Reason {
-        if let copyError = error as? CopyFileSystemError {
-            switch copyError {
-            case .sourceUnavailable:
-                return .sourceUnavailable
-            case .unsupportedItem:
-                return .unsupportedItem
-            case .destinationUnavailable:
-                return .destinationUnavailable
-            case .permissionDenied:
-                return .permissionDenied
-            case .insufficientSpace:
-                return .insufficientSpace
-            case .collision:
-                return .collision
-            case .verificationFailed:
-                return .verificationFailed
-            case .unexpected:
-                return .unexpected
-            }
-        }
+    var cleanupPending = false
+    do {
+      try await recoveryStore.remove(operationID: item.plan.operationID)
+    } catch {
+      cleanupPending = true
+    }
 
-        if let commitError = error as? StagingCommitError {
-            switch commitError {
-            case .collision:
-                return .collision
-            case .stagingMissing,
+    return .success(
+      CopyItemSuccess(
+        operationID: item.plan.operationID,
+        destinationURL: item.finalURL,
+        recoveryMetadataCleanupPending: cleanupPending
+      )
+    )
+  }
+
+  private func removeStaleRecordWhenNoStagingExists(
+    operationID: UUID,
+    stagingURL: URL
+  ) async {
+    guard !(await fileSystem.itemExists(
+      at: stagingURL,
+      operationID: operationID
+    )) else {
+      return
+    }
+
+    do {
+      try await recoveryStore.remove(operationID: operationID)
+    } catch {
+      // Keep stale metadata. Startup recovery can discard a record when
+      // neither staging nor final data exists.
+    }
+  }
+
+  private static func destinationCollisionKey(
+    _ filename: String,
+    supportsCaseSensitiveNames: Bool
+  ) -> String {
+    let canonicallyNormalized = filename.precomposedStringWithCanonicalMapping
+    if supportsCaseSensitiveNames {
+      return canonicallyNormalized
+    }
+    return canonicallyNormalized.lowercased()
+  }
+
+  private static func failureReason(for error: Error) -> CopyItemFailure.Reason {
+    if let copyError = error as? CopyFileSystemError {
+      switch copyError {
+      case .sourceUnavailable:
+        return .sourceUnavailable
+      case .unsupportedItem:
+        return .unsupportedItem
+      case .destinationUnavailable:
+        return .destinationUnavailable
+      case .permissionDenied:
+        return .permissionDenied
+      case .insufficientSpace:
+        return .insufficientSpace
+      case .collision:
+        return .collision
+      case .verificationFailed:
+        return .verificationFailed
+      case .unexpected:
+        return .unexpected
+      }
+    }
+
+    if let commitError = error as? StagingCommitError {
+      switch commitError {
+      case .collision:
+        return .collision
+      case .stagingMissing,
                  .unexpectedFileType,
                  .sizeMismatch,
                  .resourceIdentityUnavailable,
                  .resourceIdentityMismatch:
-                return .verificationFailed
-            case .invalidStagingFile,
+        return .verificationFailed
+      case .invalidStagingFile,
                  .crossDirectoryCommit,
                  .coordinationFailed,
                  .commitFailed:
-                return .unexpected
-            }
-        }
-
         return .unexpected
+      }
     }
+
+    return .unexpected
+  }
 }
