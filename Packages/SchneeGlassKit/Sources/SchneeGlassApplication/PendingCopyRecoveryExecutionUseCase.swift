@@ -37,6 +37,8 @@ public actor PendingCopyRecoveryExecutionUseCase {
     record: PendingCopyRecord,
     destinationAccess: FolderAccessHandle
   ) async throws {
+    try Task.checkCancellation()
+
     switch action {
     case .discardMetadata, .removeOwnedStaging:
       break
@@ -48,6 +50,8 @@ public actor PendingCopyRecoveryExecutionUseCase {
       record,
       destinationAccess: destinationAccess
     )
+    try Task.checkCancellation()
+
     let plan = PendingCopyRecoveryActionPlanner.plan(for: assessment)
     guard plan.actions.contains(action) else {
       throw PendingCopyRecoveryExecutionError.actionNotEligible
@@ -56,17 +60,23 @@ public actor PendingCopyRecoveryExecutionUseCase {
     switch action {
     case .discardMetadata:
       do {
+        try Task.checkCancellation()
         try await pendingCopyStore.remove(operationID: record.operationID)
+      } catch is CancellationError {
+        throw CancellationError()
       } catch {
         throw PendingCopyRecoveryExecutionError.metadataMutationFailed
       }
 
     case .removeOwnedStaging:
       do {
+        try Task.checkCancellation()
         try await ownedStagingCleaner.removeOwnedStaging(
           record: record,
           destinationAccess: destinationAccess
         )
+      } catch is CancellationError {
+        throw CancellationError()
       } catch {
         throw PendingCopyRecoveryExecutionError.ownedStagingCleanupFailed
       }
