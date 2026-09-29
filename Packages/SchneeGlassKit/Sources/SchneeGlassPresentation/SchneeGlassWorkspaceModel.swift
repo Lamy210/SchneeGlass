@@ -101,7 +101,7 @@ public final class SchneeGlassWorkspaceModel {
   public private(set) var userMessage: String?
 
   public var canMutateConfiguration: Bool {
-    hasAuthoritativeConfigurationSnapshot
+    !isShuttingDown && hasAuthoritativeConfigurationSnapshot
   }
 
   public var canAddGlass: Bool {
@@ -136,6 +136,7 @@ public final class SchneeGlassWorkspaceModel {
   private var dropPlanningTracker = WorkspaceDropPlanningTracker()
   private var didAttemptInitialRestore = false
   private var hasLoadedConfigurationSnapshot = false
+  private var isShuttingDown = false
 
   public init(
     createGlassUseCase: CreateGlassUseCase,
@@ -759,6 +760,16 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func shutdown() async {
+    isShuttingDown = true
+
+    // Application termination is different from configuration recovery: an active user copy must
+    // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
+    // finish naturally.
+    let activeSessions = Array(sessions.values)
+    for session in activeSessions {
+      await session.cancelCopy()
+    }
+
     await deactivateAllSessions()
   }
 
@@ -778,6 +789,8 @@ public final class SchneeGlassWorkspaceModel {
     for seed in result.seeds {
       do {
         try await activate(seed)
+      } catch is CancellationError {
+        continue
       } catch {
         upsert(
           GlassWorkspaceEntry(
@@ -819,8 +832,17 @@ public final class SchneeGlassWorkspaceModel {
   private func activate(_ seed: CreatedGlassRuntimeSeed) async throws {
     let session = runtimeSessionFactory.makeSession(from: seed)
 
+    guard !isShuttingDown else {
+      await session.stop()
+      throw CancellationError()
+    }
+
     do {
       let states = try await session.start()
+      guard !isShuttingDown else {
+        throw CancellationError()
+      }
+
       let glassID = seed.configuration.id
 
       sessions[glassID] = session
