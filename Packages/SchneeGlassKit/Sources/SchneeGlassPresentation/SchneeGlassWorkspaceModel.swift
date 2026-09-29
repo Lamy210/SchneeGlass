@@ -136,6 +136,7 @@ public final class SchneeGlassWorkspaceModel {
   private var dropPlanningTracker = WorkspaceDropPlanningTracker()
   private var didAttemptInitialRestore = false
   private var hasLoadedConfigurationSnapshot = false
+  private let initialRestoreTaskCoordinator = WorkspaceInitialRestoreTaskCoordinator()
   private var isShuttingDown = false
 
   public init(
@@ -167,7 +168,10 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func restoreIfNeeded() async {
-    guard !didAttemptInitialRestore, !isMutatingConfiguration else {
+    guard !isShuttingDown,
+      !didAttemptInitialRestore,
+      !isMutatingConfiguration
+    else {
       return
     }
 
@@ -180,15 +184,21 @@ public final class SchneeGlassWorkspaceModel {
       isMutatingConfiguration = false
     }
 
-    do {
-      let result = try await restoreApplicationUseCase.execute()
-      requiresConfigurationRecovery = false
-      await applyRestoreResult(result)
-      hasLoadedConfigurationSnapshot = true
-    } catch is CancellationError {
-      didAttemptInitialRestore = false
-    } catch {
-      enterConfigurationRecoveryRequiredState()
+    await initialRestoreTaskCoordinator.run { [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        let result = try await restoreApplicationUseCase.execute()
+        requiresConfigurationRecovery = false
+        await applyRestoreResult(result)
+        hasLoadedConfigurationSnapshot = true
+      } catch is CancellationError {
+        didAttemptInitialRestore = false
+      } catch {
+        enterConfigurationRecoveryRequiredState()
+      }
     }
   }
 
@@ -771,6 +781,11 @@ public final class SchneeGlassWorkspaceModel {
 
   public func shutdown() async {
     prepareForTermination()
+
+    // An initial restore can own security-scoped access and event subscriptions before a runtime
+    // session has been activated. Cancel and join it so AppKit cannot terminate the process before
+    // RestoreApplicationUseCase finishes its cancellation cleanup.
+    await initialRestoreTaskCoordinator.cancelAndWait()
 
     // Application termination is different from configuration recovery: an active user copy must
     // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
