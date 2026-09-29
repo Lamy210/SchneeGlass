@@ -205,6 +205,10 @@ private func createCancellationSource() -> FolderSource {
 
 @MainActor
 private func makeCreateCancellationFixture(
+  selectedURL: URL? = URL(
+    fileURLWithPath: "/tmp/Projects",
+    isDirectory: true
+  ),
   selectorCancelsTask: Bool = false,
   stage: CreateCancellationStage = .none,
   cancelSubscribe: Bool = false,
@@ -219,10 +223,7 @@ private func makeCreateCancellationFixture(
 ) {
   let source = createCancellationSource()
   let selector = CreateCancellationFolderSelector(
-    url: URL(
-      fileURLWithPath: "/tmp/Projects",
-      isDirectory: true
-    ),
+    url: selectedURL,
     cancelTask: selectorCancelsTask
   )
   let sourceCreator = CreateCancellationSourceCreator(
@@ -245,6 +246,20 @@ private func makeCreateCancellationFixture(
     )
   )
   return (useCase, selector, sourceCreator, store, access, events)
+}
+
+@Test
+@MainActor
+func normalFolderPickerCancellationReturnsNilWithoutOpeningResources() async throws {
+  let fixture = makeCreateCancellationFixture(selectedURL: nil)
+
+  let result = try await fixture.useCase.execute()
+
+  #expect(result == nil)
+  #expect(fixture.selector.selectionCount == 1)
+  #expect(await fixture.sourceCreator.count() == 0)
+  #expect(await fixture.store.counts().loads == 0)
+  #expect(await fixture.access.counts().acquired == 0)
 }
 
 @Test
