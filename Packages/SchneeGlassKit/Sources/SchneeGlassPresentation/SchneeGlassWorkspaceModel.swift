@@ -51,6 +51,7 @@ public enum ConfigurationBackupListingResult: Hashable, Sendable {
 public enum ConfigurationBackupRestoreResult: Hashable, Sendable {
   case restored
   case restoredNeedsRestart
+  case initialLoadPending
   case busy
   case copyInProgress
   case failed
@@ -79,6 +80,17 @@ enum WorkspaceConfigurationAuthorityPolicy {
   }
 }
 
+enum WorkspaceConfigurationBackupRestorePolicy {
+  static func allowsRestore(
+    hasLoadedConfigurationSnapshot: Bool,
+    isMutatingConfiguration: Bool,
+    requiresConfigurationRecovery: Bool
+  ) -> Bool {
+    !isMutatingConfiguration
+      && (hasLoadedConfigurationSnapshot || requiresConfigurationRecovery)
+  }
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -95,6 +107,14 @@ public final class SchneeGlassWorkspaceModel {
 
   public var canAddGlass: Bool {
     canMutateConfiguration
+  }
+
+  public var canRestoreConfigurationBackup: Bool {
+    WorkspaceConfigurationBackupRestorePolicy.allowsRestore(
+      hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
+      isMutatingConfiguration: isMutatingConfiguration,
+      requiresConfigurationRecovery: requiresConfigurationRecovery
+    )
   }
 
   public var hasAuthoritativeConfigurationSnapshot: Bool {
@@ -189,8 +209,11 @@ public final class SchneeGlassWorkspaceModel {
   public func restoreConfigurationBackup(
     id: String
   ) async -> ConfigurationBackupRestoreResult {
-    guard !isMutatingConfiguration else {
-      return .busy
+    guard canRestoreConfigurationBackup else {
+      if isMutatingConfiguration {
+        return .busy
+      }
+      return .initialLoadPending
     }
     guard !hasActiveCopy else {
       return .copyInProgress
