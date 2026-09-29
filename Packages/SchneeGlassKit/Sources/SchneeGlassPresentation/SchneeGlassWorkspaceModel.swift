@@ -269,6 +269,8 @@ public final class SchneeGlassWorkspaceModel {
         return
       }
       try await activate(seed)
+    } catch is CancellationError {
+      return
     } catch {
       if let createError = error as? CreateGlassError,
         case .configurationLoadFailed = createError

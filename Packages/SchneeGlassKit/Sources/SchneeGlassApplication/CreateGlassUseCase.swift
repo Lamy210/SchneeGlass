@@ -31,13 +31,18 @@ public final class CreateGlassUseCase {
   }
 
   public func execute() async throws -> CreatedGlassRuntimeSeed? {
-    guard let selectedURL = await folderSelector.selectFolder() else {
+    try Task.checkCancellation()
+    let selectedURL = await folderSelector.selectFolder()
+    try Task.checkCancellation()
+    guard let selectedURL else {
       return nil
     }
 
     let source: FolderSource
     do {
       source = try await sourceCreator.createSource(for: selectedURL)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as FolderSourceCreationError {
       switch error {
       case .bookmarkCreationFailed:
@@ -48,6 +53,8 @@ public final class CreateGlassUseCase {
     } catch {
       throw CreateGlassError.sourceCreationFailed
     }
+
+    try Task.checkCancellation()
 
     let placement: GlassPlacement
     do {
@@ -70,9 +77,13 @@ public final class CreateGlassUseCase {
     let existingConfigurations: [GlassConfiguration]
     do {
       existingConfigurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw CreateGlassError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     let acquisition: FolderAccessAcquisition
     do {
@@ -80,30 +91,48 @@ public final class CreateGlassUseCase {
         source: source,
         glassID: configuration.id
       )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as FolderAccessError {
       throw CreateGlassError.folderAccess(error)
     } catch {
       throw CreateGlassError.folderAccess(.bookmarkResolutionFailed)
     }
 
+    do {
+      try Task.checkCancellation()
+    } catch {
+      await accessController.release(handleID: acquisition.handle.id)
+      throw error
+    }
+
     let eventSubscription: FileEventSubscription
     do {
       eventSubscription = try await eventStreaming.subscribe(for: acquisition.handle)
+    } catch is CancellationError {
+      await accessController.release(handleID: acquisition.handle.id)
+      throw CancellationError()
     } catch {
       await accessController.release(handleID: acquisition.handle.id)
       throw CreateGlassError.eventStreamFailed
     }
 
     do {
+      try Task.checkCancellation()
+
       let snapshot: FolderSnapshot
       do {
         snapshot = try await snapshotReader.snapshot(
           for: acquisition.handle,
           generation: 1
         )
+      } catch is CancellationError {
+        throw CancellationError()
       } catch {
         throw CreateGlassError.snapshotFailed
       }
+
+      try Task.checkCancellation()
 
       let persistedConfiguration: GlassConfiguration
       if let refreshedSource = acquisition.refreshedSource {
@@ -132,6 +161,8 @@ public final class CreateGlassUseCase {
         else {
           throw CreateGlassError.configurationSaveFailed
         }
+      } catch is CancellationError {
+        throw CancellationError()
       } catch let error as CreateGlassError {
         throw error
       } catch {
