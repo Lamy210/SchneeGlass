@@ -11,6 +11,15 @@ public enum PendingCopyRecoveryNavigationError: Error, Hashable, Sendable {
   case actionNoLongerAvailable
 }
 
+@MainActor
+func revealRecoveryItemUnlessCancelled(
+  fileActor: any WorkspaceFileActing,
+  url: URL
+) throws {
+  try Task.checkCancellation()
+  fileActor.reveal(url: url)
+}
+
 /// Executes read-only manual-inspection actions for Pending Copy Recovery.
 ///
 /// The caller supplies only an operation ID and requested reveal action. This use case reloads the
@@ -42,6 +51,8 @@ public actor PendingCopyRecoveryNavigationUseCase {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async throws {
+    try Task.checkCancellation()
+
     guard action == .revealStaging || action == .revealFinal else {
       throw PendingCopyRecoveryNavigationError.unsupportedAction
     }
@@ -49,9 +60,13 @@ public actor PendingCopyRecoveryNavigationUseCase {
     let records: [PendingCopyRecord]
     do {
       records = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryNavigationError.recordsLoadFailed
     }
+    try Task.checkCancellation()
+
     guard let record = records.first(where: { $0.operationID == operationID }) else {
       throw PendingCopyRecoveryNavigationError.recordMissing
     }
@@ -59,9 +74,13 @@ public actor PendingCopyRecoveryNavigationUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryNavigationError.configurationLoadFailed
     }
+    try Task.checkCancellation()
+
     guard
       let configuration = configurations.first(where: { $0.id == record.destinationGlassID })
     else {
@@ -74,18 +93,23 @@ public actor PendingCopyRecoveryNavigationUseCase {
         source: configuration.source,
         glassID: configuration.id
       )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyRecoveryNavigationError.destinationUnavailable
     }
 
     do {
+      try Task.checkCancellation()
+
       let assessment = await recoveryInspector.assess(
         record,
         destinationAccess: acquisition.handle
       )
+      try Task.checkCancellation()
+
       let freshActions = PendingCopyRecoveryActionPlanner.plan(for: assessment).actions
       guard freshActions.contains(action) else {
-        await accessController.release(handleID: acquisition.handle.id)
         throw PendingCopyRecoveryNavigationError.actionNoLongerAvailable
       }
 
@@ -96,7 +120,6 @@ public actor PendingCopyRecoveryNavigationUseCase {
       case .revealFinal:
         filename = record.finalFilename
       case .discardMetadata, .removeOwnedStaging, .reconnectDestination:
-        await accessController.release(handleID: acquisition.handle.id)
         throw PendingCopyRecoveryNavigationError.unsupportedAction
       }
 
@@ -104,9 +127,10 @@ public actor PendingCopyRecoveryNavigationUseCase {
         record,
         destinationAccess: acquisition.handle
       )
+      try Task.checkCancellation()
+
       let revealActions = PendingCopyRecoveryActionPlanner.plan(for: revealAssessment).actions
       guard revealActions.contains(action) else {
-        await accessController.release(handleID: acquisition.handle.id)
         throw PendingCopyRecoveryNavigationError.actionNoLongerAvailable
       }
 
@@ -115,10 +139,12 @@ public actor PendingCopyRecoveryNavigationUseCase {
         .appendingPathComponent(filename, isDirectory: false)
         .standardizedFileURL
 
-      await fileActor.reveal(url: url)
+      try Task.checkCancellation()
+      try await revealRecoveryItemUnlessCancelled(
+        fileActor: fileActor,
+        url: url
+      )
       await accessController.release(handleID: acquisition.handle.id)
-    } catch let error as PendingCopyRecoveryNavigationError {
-      throw error
     } catch {
       await accessController.release(handleID: acquisition.handle.id)
       throw error
