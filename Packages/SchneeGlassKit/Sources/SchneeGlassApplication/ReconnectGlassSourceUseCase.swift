@@ -49,13 +49,17 @@ public actor ReconnectGlassSourceUseCase {
   public func execute(glassID: GlassID) async throws -> CreatedGlassRuntimeSeed? {
     let preflight = try await loadConfiguration(glassID: glassID)
 
-    guard let selectedURL = await folderSelector.selectFolder() else {
+    let selectedURL = await folderSelector.selectFolder()
+    try Task.checkCancellation()
+    guard let selectedURL else {
       return nil
     }
 
     let selectedSource: FolderSource
     do {
       selectedSource = try await sourceCreator.createSource(for: selectedURL)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as FolderSourceCreationError {
       switch error {
       case .bookmarkCreationFailed:
@@ -67,6 +71,7 @@ public actor ReconnectGlassSourceUseCase {
       throw ReconnectGlassSourceError.sourceCreationFailed
     }
 
+    try Task.checkCancellation()
     try Self.validatePersistentIdentity(
       expected: preflight.source.persistentIdentity,
       selected: selectedSource.persistentIdentity
@@ -78,6 +83,8 @@ public actor ReconnectGlassSourceUseCase {
         source: selectedSource,
         glassID: glassID
       )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as FolderAccessError {
       throw ReconnectGlassSourceError.folderAccess(error)
     } catch {
@@ -86,6 +93,7 @@ public actor ReconnectGlassSourceUseCase {
 
     let persistedSource = acquisition.refreshedSource ?? selectedSource
     do {
+      try Task.checkCancellation()
       try Self.validatePersistentIdentity(
         expected: preflight.source.persistentIdentity,
         selected: persistedSource.persistentIdentity
@@ -98,6 +106,9 @@ public actor ReconnectGlassSourceUseCase {
     let subscription: FileEventSubscription
     do {
       subscription = try await eventStreaming.subscribe(for: acquisition.handle)
+    } catch is CancellationError {
+      await accessController.release(handleID: acquisition.handle.id)
+      throw CancellationError()
     } catch {
       await accessController.release(handleID: acquisition.handle.id)
       throw ReconnectGlassSourceError.eventStreamFailed
@@ -109,10 +120,19 @@ public actor ReconnectGlassSourceUseCase {
         for: acquisition.handle,
         generation: 1
       )
+    } catch is CancellationError {
+      await cleanup(subscription: subscription, access: acquisition.handle)
+      throw CancellationError()
     } catch {
-      await eventStreaming.stop(subscriptionID: subscription.id)
-      await accessController.release(handleID: acquisition.handle.id)
+      await cleanup(subscription: subscription, access: acquisition.handle)
       throw ReconnectGlassSourceError.snapshotFailed
+    }
+
+    do {
+      try Task.checkCancellation()
+    } catch {
+      await cleanup(subscription: subscription, access: acquisition.handle)
+      throw error
     }
 
     let updatedConfiguration: GlassConfiguration
@@ -152,9 +172,13 @@ public actor ReconnectGlassSourceUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw ReconnectGlassSourceError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard let configuration = configurations.first(where: { $0.id == glassID }) else {
       throw ReconnectGlassSourceError.configurationMissing
@@ -169,9 +193,13 @@ public actor ReconnectGlassSourceUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw ReconnectGlassSourceError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard let index = configurations.firstIndex(where: { $0.id == preflight.id }),
       configurations[index] == preflight
@@ -191,6 +219,8 @@ public actor ReconnectGlassSourceUseCase {
       else {
         throw ReconnectGlassSourceError.staleConfiguration
       }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as ReconnectGlassSourceError {
       throw error
     } catch {

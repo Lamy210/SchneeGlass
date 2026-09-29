@@ -708,6 +708,8 @@ public final class SchneeGlassWorkspaceModel {
         userMessage =
           "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
       }
+    } catch is CancellationError {
+      return
     } catch let error as ReconnectGlassSourceError {
       handleReconnectError(error)
     } catch {
