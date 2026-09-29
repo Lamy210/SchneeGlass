@@ -759,8 +759,12 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
   }
 
-  public func shutdown() async {
+  public func prepareForTermination() {
     isShuttingDown = true
+  }
+
+  public func shutdown() async {
+    prepareForTermination()
 
     // Application termination is different from configuration recovery: an active user copy must
     // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
