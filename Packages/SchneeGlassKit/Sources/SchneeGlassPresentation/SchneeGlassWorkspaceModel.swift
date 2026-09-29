@@ -353,6 +353,8 @@ public final class SchneeGlassWorkspaceModel {
         glasses[index].placement = placement
       }
       return .updated
+    } catch is CancellationError {
+      return .failed
     } catch let error as UpdateGlassPlacementError {
       if case .configurationLoadFailed = error {
         enterConfigurationRecoveryRequiredState()
