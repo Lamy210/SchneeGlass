@@ -11,6 +11,15 @@ public enum PendingCopyRecoveryNavigationError: Error, Hashable, Sendable {
   case actionNoLongerAvailable
 }
 
+@MainActor
+func revealRecoveryItemUnlessCancelled(
+  fileActor: any WorkspaceFileActing,
+  url: URL
+) throws {
+  try Task.checkCancellation()
+  fileActor.reveal(url: url)
+}
+
 /// Executes read-only manual-inspection actions for Pending Copy Recovery.
 ///
 /// The caller supplies only an operation ID and requested reveal action. This use case reloads the
@@ -131,7 +140,10 @@ public actor PendingCopyRecoveryNavigationUseCase {
         .standardizedFileURL
 
       try Task.checkCancellation()
-      await fileActor.reveal(url: url)
+      try await revealRecoveryItemUnlessCancelled(
+        fileActor: fileActor,
+        url: url
+      )
       await accessController.release(handleID: acquisition.handle.id)
     } catch {
       await accessController.release(handleID: acquisition.handle.id)
