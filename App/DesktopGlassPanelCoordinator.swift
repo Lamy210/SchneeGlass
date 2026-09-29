@@ -241,6 +241,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   private var panels: [GlassID: PanelRecord] = [:]
   private var visibilityMode: DesktopGlassVisibilityMode = .shown
   private var isPanelCreationSuppressed = false
+  private var isTerminationFlushStarted = false
   private var isStopped = false
 
   init(
@@ -386,6 +387,49 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return .busy
     case .failed:
       return .failed
+    }
+  }
+
+  /// Persists the current on-screen placement before AppKit reaches final synchronous teardown.
+  ///
+  /// This bypasses the normal move/resize debounce so a Quit immediately after user interaction
+  /// cannot discard the latest frame.
+  func flushPlacementsForTermination() async {
+    guard !isStopped, !isTerminationFlushStarted else {
+      return
+    }
+    isTerminationFlushStarted = true
+
+    var pendingPlacements: [(GlassID, GlassPlacement)] = []
+    pendingPlacements.reserveCapacity(panels.count)
+
+    for glassID in Array(panels.keys) {
+      guard var record = panels[glassID],
+        let persistenceTask = record.persistenceTask
+      else {
+        continue
+      }
+
+      // Termination supersedes the normal debounce. Otherwise a move or resize immediately before
+      // Quit is cancelled by final panel teardown and the latest placement is lost.
+      persistenceTask.cancel()
+      record.persistenceTask = nil
+      panels[glassID] = record
+
+      guard let placement = Self.placement(for: record.panel) else {
+        continue
+      }
+      pendingPlacements.append((glassID, placement))
+    }
+
+    for (glassID, placement) in pendingPlacements {
+      // Termination cannot wait on the normal busy-retry loop: an unrelated configuration
+      // mutation may be suspended on user interaction. Make one conditional persistence attempt
+      // and prefer prompt, safe process termination over an unbounded Quit wait.
+      _ = await model.persistPlacement(
+        glassID: glassID,
+        placement: placement
+      )
     }
   }
 
@@ -819,20 +863,14 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     for panel: DesktopGlassPanel,
     delayNanoseconds: UInt64
   ) {
+    guard !isTerminationFlushStarted else {
+      return
+    }
+
     let glassID = panel.glassID
     panels[glassID]?.persistenceTask?.cancel()
 
-    let frame = panel.frame
-    let displayHint = panel.screen?.localizedName
-    guard
-      let placement = try? GlassPlacement(
-        x: frame.origin.x,
-        y: frame.origin.y,
-        width: frame.width,
-        height: frame.height,
-        displayHint: displayHint
-      )
-    else {
+    guard let placement = Self.placement(for: panel) else {
       return
     }
 
@@ -895,6 +933,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     case .unavailable, .failed:
       return false
     }
+  }
+
+  private static func placement(for panel: DesktopGlassPanel) -> GlassPlacement? {
+    let frame = panel.frame
+    return try? GlassPlacement(
+      x: frame.origin.x,
+      y: frame.origin.y,
+      width: frame.width,
+      height: frame.height,
+      displayHint: panel.screen?.localizedName
+    )
   }
 
   private static func frame(for placement: GlassPlacement) -> NSRect {
