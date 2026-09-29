@@ -241,6 +241,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   private var panels: [GlassID: PanelRecord] = [:]
   private var visibilityMode: DesktopGlassVisibilityMode = .shown
   private var isPanelCreationSuppressed = false
+  private var isTerminationFlushStarted = false
   private var isStopped = false
 
   init(
@@ -394,9 +395,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   /// This bypasses the normal move/resize debounce so a Quit immediately after user interaction
   /// cannot discard the latest frame.
   func flushPlacementsForTermination() async {
-    guard !isStopped else {
+    guard !isStopped, !isTerminationFlushStarted else {
       return
     }
+    isTerminationFlushStarted = true
 
     var pendingPlacements: [(GlassID, GlassPlacement)] = []
     pendingPlacements.reserveCapacity(panels.count)
@@ -421,7 +423,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     for (glassID, placement) in pendingPlacements {
-      await model.persistPlacementWhenAvailable(
+      // Termination cannot wait on the normal busy-retry loop: an unrelated configuration
+      // mutation may be suspended on user interaction. Make one conditional persistence attempt
+      // and prefer prompt, safe process termination over an unbounded Quit wait.
+      _ = await model.persistPlacement(
         glassID: glassID,
         placement: placement
       )
@@ -858,6 +863,10 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     for panel: DesktopGlassPanel,
     delayNanoseconds: UInt64
   ) {
+    guard !isTerminationFlushStarted else {
+      return
+    }
+
     let glassID = panel.glassID
     panels[glassID]?.persistenceTask?.cancel()
 
