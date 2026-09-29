@@ -328,6 +328,21 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] Recovery/config mutation中にshortcutでpanelを再生成しない
 - [ ] Hide All後のfilesystem refreshで勝手に再表示しない
 
+## 11.1 Graceful application termination
+
+- [ ] Command-Qで終了するとworkspace shutdown完了後にprocessが終了する
+- [ ] Dock > Quitで同じshutdown pathを通る
+- [ ] Menu BarのQuit SchneeGlassで同じshutdown pathを通る
+- [ ] system termination requestでも同じshutdown pathを通る
+- [ ] active Glass sessionのFSEvents subscriptionが終了時にstopされる
+- [ ] security-scoped folder accessが終了時にreleaseされる
+- [ ] pending authoritative Drop planが終了時にabandonされる
+- [ ] active copyがある場合、既存Pending Copy recovery contractに従ってsession stop完了を待ってから終了する
+- [ ] shutdown待機中の重複Quit requestでworkspace shutdownを二重開始しない
+- [ ] shutdown完了後のtermination replyは1回だけ行われる
+- [ ] bootstrap failureでworkspaceが存在しない場合はasync shutdown待機なしで終了できる
+- [ ] final willTerminate cleanupでDesktop Glass panel / observer / global UI cleanupが従来どおり行われる
+
 ## 12. Failure isolation
 
 - [ ] 1 Glassのfolder access failureが他Glassを落とさない
