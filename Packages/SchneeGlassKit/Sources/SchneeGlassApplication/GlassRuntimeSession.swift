@@ -67,7 +67,9 @@ public actor GlassRuntimeSession {
       throw GlassRuntimeSessionError.stopped
     }
 
-    let pair = AsyncStream<GlassContentState>.makeStream()
+    let pair = AsyncStream<GlassContentState>.makeStream(
+      bufferingPolicy: .bufferingNewest(1)
+    )
     stateContinuation = pair.continuation
     lifecycle = .running
     pair.continuation.yield(Self.contentState(for: initialSnapshot))
