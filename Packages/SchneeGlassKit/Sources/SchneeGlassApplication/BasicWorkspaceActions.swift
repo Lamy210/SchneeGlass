@@ -57,10 +57,12 @@ public actor RemoveGlassUseCase {
 
     let remaining = configurations.filter { $0.id != glassID }
     do {
-      guard try await configurationStore.save(
-        remaining,
-        ifCurrentMatches: configurations
-      ) else {
+      guard
+        try await configurationStore.save(
+          remaining,
+          ifCurrentMatches: configurations
+        )
+      else {
         throw RemoveGlassError.configurationChanged
       }
     } catch is CancellationError {
