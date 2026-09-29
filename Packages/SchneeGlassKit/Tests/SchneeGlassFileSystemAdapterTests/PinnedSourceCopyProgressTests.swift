@@ -182,3 +182,79 @@ func pinnedSourceCopyCancellationReleasesAuthorityAndAllowsFreshCopy() async thr
     try Data(contentsOf: destinationDirectory.appendingPathComponent("third.txt")) == thirdPayload)
   #expect(await leases.activeLeaseCount() == 0)
 }
+
+@Test
+func pinnedSourceCopyCancellationInterruptsCurrentFileAndPreservesRecoveryState() async throws {
+  let root = FileManager.default.temporaryDirectory
+    .appendingPathComponent(
+      "schneeglass-pinned-inflight-cancel-\(UUID().uuidString)",
+      isDirectory: true
+    )
+  let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+  let destinationDirectory = root.appendingPathComponent("destination", isDirectory: true)
+  let operationsDirectory = root.appendingPathComponent("operations", isDirectory: true)
+  try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(
+    at: destinationDirectory,
+    withIntermediateDirectories: true
+  )
+  defer { try? FileManager.default.removeItem(at: root) }
+
+  let source = sourceDirectory.appendingPathComponent("large.bin", isDirectory: false)
+  try Data(repeating: 0x5A, count: 1_048_576).write(to: source)
+
+  let glassID = GlassID()
+  let access = FolderAccessHandle(
+    glassID: glassID,
+    url: destinationDirectory,
+    runtimeDirectoryIdentity: try testRuntimeDirectoryIdentity(for: destinationDirectory)
+  )
+  let leases = SourceFileLeaseRegistry(copyProgressHook: {
+    withUnsafeCurrentTask(body: { task in
+      task?.cancel()
+    })
+  })
+  let planner = NativeDropPlanningAdapter(sourceLeases: leases)
+  let recoveryStore = JSONPendingCopyStore(baseDirectory: operationsDirectory)
+  let copier = PinnedSourceFileCopying(
+    recoveryStore: recoveryStore,
+    sourceLeases: leases
+  )
+
+  let drop = await planner.plan(
+    sourceURLs: [source],
+    destinationAccess: access
+  )
+  guard case .copy(let plan) = drop else {
+    Issue.record("Expected copy plan, got \(drop)")
+    return
+  }
+
+  let execution = Task {
+    await copier.copy(
+      AuthorizedCopyBatchRequest(plan: plan, destinationAccess: access)
+    )
+  }
+  let result = await execution.value
+
+  #expect(result.succeeded.isEmpty)
+  #expect(result.failed?.operationID == plan.items[0].operationID)
+  #expect(result.failed?.reason == .cancelled)
+  #expect(result.notAttempted.isEmpty)
+  #expect(await leases.activeLeaseCount() == 0)
+
+  let final = destinationDirectory.appendingPathComponent("large.bin", isDirectory: false)
+  #expect(!FileManager.default.fileExists(atPath: final.path))
+
+  let staging = destinationDirectory.appendingPathComponent(
+    DestinationDirectoryLeaseRegistry.stagingFilename(operationID: plan.items[0].operationID),
+    isDirectory: false
+  )
+  #expect(FileManager.default.fileExists(atPath: staging.path))
+
+  let records = try await recoveryStore.records()
+  #expect(records.count == 1)
+  #expect(records.first?.operationID == plan.items[0].operationID)
+  #expect(records.first?.state == .staging)
+}
+
