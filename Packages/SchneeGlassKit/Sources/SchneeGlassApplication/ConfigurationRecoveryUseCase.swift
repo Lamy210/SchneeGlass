@@ -47,6 +47,8 @@ public actor ConfigurationRecoveryUseCase {
 
   @discardableResult
   public func restoreBackup(id: String) async throws -> [GlassConfiguration] {
+    try Task.checkCancellation()
+
     switch await activityGate.beginRecoveryMutation() {
     case .granted:
       break
@@ -57,6 +59,7 @@ public actor ConfigurationRecoveryUseCase {
     }
 
     do {
+      try Task.checkCancellation()
       let result = try await restoreBackupWithLease(id: id)
       await activityGate.endRecoveryMutation()
       return result
@@ -70,9 +73,14 @@ public actor ConfigurationRecoveryUseCase {
     let pendingCopies: [PendingCopyRecord]
     do {
       pendingCopies = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
+      try Task.checkCancellation()
       throw ConfigurationRecoveryUseCaseError.pendingCopyLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard !pendingCopies.isEmpty else {
       return try await recoveryStore.restoreBackup(id: id)
@@ -81,17 +89,25 @@ public actor ConfigurationRecoveryUseCase {
     let currentConfigurations: [GlassConfiguration]
     do {
       currentConfigurations = try await recoveryStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
+      try Task.checkCancellation()
+
       // Explicit configuration recovery exists specifically for unreadable/corrupt current
       // state. The persistence adapter still applies its own preservation/schema guards before
       // committing the selected backup, so do not make Pending Copy metadata a dead end here.
       return try await recoveryStore.restoreBackup(id: id)
     }
 
+    try Task.checkCancellation()
+
     let currentGlassIDs = Set(currentConfigurations.map(\.id))
     guard !pendingCopies.contains(where: { currentGlassIDs.contains($0.destinationGlassID) }) else {
       throw ConfigurationRecoveryUseCaseError.pendingCopyRecoveryRequired
     }
+
+    try Task.checkCancellation()
 
     // All pending records already lack a current Glass mapping. Allow explicit backup recovery;
     // it may restore those mappings and cannot destroy an authority that is still present now.
