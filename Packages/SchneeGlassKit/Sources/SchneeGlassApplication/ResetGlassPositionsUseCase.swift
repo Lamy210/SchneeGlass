@@ -23,12 +23,18 @@ public actor ResetGlassPositionsUseCase {
   public func execute(
     placements: [GlassID: GlassPlacement]
   ) async throws -> [GlassConfiguration] {
+    try Task.checkCancellation()
+
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw ResetGlassPositionsError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard !placements.isEmpty else {
       return configurations
@@ -74,6 +80,8 @@ public actor ResetGlassPositionsUseCase {
       return updatedConfigurations
     }
 
+    try Task.checkCancellation()
+
     do {
       // The store compares and commits as one serialized persistence operation. Never let a
       // layout calculated from an older snapshot overwrite a newer configuration generation.
@@ -85,6 +93,8 @@ public actor ResetGlassPositionsUseCase {
       else {
         throw ResetGlassPositionsError.configurationChanged
       }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as ResetGlassPositionsError {
       throw error
     } catch {
