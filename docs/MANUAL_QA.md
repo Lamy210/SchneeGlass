@@ -281,8 +281,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] restore中にpanel stateの古いdebounceが復元configを再上書きしない
 - [ ] corrupt current configのRecoveryでユーザー選択なしに破壊的rollbackしない
 - [ ] current configを読めない起動では`Configuration recovery required`を表示し、Workspace / Menu Bar / `⌘N`から新しいGlassを追加できない
-- [ ] 初期configuration load完了前はSettingsのConfiguration Backup restoreを開始できない
-- [ ] 初期configuration loadが成功するとSettingsのConfiguration Backup restoreが有効になる
+- [ ] 初期configuration load完了前にSettingsのConfiguration Backup restoreを実行してもconfiguration replacementへ進まない
+- [ ] 初期configuration loadが成功するとSettingsのConfiguration Backup restoreを実行できる
 - [ ] 初期configuration loadが失敗してrecovery requiredになった場合はSettingsのConfiguration Backup restoreを利用できる
 - [ ] configuration recovery required中もSettingsのConfiguration Backup一覧・restore操作は利用できる
 - [ ] configuration recovery required中はGlass削除・placement保存・Reset Glass Positions・新しいDrop Copyへ進まない
