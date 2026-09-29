@@ -79,6 +79,17 @@ enum WorkspaceConfigurationAuthorityPolicy {
   }
 }
 
+enum WorkspaceConfigurationBackupRestorePolicy {
+  static func allowsRestore(
+    hasLoadedConfigurationSnapshot: Bool,
+    isMutatingConfiguration: Bool,
+    requiresConfigurationRecovery: Bool
+  ) -> Bool {
+    !isMutatingConfiguration
+      && (hasLoadedConfigurationSnapshot || requiresConfigurationRecovery)
+  }
+}
+
 @MainActor
 @Observable
 public final class SchneeGlassWorkspaceModel {
@@ -189,7 +200,13 @@ public final class SchneeGlassWorkspaceModel {
   public func restoreConfigurationBackup(
     id: String
   ) async -> ConfigurationBackupRestoreResult {
-    guard !isMutatingConfiguration else {
+    guard
+      WorkspaceConfigurationBackupRestorePolicy.allowsRestore(
+        hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
+        isMutatingConfiguration: isMutatingConfiguration,
+        requiresConfigurationRecovery: requiresConfigurationRecovery
+      )
+    else {
       return .busy
     }
     guard !hasActiveCopy else {
