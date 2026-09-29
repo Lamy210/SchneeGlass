@@ -310,6 +310,8 @@ public final class SchneeGlassWorkspaceModel {
 
       glasses.removeAll { $0.id == id }
       userMessage = nil
+    } catch is CancellationError {
+      return
     } catch let error as RemoveGlassError {
       if case .configurationLoadFailed = error {
         enterConfigurationRecoveryRequiredState()
