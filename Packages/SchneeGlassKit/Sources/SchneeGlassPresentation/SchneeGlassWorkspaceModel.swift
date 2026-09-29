@@ -592,6 +592,8 @@ public final class SchneeGlassWorkspaceModel {
       }
 
       glasses[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    } catch is CancellationError {
+      return
     } catch let error as UpdateGlassTitleError {
       switch error {
       case .configurationLoadFailed:
