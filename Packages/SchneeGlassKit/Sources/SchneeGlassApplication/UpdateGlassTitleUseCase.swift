@@ -21,12 +21,18 @@ public actor UpdateGlassTitleUseCase {
     glassID: GlassID,
     title: String
   ) async throws -> Bool {
+    try Task.checkCancellation()
+
     var configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw UpdateGlassTitleError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
     let expectedCurrent = configurations
 
     guard let index = configurations.firstIndex(where: { $0.id == glassID }) else {
@@ -60,6 +66,8 @@ public actor UpdateGlassTitleUseCase {
     }
 
     configurations[index] = updated
+    try Task.checkCancellation()
+
     do {
       guard
         try await configurationStore.save(
@@ -69,6 +77,8 @@ public actor UpdateGlassTitleUseCase {
       else {
         throw UpdateGlassTitleError.configurationChanged
       }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as UpdateGlassTitleError {
       throw error
     } catch {
