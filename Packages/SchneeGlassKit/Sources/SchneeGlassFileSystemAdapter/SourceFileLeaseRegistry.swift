@@ -4,6 +4,7 @@ import Foundation
 import SchneeGlassApplication
 
 enum SourceFileLeaseError: Error, Hashable, Sendable {
+    case cancelled
     case sourceUnavailable
     case destinationUnavailable
     case unsupportedItem
@@ -35,6 +36,39 @@ struct PreparedSourceLease: Hashable, Sendable {
     let token: UUID
     let standardizedURL: URL
     let size: Int64
+}
+
+private final class SourceCopyCancellationContext {
+    let onProgress: (@Sendable () -> Void)?
+
+    init(onProgress: (@Sendable () -> Void)?) {
+        self.onProgress = onProgress
+    }
+}
+
+private let sourceCopyCancellationCallback: copyfile_callback_t = {
+    what,
+    stage,
+    _,
+    _,
+    _,
+    context in
+
+    guard what == COPYFILE_COPY_DATA, stage == COPYFILE_PROGRESS else {
+        return COPYFILE_CONTINUE
+    }
+
+    if let context {
+        let callbackContext = Unmanaged<SourceCopyCancellationContext>
+            .fromOpaque(context)
+            .takeUnretainedValue()
+        callbackContext.onProgress?()
+    }
+
+    let isCancelled = withUnsafeCurrentTask { task in
+        task?.isCancelled ?? false
+    }
+    return isCancelled ? COPYFILE_QUIT : COPYFILE_CONTINUE
 }
 
 /// Keeps the exact source file opened at Drop planning time and binds that open descriptor to the
@@ -77,6 +111,7 @@ public actor SourceFileLeaseRegistry {
 
     private let expirationNanoseconds: UInt64
     private let maximumActiveLeases: Int
+    private let copyProgressHook: (@Sendable () -> Void)?
     private var leases: [UUID: Lease] = [:]
     private var tokenByOperationID: [UUID: UUID] = [:]
     private var operationIDBySourceURL: [URL: UUID] = [:]
@@ -85,17 +120,26 @@ public actor SourceFileLeaseRegistry {
     public init() {
         self.expirationNanoseconds = Self.defaultExpirationNanoseconds
         self.maximumActiveLeases = Self.defaultMaximumActiveLeases
+        self.copyProgressHook = nil
     }
 
     init(expirationNanoseconds: UInt64) {
         self.expirationNanoseconds = expirationNanoseconds
         self.maximumActiveLeases = Self.defaultMaximumActiveLeases
+        self.copyProgressHook = nil
     }
 
     init(maximumActiveLeases: Int) {
         precondition(maximumActiveLeases > 0, "Source lease capacity must be positive")
         self.expirationNanoseconds = Self.defaultExpirationNanoseconds
         self.maximumActiveLeases = maximumActiveLeases
+        self.copyProgressHook = nil
+    }
+
+    init(copyProgressHook: @escaping @Sendable () -> Void) {
+        self.expirationNanoseconds = Self.defaultExpirationNanoseconds
+        self.maximumActiveLeases = Self.defaultMaximumActiveLeases
+        self.copyProgressHook = copyProgressHook
     }
 
     func prepareSource(at url: URL) throws -> PreparedSourceLease {
@@ -277,12 +321,52 @@ public actor SourceFileLeaseRegistry {
         let destinationDescriptor = destinationOpen.descriptor
         defer { close(destinationDescriptor) }
 
-        guard fcopyfile(
-            lease.descriptor,
-            destinationDescriptor,
-            nil,
-            copyfile_flags_t(COPYFILE_ALL)
-        ) == 0 else {
+        guard let copyState = copyfile_state_alloc() else {
+            throw SourceFileLeaseError.copyFailed(ENOMEM)
+        }
+        defer { copyfile_state_free(copyState) }
+
+        // copyfile_state_set accepts the C function pointer as an opaque pointer. The callback
+        // itself does not capture Swift state; the optional test hook is carried by STATUS_CTX.
+        let callbackPointer = unsafeBitCast(
+            sourceCopyCancellationCallback,
+            to: UnsafeRawPointer.self
+        )
+        guard
+            copyfile_state_set(
+                copyState,
+                UInt32(COPYFILE_STATE_STATUS_CB),
+                callbackPointer
+            ) == 0
+        else {
+            throw Self.mapCopyError(errno)
+        }
+
+        let callbackContext = SourceCopyCancellationContext(onProgress: copyProgressHook)
+        let contextPointer = Unmanaged.passUnretained(callbackContext).toOpaque()
+        guard
+            copyfile_state_set(
+                copyState,
+                UInt32(COPYFILE_STATE_STATUS_CTX),
+                contextPointer
+            ) == 0
+        else {
+            throw Self.mapCopyError(errno)
+        }
+
+        if withUnsafeCurrentTask({ $0?.isCancelled ?? false }) {
+            throw SourceFileLeaseError.cancelled
+        }
+
+        let copyResult = withExtendedLifetime(callbackContext) {
+            fcopyfile(
+                lease.descriptor,
+                destinationDescriptor,
+                copyState,
+                copyfile_flags_t(COPYFILE_ALL)
+            )
+        }
+        guard copyResult == 0 else {
             throw Self.mapCopyError(errno)
         }
 
@@ -397,7 +481,10 @@ public actor SourceFileLeaseRegistry {
     }
 
     private static func mapCopyError(_ error: Int32) -> SourceFileLeaseError {
-        DestinationWriteErrnoClassifier.classify(error)
+        if error == ECANCELED {
+            return .cancelled
+        }
+        return DestinationWriteErrnoClassifier.classify(error)
     }
 }
 
@@ -498,6 +585,8 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
 
     private static func map(_ error: SourceFileLeaseError) -> CopyFileSystemError {
         switch error {
+        case .cancelled:
+            return .cancelled
         case .sourceUnavailable:
             return .sourceUnavailable
         case .destinationUnavailable:
