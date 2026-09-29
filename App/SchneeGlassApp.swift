@@ -7,6 +7,9 @@ import SwiftUI
 @main
 @MainActor
 struct SchneeGlassApp: App {
+  @NSApplicationDelegateAdaptor(SchneeGlassApplicationDelegate.self)
+  private var applicationDelegate
+
   private let bootstrapState: SchneeGlassBootstrapState
   private let panelCoordinator: DesktopGlassPanelCoordinator?
   private let globalVisibilityShortcutController: SchneeGlassGlobalVisibilityShortcutController?
@@ -21,6 +24,12 @@ struct SchneeGlassApp: App {
       self.globalVisibilityShortcutController = SchneeGlassGlobalVisibilityShortcutController {
         [weak coordinator] in
         coordinator?.toggleAllVisibility()
+      }
+      applicationDelegate.configureShutdown {
+        [weak coordinator, weak workspaceModel = root.workspaceModel] in
+        workspaceModel?.prepareForTermination()
+        await coordinator?.flushPlacementsForTermination()
+        await workspaceModel?.shutdown()
       }
     } else {
       self.panelCoordinator = nil
@@ -96,6 +105,34 @@ struct SchneeGlassApp: App {
         bootstrapState: bootstrapState,
         panelCoordinator: panelCoordinator
       )
+    }
+  }
+}
+
+@MainActor
+final class SchneeGlassApplicationDelegate: NSObject, NSApplicationDelegate {
+  private let terminationCoordinator = ApplicationTerminationCoordinator()
+
+  func configureShutdown(
+    _ shutdownOperation: @escaping @MainActor () async -> Void
+  ) {
+    terminationCoordinator.configure(
+      shutdownOperation: shutdownOperation
+    )
+  }
+
+  func applicationShouldTerminate(
+    _ sender: NSApplication
+  ) -> NSApplication.TerminateReply {
+    switch terminationCoordinator.requestTermination(
+      reply: { shouldTerminate in
+        sender.reply(toApplicationShouldTerminate: shouldTerminate)
+      }
+    ) {
+    case .terminateNow:
+      return .terminateNow
+    case .terminateLater:
+      return .terminateLater
     }
   }
 }
