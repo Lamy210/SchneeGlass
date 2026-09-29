@@ -389,6 +389,45 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
   }
 
+  /// Persists the current on-screen placement before AppKit reaches final synchronous teardown.
+  ///
+  /// This bypasses the normal move/resize debounce so a Quit immediately after user interaction
+  /// cannot discard the latest frame.
+  func flushPlacementsForTermination() async {
+    guard !isStopped else {
+      return
+    }
+
+    var pendingPlacements: [(GlassID, GlassPlacement)] = []
+    pendingPlacements.reserveCapacity(panels.count)
+
+    for glassID in Array(panels.keys) {
+      guard var record = panels[glassID],
+        let persistenceTask = record.persistenceTask
+      else {
+        continue
+      }
+
+      // Termination supersedes the normal debounce. Otherwise a move or resize immediately before
+      // Quit is cancelled by final panel teardown and the latest placement is lost.
+      persistenceTask.cancel()
+      record.persistenceTask = nil
+      panels[glassID] = record
+
+      guard let placement = Self.placement(for: record.panel) else {
+        continue
+      }
+      pendingPlacements.append((glassID, placement))
+    }
+
+    for (glassID, placement) in pendingPlacements {
+      await model.persistPlacementWhenAvailable(
+        glassID: glassID,
+        placement: placement
+      )
+    }
+  }
+
   /// Removes the current Desktop Glass surface and prevents \`sync()\` from recreating panels
   /// until \`showAll()\` explicitly resumes presentation.
   ///
@@ -822,17 +861,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     let glassID = panel.glassID
     panels[glassID]?.persistenceTask?.cancel()
 
-    let frame = panel.frame
-    let displayHint = panel.screen?.localizedName
-    guard
-      let placement = try? GlassPlacement(
-        x: frame.origin.x,
-        y: frame.origin.y,
-        width: frame.width,
-        height: frame.height,
-        displayHint: displayHint
-      )
-    else {
+    guard let placement = Self.placement(for: panel) else {
       return
     }
 
@@ -895,6 +924,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     case .unavailable, .failed:
       return false
     }
+  }
+
+  private static func placement(for panel: DesktopGlassPanel) -> GlassPlacement? {
+    let frame = panel.frame
+    return try? GlassPlacement(
+      x: frame.origin.x,
+      y: frame.origin.y,
+      width: frame.width,
+      height: frame.height,
+      displayHint: panel.screen?.localizedName
+    )
   }
 
   private static func frame(for placement: GlassPlacement) -> NSRect {
