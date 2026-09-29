@@ -7,11 +7,47 @@ public enum FileEventHubError: Error, Hashable, Sendable {
   case streamStartFailed
 }
 
+enum FileEventCoalescer {
+  static func strongest(_ lhs: FileEvent, _ rhs: FileEvent) -> FileEvent {
+    if lhs == .rootChanged || rhs == .rootChanged {
+      return .rootChanged
+    }
+    if lhs == .requiresFullRescan || rhs == .requiresFullRescan {
+      return .requiresFullRescan
+    }
+    return .changed
+  }
+}
+
 final class FSEventCallbackBox {
   let continuation: AsyncStream<FileEvent>.Continuation
 
   init(continuation: AsyncStream<FileEvent>.Continuation) {
     self.continuation = continuation
+  }
+
+  func yield(_ event: FileEvent) {
+    var eventToPreserve = event
+
+    while true {
+      switch continuation.yield(eventToPreserve) {
+      case .enqueued:
+        return
+
+      case let .dropped(droppedEvent):
+        let strongest = FileEventCoalescer.strongest(eventToPreserve, droppedEvent)
+        guard strongest != eventToPreserve else {
+          return
+        }
+        eventToPreserve = strongest
+
+      case .terminated:
+        return
+
+      @unknown default:
+        return
+      }
+    }
   }
 }
 
@@ -54,7 +90,7 @@ private let schneeGlassFSEventCallback: FSEventStreamCallback = {
     }
   }
 
-  box.continuation.yield(strongestEvent)
+  box.yield(strongestEvent)
 }
 
 enum FileEventFlagMapper {
@@ -98,7 +134,7 @@ public actor FileEventHub: FileEventStreaming {
 
   public func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
     let subscriptionID = UUID()
-    let pair = AsyncStream<FileEvent>.makeStream()
+    let pair = AsyncStream<FileEvent>.makeStream(bufferingPolicy: .bufferingNewest(1))
     let callbackBox = FSEventCallbackBox(continuation: pair.continuation)
     let callbackInfo = Unmanaged.passUnretained(callbackBox).toOpaque()
 
