@@ -7,6 +7,7 @@ struct CopySourceMetadata: Hashable, Sendable {
 }
 
 enum CopyFileSystemError: Error, Hashable, Sendable {
+  case cancelled
   case sourceUnavailable
   case unsupportedItem
   case destinationUnavailable
@@ -580,6 +581,8 @@ actor SafeFileCopyEngine: FileCopying {
   private static func failureReason(for error: Error) -> CopyItemFailure.Reason {
     if let copyError = error as? CopyFileSystemError {
       switch copyError {
+      case .cancelled:
+        return .cancelled
       case .sourceUnavailable:
         return .sourceUnavailable
       case .unsupportedItem:
