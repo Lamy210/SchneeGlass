@@ -24,6 +24,7 @@ private actor RestoreConfigurationStore: ConditionalConfigurationPersisting {
     let configurations: [GlassConfiguration]
     let trace: RestoreTrace
     let failLoad: Bool
+    let cancelLoad: Bool
     let failSave: Bool
     let rejectConditionalSave: Bool
     private var saves: [[GlassConfiguration]] = []
@@ -32,18 +33,21 @@ private actor RestoreConfigurationStore: ConditionalConfigurationPersisting {
         configurations: [GlassConfiguration],
         trace: RestoreTrace,
         failLoad: Bool = false,
+        cancelLoad: Bool = false,
         failSave: Bool = false,
         rejectConditionalSave: Bool = false
     ) {
         self.configurations = configurations
         self.trace = trace
         self.failLoad = failLoad
+        self.cancelLoad = cancelLoad
         self.failSave = failSave
         self.rejectConditionalSave = rejectConditionalSave
     }
 
     func load() async throws -> [GlassConfiguration] {
         await trace.append("load")
+        if cancelLoad { throw CancellationError() }
         if failLoad { throw RestoreTestError.injected }
         return configurations
     }
@@ -148,10 +152,16 @@ private actor RestoreEventStreaming: FileEventStreaming {
 private actor RestoreSnapshotReader: FolderSnapshotReading {
     let trace: RestoreTrace
     let failFor: Set<GlassID>
+    let cancelFor: Set<GlassID>
 
-    init(trace: RestoreTrace, failFor: Set<GlassID> = []) {
+    init(
+        trace: RestoreTrace,
+        failFor: Set<GlassID> = [],
+        cancelFor: Set<GlassID> = []
+    ) {
         self.trace = trace
         self.failFor = failFor
+        self.cancelFor = cancelFor
     }
 
     func snapshot(
@@ -159,6 +169,9 @@ private actor RestoreSnapshotReader: FolderSnapshotReading {
         generation: UInt64
     ) async throws -> FolderSnapshot {
         await trace.append("snapshot:\(access.glassID.rawValue.uuidString)")
+        if cancelFor.contains(access.glassID) {
+            throw CancellationError()
+        }
         if failFor.contains(access.glassID) {
             throw RestoreTestError.injected
         }
@@ -387,6 +400,66 @@ func refreshedBookmarkSaveFailureKeepsLiveSeedAndReportsPendingSave() async thro
     #expect(result.refreshedConfigurationSavePending)
     #expect(await access.releaseCount() == 0)
     #expect(await events.stopCount() == 0)
+}
+
+
+@Test
+func configurationLoadCancellationPropagatesWithoutOpeningResources() async throws {
+    let trace = RestoreTrace()
+    let store = RestoreConfigurationStore(
+        configurations: [],
+        trace: trace,
+        cancelLoad: true
+    )
+    let access = RestoreAccessController(trace: trace)
+    let events = RestoreEventStreaming(trace: trace)
+    let reader = RestoreSnapshotReader(trace: trace)
+    let useCase = RestoreApplicationUseCase(
+        configurationStore: store,
+        accessController: access,
+        eventStreaming: events,
+        snapshotReader: reader
+    )
+
+    do {
+        _ = try await useCase.execute()
+        Issue.record("Expected restore cancellation")
+    } catch is CancellationError {
+    } catch {
+        Issue.record("Expected CancellationError, got \(error)")
+    }
+
+    #expect(await trace.snapshot() == ["load"])
+    #expect(await access.releaseCount() == 0)
+    #expect(await events.stopCount() == 0)
+}
+
+@Test
+func snapshotCancellationCleansCurrentAndPreviouslyPreparedResources() async throws {
+    let trace = RestoreTrace()
+    let first = try restoreConfiguration(title: "First", marker: 1)
+    let second = try restoreConfiguration(title: "Second", marker: 2)
+    let store = RestoreConfigurationStore(configurations: [first, second], trace: trace)
+    let access = RestoreAccessController(trace: trace)
+    let events = RestoreEventStreaming(trace: trace)
+    let reader = RestoreSnapshotReader(trace: trace, cancelFor: [second.id])
+    let useCase = RestoreApplicationUseCase(
+        configurationStore: store,
+        accessController: access,
+        eventStreaming: events,
+        snapshotReader: reader
+    )
+
+    do {
+        _ = try await useCase.execute()
+        Issue.record("Expected restore cancellation")
+    } catch is CancellationError {
+    } catch {
+        Issue.record("Expected CancellationError, got \(error)")
+    }
+
+    #expect(await events.stopCount() == 2)
+    #expect(await access.releaseCount() == 2)
 }
 
 @Test
