@@ -48,6 +48,8 @@ public final class PendingCopyRecoveryCenterModel {
     do {
       items = try await useCase.loadItems()
       message = nil
+    } catch is CancellationError {
+      return
     } catch let error as PendingCopyRecoveryCenterError {
       items = []
       message = Self.message(for: error)
@@ -91,6 +93,8 @@ public final class PendingCopyRecoveryCenterModel {
       try await useCase.executeMutation(action: action, operationID: operationID)
       await refreshAfterMutation()
       return true
+    } catch is CancellationError {
+      return false
     } catch let error as PendingCopyRecoveryCenterError {
       message = Self.message(for: error)
       return false
@@ -137,6 +141,8 @@ public final class PendingCopyRecoveryCenterModel {
         ? "Finder opened the incomplete staging item for manual inspection. SchneeGlass did not modify it."
         : "Finder opened the final destination item for manual inspection. SchneeGlass did not modify it."
       return true
+    } catch is CancellationError {
+      return false
     } catch let error as PendingCopyRecoveryNavigationError {
       message = Self.message(for: error)
       return false
@@ -178,6 +184,9 @@ public final class PendingCopyRecoveryCenterModel {
         items = try await useCase.loadItems()
         message =
           "Destination access was reconnected and saved. Pending Copy Recovery was refreshed. If the current Glass remains unavailable, restart SchneeGlass to start a new runtime session from the updated bookmark."
+      } catch is CancellationError {
+        discardStaleItemsAfterPostActionReloadFailure()
+        message = nil
       } catch let error as PendingCopyRecoveryCenterError {
         discardStaleItemsAfterPostActionReloadFailure()
         message = Self.message(for: error)
@@ -187,6 +196,8 @@ public final class PendingCopyRecoveryCenterModel {
           "Destination access was saved, but SchneeGlass couldn't refresh the Recovery list. Refresh Pending Copies before taking another Recovery action."
       }
       return true
+    } catch is CancellationError {
+      return false
     } catch let error as PendingCopyDestinationReconnectError {
       message = Self.message(for: error)
       return false
@@ -206,6 +217,9 @@ public final class PendingCopyRecoveryCenterModel {
       items = try await useCase.loadItems()
       message =
         "Recovery action completed. Final user-visible files were not deleted or overwritten."
+    } catch is CancellationError {
+      discardStaleItemsAfterPostActionReloadFailure()
+      message = nil
     } catch let error as PendingCopyRecoveryCenterError {
       discardStaleItemsAfterPostActionReloadFailure()
       message = Self.message(for: error)
