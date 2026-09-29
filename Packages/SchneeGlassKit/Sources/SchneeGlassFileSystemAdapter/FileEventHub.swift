@@ -34,7 +34,7 @@ final class FSEventCallbackBox {
       case .enqueued:
         return
 
-      case let .dropped(droppedEvent):
+      case .dropped(let droppedEvent):
         let strongest = FileEventCoalescer.strongest(eventToPreserve, droppedEvent)
         guard strongest != eventToPreserve else {
           return
