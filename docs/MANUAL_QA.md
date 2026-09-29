@@ -342,6 +342,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] shutdown待機中の重複Quit requestでworkspace shutdownを二重開始しない
 - [ ] shutdown完了後のtermination replyは1回だけ行われる
 - [ ] bootstrap failureでworkspaceが存在しない場合はasync shutdown待機なしで終了できる
+- [ ] 起動直後 / Glass restore中にQuitしてもfalse recovery failureを表示せずcleanup完了後に終了する
 - [ ] final willTerminate cleanupでDesktop Glass panel / observer / global UI cleanupが従来どおり行われる
 
 ## 12. Failure isolation
