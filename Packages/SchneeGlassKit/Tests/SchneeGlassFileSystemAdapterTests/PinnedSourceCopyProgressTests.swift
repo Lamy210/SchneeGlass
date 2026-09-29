@@ -167,7 +167,6 @@ func pinnedSourceCopyCancellationReleasesAuthorityAndAllowsFreshCopy() async thr
     #expect(await leases.activeLeaseCount() == 0)
 }
 
-
 @Test
 func pinnedSourceCopyCancellationInterruptsCurrentFileAndPreservesRecoveryState() async throws {
     let root = FileManager.default.temporaryDirectory
