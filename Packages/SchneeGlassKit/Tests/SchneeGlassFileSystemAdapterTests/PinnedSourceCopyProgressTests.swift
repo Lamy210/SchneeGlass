@@ -246,8 +246,11 @@ func pinnedSourceCopyCancellationInterruptsCurrentFileAndPreservesRecoveryState(
   let final = destinationDirectory.appendingPathComponent("large.bin", isDirectory: false)
   #expect(!FileManager.default.fileExists(atPath: final.path))
 
+  let stagingFilename = DestinationDirectoryLeaseRegistry.stagingFilename(
+    operationID: plan.items[0].operationID
+  )
   let staging = destinationDirectory.appendingPathComponent(
-    DestinationDirectoryLeaseRegistry.stagingFilename(operationID: plan.items[0].operationID),
+    stagingFilename,
     isDirectory: false
   )
   #expect(FileManager.default.fileExists(atPath: staging.path))
