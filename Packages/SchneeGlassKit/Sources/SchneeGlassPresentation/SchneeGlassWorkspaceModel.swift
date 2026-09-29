@@ -269,6 +269,8 @@ public final class SchneeGlassWorkspaceModel {
         return
       }
       try await activate(seed)
+    } catch is CancellationError {
+      return
     } catch {
       if let createError = error as? CreateGlassError,
         case .configurationLoadFailed = createError
@@ -708,8 +710,6 @@ public final class SchneeGlassWorkspaceModel {
         userMessage =
           "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
       }
-    } catch is CancellationError {
-      return
     } catch let error as ReconnectGlassSourceError {
       handleReconnectError(error)
     } catch {
