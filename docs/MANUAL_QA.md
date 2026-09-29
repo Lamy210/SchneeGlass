@@ -122,6 +122,8 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] `Discard Metadata…` がuser fileを変更しない
 - [ ] Copy中にRecovery mutationを開始できない
 - [ ] Recovery mutation中に新しいCopyを開始できない
+- [ ] 大きい単一fileのCopy中にCancel Copyすると、現在fileの完了待ちではなくcopy途中でcancelされる
+- [ ] 単一fileのcopy途中cancel後、final fileは生成されず、partial stagingはPending Copy Recoveryから安全に扱える
 
 ## 7. Destination Reconnect
 
