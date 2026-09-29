@@ -107,7 +107,8 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
 
   init(
     resourceAccessor: any SecurityScopedResourceAccessing,
-    runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader()
+    runtimeIdentityReader: any RuntimeDirectoryIdentityReading =
+      POSIXRuntimeDirectoryIdentityReader()
   ) {
     self.resourceAccessor = resourceAccessor
     self.runtimeIdentityReader = runtimeIdentityReader
@@ -190,7 +191,11 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
       // opaque identifiers. The Foundation fingerprint remains a compatibility fallback when
       // descriptor identity is unavailable on the current filesystem/location.
       if let actualRuntimeDirectoryIdentity {
-        guard let refreshedRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(for: resolved.url) else {
+        guard
+          let refreshedRuntimeDirectoryIdentity = await runtimeIdentityReader.identity(
+            for: resolved.url
+          )
+        else {
           await resourceAccessor.stopAccessing(resolved.url)
           throw FolderAccessError.bookmarkResolutionFailed
         }
@@ -226,7 +231,9 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
 
       let refreshedPersistentIdentity: PersistentFolderIdentity?
       do {
-        refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(for: resolved.url)
+        refreshedPersistentIdentity = try await resourceAccessor.persistentIdentity(
+          for: resolved.url
+        )
       } catch {
         if actualPersistentIdentity != nil {
           await resourceAccessor.stopAccessing(resolved.url)
@@ -257,8 +264,8 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
         persistentIdentity: refreshedPersistentIdentity
       )
     } else if source.persistentIdentity != actualPersistentIdentity
-          || source.fingerprint != nil
-          || source.lastKnownPath != resolved.url.path
+      || source.fingerprint != nil
+      || source.lastKnownPath != resolved.url.path
     {
       // This is also the in-place migration path for schema-v1 files. Preserve the existing
       // bookmark, discard the decoded legacy boot-local fingerprint in memory, and add whatever
@@ -335,15 +342,15 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     }
 
     if let expectedVolume = expected.volumeUUIDString,
-     let actualVolume = actual.volumeUUIDString,
-     expectedVolume != actualVolume
+      let actualVolume = actual.volumeUUIDString,
+      expectedVolume != actualVolume
     {
       return true
     }
 
     if let expectedDocument = expected.documentIdentifier,
-     let actualDocument = actual.documentIdentifier,
-     expectedDocument != actualDocument
+      let actualDocument = actual.documentIdentifier,
+      expectedDocument != actualDocument
     {
       return true
     }
@@ -386,15 +393,15 @@ public actor SecurityScopedAccessCoordinator: FolderAccessControlling {
     }
 
     if let expectedVolume = expected.volumeIdentifier,
-     let actualVolume = actual.volumeIdentifier,
-     expectedVolume != actualVolume
+      let actualVolume = actual.volumeIdentifier,
+      expectedVolume != actualVolume
     {
       return true
     }
 
     if let expectedResource = expected.resourceIdentifier,
-     let actualResource = actual.resourceIdentifier,
-     expectedResource != actualResource
+      let actualResource = actual.resourceIdentifier,
+      expectedResource != actualResource
     {
       return true
     }
