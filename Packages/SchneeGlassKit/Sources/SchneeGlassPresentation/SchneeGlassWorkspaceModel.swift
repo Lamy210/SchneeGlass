@@ -401,6 +401,8 @@ public final class SchneeGlassWorkspaceModel {
       }
       userMessage = nil
       return .updated
+    } catch is CancellationError {
+      return .failed
     } catch let error as ResetGlassPositionsError {
       if case .configurationLoadFailed = error {
         enterConfigurationRecoveryRequiredState()
