@@ -268,7 +268,10 @@ func fingerprintCancellationIsNotMappedToIdentityFailure() async {
 
 @Test
 func cancellationObservedAfterFingerprintStopsBeforePersistentIdentity() async {
-  let url = URL(fileURLWithPath: "/tmp/FolderSourceFingerprintReturnCancellation", isDirectory: true)
+  let url = URL(
+    fileURLWithPath: "/tmp/FolderSourceFingerprintReturnCancellation",
+    isDirectory: true
+  )
   let accessor = FolderSourceCancellationResourceAccessor(
     fingerprintCancelAndReturnOnCall: 1
   )
