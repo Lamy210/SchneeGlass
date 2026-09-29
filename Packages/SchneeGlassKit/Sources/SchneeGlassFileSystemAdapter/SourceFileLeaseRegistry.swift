@@ -173,7 +173,7 @@ public actor SourceFileLeaseRegistry {
       return lstat(path, &metadata)
     }
     guard result == 0,
-       (metadata.st_mode & S_IFMT) == S_IFREG
+      (metadata.st_mode & S_IFMT) == S_IFREG
     else {
       return false
     }
@@ -191,10 +191,10 @@ public actor SourceFileLeaseRegistry {
     // A newer plan may invalidate an older unconsumed plan, but it must never revoke source
     // authority that belongs to a batch whose copy execution has already begun.
     if let previousOperationID = operationIDBySourceURL[lease.sourceURL],
-     previousOperationID != operationID
+      previousOperationID != operationID
     {
       if let previousToken = tokenByOperationID[previousOperationID],
-       leases[previousToken]?.executionActive == true
+        leases[previousToken]?.executionActive == true
       {
         throw SourceFileLeaseError.sourceUnavailable
       }
@@ -213,8 +213,8 @@ public actor SourceFileLeaseRegistry {
   func beginExecution(operationIDs: [UUID]) {
     for operationID in operationIDs {
       guard let token = tokenByOperationID[operationID],
-         var lease = leases[token],
-         lease.operationID == operationID
+        var lease = leases[token],
+        lease.operationID == operationID
       else {
         continue
       }
@@ -228,9 +228,9 @@ public actor SourceFileLeaseRegistry {
   func boundSourceSize(at sourceURL: URL) -> Int64? {
     let source = sourceURL.standardizedFileURL
     guard let operationID = operationIDBySourceURL[source],
-       let token = tokenByOperationID[operationID],
-       let lease = leases[token],
-       lease.operationID == operationID
+      let token = tokenByOperationID[operationID],
+      let lease = leases[token],
+      lease.operationID == operationID
     else {
       return nil
     }
@@ -244,11 +244,10 @@ public actor SourceFileLeaseRegistry {
     stagingFilename: String
   ) throws -> PreparedPendingCopyStaging {
     guard let token = tokenByOperationID[operationID],
-       let lease = leases[token],
-       lease.operationID == operationID,
-       lease.sourceURL == expectedSourceURL.standardizedFileURL,
-       DestinationDirectoryLeaseRegistry.stagingFilename(operationID: operationID)
-        == stagingFilename
+      let lease = leases[token],
+      lease.operationID == operationID,
+      lease.sourceURL == expectedSourceURL.standardizedFileURL,
+      DestinationDirectoryLeaseRegistry.stagingFilename(operationID: operationID) == stagingFilename
     else {
       throw SourceFileLeaseError.sourceUnavailable
     }
@@ -280,12 +279,14 @@ public actor SourceFileLeaseRegistry {
     let destinationDescriptor = destinationOpen.descriptor
     defer { close(destinationDescriptor) }
 
-    guard fcopyfile(
-      lease.descriptor,
-      destinationDescriptor,
-      nil,
-      copyfile_flags_t(COPYFILE_ALL)
-    ) == 0 else {
+    guard
+      fcopyfile(
+        lease.descriptor,
+        destinationDescriptor,
+        nil,
+        copyfile_flags_t(COPYFILE_ALL)
+      ) == 0
+    else {
       throw Self.mapCopyError(errno)
     }
 
@@ -296,11 +297,13 @@ public actor SourceFileLeaseRegistry {
     // Keep the destination descriptor open while inherited proof is removed and the fresh proof
     // is minted. The directory entry is revalidated through the already-pinned parent descriptor
     // before and after proof creation, so pathname replacement cannot receive recovery authority.
-    guard let prepared = PendingCopyFileIdentity.prepareAppOwnedStaging(
-      onFileDescriptor: destinationDescriptor,
-      directoryDescriptor: destinationDirectoryDescriptor,
-      filename: stagingFilename
-    ) else {
+    guard
+      let prepared = PendingCopyFileIdentity.prepareAppOwnedStaging(
+        onFileDescriptor: destinationDescriptor,
+        directoryDescriptor: destinationDirectoryDescriptor,
+        filename: stagingFilename
+      )
+    else {
       throw SourceFileLeaseError.stagingIdentityPreparationFailed
     }
 
@@ -447,10 +450,12 @@ private actor PinnedSourceCopyFileSystemAccessor: CopyFileSystemAccessing {
   }
 
   func itemExists(at url: URL, operationID: UUID) async -> Bool {
-    guard let exists = await destinationLeases.itemExists(
-      at: url,
-      operationID: operationID
-    ) else {
+    guard
+      let exists = await destinationLeases.itemExists(
+        at: url,
+        operationID: operationID
+      )
+    else {
       // A URL outside this operation's exact staging/final binding never proves absence.
       return true
     }
