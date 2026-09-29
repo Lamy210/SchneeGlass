@@ -369,6 +369,9 @@ public actor SourceFileLeaseRegistry {
         guard copyResult == 0 else {
             throw Self.mapCopyError(errno)
         }
+        if withUnsafeCurrentTask({ $0?.isCancelled ?? false }) {
+            throw SourceFileLeaseError.cancelled
+        }
 
         // A writer can modify an already-open inode while fcopyfile is reading it. Verify the same
         // pinned descriptor again before this exact destination inode receives ownership proof.
