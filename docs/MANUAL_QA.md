@@ -332,6 +332,7 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 
 - [ ] Command-Qで終了するとworkspace shutdown完了後にprocessが終了する
 - [ ] Glassを移動/resizeした直後（通常debounce完了前）にCommand-Qして再起動しても、最後のplacementが復元される
+- [ ] Add Glass / Backup Restore / Reset Positionsなどの設定操作中にQuitしても、終了処理がbusy retryで無期限待機しない
 - [ ] Dock > Quitで同じshutdown pathを通る
 - [ ] Menu BarのQuit SchneeGlassで同じshutdown pathを通る
 - [ ] system termination requestでも同じshutdown pathを通る
