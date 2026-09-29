@@ -50,6 +50,7 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
   }
 
   private var behaviors: [Behavior]
+  private var readCount = 0
 
   init(behaviors: [Behavior]) {
     self.behaviors = behaviors
@@ -59,6 +60,7 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
     for access: FolderAccessHandle,
     generation: UInt64
   ) async throws -> FolderSnapshot {
+    readCount += 1
     guard !behaviors.isEmpty else {
       throw RuntimeSessionTestError.injected
     }
@@ -76,6 +78,10 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
     case .fail:
       throw RuntimeSessionTestError.injected
     }
+  }
+
+  func callCount() -> Int {
+    readCount
   }
 }
 
@@ -145,6 +151,7 @@ private struct RuntimeFixture {
   let copyGateContinuation: AsyncStream<Void>.Continuation?
   let accessController: RuntimeAccessController
   let eventStreaming: RuntimeEventStreaming
+  let snapshotReader: RuntimeSnapshotReader
   let dropPlanner: RuntimeDropPlanner
   let fileCopying: RuntimeFileCopying
   let configuration: GlassConfiguration
@@ -203,6 +210,7 @@ private func makeRuntimeFixture(
     copyGateContinuation: copyPair?.continuation,
     accessController: accessController,
     eventStreaming: eventStreaming,
+    snapshotReader: reader,
     dropPlanner: dropPlanner,
     fileCopying: fileCopying,
     configuration: configuration,
@@ -266,6 +274,123 @@ private func waitForWatcherStop(_ streaming: RuntimeEventStreaming) async -> Boo
     await Task.yield()
   }
   return false
+}
+
+private func waitForSnapshotReads(
+  _ reader: RuntimeSnapshotReader,
+  count: Int
+) async -> Bool {
+  for _ in 0..<2_000 {
+    if await reader.callCount() >= count {
+      return true
+    }
+    await Task.yield()
+  }
+  return false
+}
+
+@Test
+func runtimeStateBufferKeepsOnlyLatestPendingSnapshot() async throws {
+  let first = FolderSnapshot(
+    folderIdentity: FolderIdentity(
+      resourceIdentifier: nil,
+      standardizedURL: URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
+    ),
+    items: [item(named: "first.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_002),
+    generation: 99
+  )
+  let latest = FolderSnapshot(
+    folderIdentity: first.folderIdentity,
+    items: [item(named: "latest.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_003),
+    generation: 100
+  )
+  let fixture = try makeRuntimeFixture(
+    refreshBehaviors: [.snapshot(first), .snapshot(latest)]
+  )
+
+  let states = try await fixture.session.start()
+
+  fixture.eventContinuation.yield(.changed)
+  fixture.eventContinuation.yield(.changed)
+  #expect(await waitForSnapshotReads(fixture.snapshotReader, count: 2))
+
+  var iterator = states.makeAsyncIterator()
+  let pending = await iterator.next()
+  guard case .ready(let snapshot)? = pending else {
+    Issue.record("Expected only the latest ready state to remain buffered")
+    await fixture.session.stop()
+    return
+  }
+  #expect(snapshot.items.map(\.displayName) == ["latest.txt"])
+  #expect(snapshot.generation == 3)
+
+  await fixture.session.stop()
+  #expect(await iterator.next() == nil)
+}
+
+@Test
+func terminalUnavailableReplacesStalePendingReadyStateAndStillTerminates() async throws {
+  let refreshed = FolderSnapshot(
+    folderIdentity: FolderIdentity(
+      resourceIdentifier: nil,
+      standardizedURL: URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
+    ),
+    items: [item(named: "stale.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_002),
+    generation: 99
+  )
+  let fixture = try makeRuntimeFixture(
+    refreshBehaviors: [.snapshot(refreshed)]
+  )
+
+  let states = try await fixture.session.start()
+
+  fixture.eventContinuation.yield(.changed)
+  #expect(await waitForSnapshotReads(fixture.snapshotReader, count: 1))
+  fixture.eventContinuation.yield(.rootChanged)
+  #expect(await waitForWatcherStop(fixture.eventStreaming))
+
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .unavailable(.sourceMissing))
+  #expect(await iterator.next() == nil)
+  #expect(await fixture.accessController.releaseCount() == 1)
+}
+
+@Test
+func initialStateMayBeSupersededBeforeConsumerStartsReading() async throws {
+  let refreshed = FolderSnapshot(
+    folderIdentity: FolderIdentity(
+      resourceIdentifier: nil,
+      standardizedURL: URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
+    ),
+    items: [item(named: "fresh.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_002),
+    generation: 99
+  )
+  let fixture = try makeRuntimeFixture(
+    refreshBehaviors: [.snapshot(refreshed)]
+  )
+
+  let states = try await fixture.session.start()
+  fixture.eventContinuation.yield(.changed)
+  #expect(await waitForSnapshotReads(fixture.snapshotReader, count: 1))
+
+  var iterator = states.makeAsyncIterator()
+  guard case .ready(let snapshot)? = await iterator.next() else {
+    Issue.record("Expected refreshed state to supersede the unread initial state")
+    await fixture.session.stop()
+    return
+  }
+  #expect(snapshot.items.map(\.displayName) == ["fresh.txt"])
+
+  await fixture.session.stop()
+  #expect(await iterator.next() == nil)
 }
 
 @Test
