@@ -46,17 +46,31 @@ public actor PendingCopyDestinationReconnectUseCase {
     self.activityGate = activityGate
   }
 
-  /// Returns `false` when the user cancels folder selection.
+  /// Returns `false` when the user cancels folder selection or this reconnect task is cancelled
+  /// before the configuration commit point.
   public func execute(operationID: UUID) async throws -> Bool {
-    let preflight = try await loadCurrentState(operationID: operationID)
+    let preflight: CurrentState
+    do {
+      preflight = try await loadCurrentState(operationID: operationID)
+    } catch is CancellationError {
+      return false
+    }
 
-    guard let selectedURL = await folderSelector.selectFolder() else {
+    let selectedURL = await folderSelector.selectFolder()
+    do {
+      try Task.checkCancellation()
+    } catch {
+      return false
+    }
+    guard let selectedURL else {
       return false
     }
 
     let selectedSource: FolderSource
     do {
       selectedSource = try await sourceCreator.createSource(for: selectedURL)
+    } catch is CancellationError {
+      return false
     } catch let error as FolderSourceCreationError {
       switch error {
       case .bookmarkCreationFailed:
@@ -66,6 +80,12 @@ public actor PendingCopyDestinationReconnectUseCase {
       }
     } catch {
       throw PendingCopyDestinationReconnectError.sourceCreationFailed
+    }
+
+    do {
+      try Task.checkCancellation()
+    } catch {
+      return false
     }
 
     try Self.validateSelectedIdentity(
@@ -83,6 +103,7 @@ public actor PendingCopyDestinationReconnectUseCase {
     }
 
     do {
+      try Task.checkCancellation()
       let result = try await commitReconnect(
         operationID: operationID,
         preflight: preflight,
@@ -90,6 +111,9 @@ public actor PendingCopyDestinationReconnectUseCase {
       )
       await activityGate.endRecoveryMutation()
       return result
+    } catch is CancellationError {
+      await activityGate.endRecoveryMutation()
+      return false
     } catch {
       await activityGate.endRecoveryMutation()
       throw error
@@ -105,9 +129,13 @@ public actor PendingCopyDestinationReconnectUseCase {
     let records: [PendingCopyRecord]
     do {
       records = try await pendingCopyStore.records()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyDestinationReconnectError.recordsLoadFailed
     }
+
+    try Task.checkCancellation()
     guard let record = records.first(where: { $0.operationID == operationID }) else {
       throw PendingCopyDestinationReconnectError.recordMissing
     }
@@ -115,9 +143,13 @@ public actor PendingCopyDestinationReconnectUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyDestinationReconnectError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
     guard
       let configuration = configurations.first(where: { $0.id == record.destinationGlassID })
     else {
@@ -150,12 +182,22 @@ public actor PendingCopyDestinationReconnectUseCase {
         source: selectedSource,
         glassID: current.configuration.id
       )
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyDestinationReconnectError.selectedDestinationAccessFailed
     }
 
-    let persistedSource = validationAccess.refreshedSource ?? selectedSource
+    let persistedSource: FolderSource
+    do {
+      try Task.checkCancellation()
+      persistedSource = validationAccess.refreshedSource ?? selectedSource
+    } catch {
+      await accessController.release(handleID: validationAccess.handle.id)
+      throw error
+    }
     await accessController.release(handleID: validationAccess.handle.id)
+    try Task.checkCancellation()
 
     // Reconnect crosses process/system-restart boundaries, so boot-local Foundation resource
     // identifiers are not valid authority here. Automatic reconnect requires the persistent
@@ -182,9 +224,13 @@ public actor PendingCopyDestinationReconnectUseCase {
     let configurations: [GlassConfiguration]
     do {
       configurations = try await configurationStore.load()
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw PendingCopyDestinationReconnectError.configurationLoadFailed
     }
+
+    try Task.checkCancellation()
 
     guard let index = configurations.firstIndex(where: { $0.id == current.configuration.id }),
       configurations[index] == current.configuration
@@ -204,6 +250,8 @@ public actor PendingCopyDestinationReconnectUseCase {
       else {
         throw PendingCopyDestinationReconnectError.staleRecoveryState
       }
+    } catch is CancellationError {
+      throw CancellationError()
     } catch let error as PendingCopyDestinationReconnectError {
       throw error
     } catch {
