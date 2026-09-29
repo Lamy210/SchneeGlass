@@ -118,7 +118,9 @@ public actor PendingCopyDestinationReconnectUseCase {
     } catch {
       throw PendingCopyDestinationReconnectError.configurationLoadFailed
     }
-    guard let configuration = configurations.first(where: { $0.id == record.destinationGlassID }) else {
+    guard
+      let configuration = configurations.first(where: { $0.id == record.destinationGlassID })
+    else {
       throw PendingCopyDestinationReconnectError.configurationMissing
     }
 
@@ -132,7 +134,7 @@ public actor PendingCopyDestinationReconnectUseCase {
   ) async throws -> Bool {
     let current = try await loadCurrentState(operationID: operationID)
     guard current.record == preflight.record,
-              current.configuration == preflight.configuration
+      current.configuration == preflight.configuration
     else {
       throw PendingCopyDestinationReconnectError.staleRecoveryState
     }
@@ -185,7 +187,7 @@ public actor PendingCopyDestinationReconnectUseCase {
     }
 
     guard let index = configurations.firstIndex(where: { $0.id == current.configuration.id }),
-              configurations[index] == current.configuration
+      configurations[index] == current.configuration
     else {
       throw PendingCopyDestinationReconnectError.staleRecoveryState
     }
@@ -194,10 +196,12 @@ public actor PendingCopyDestinationReconnectUseCase {
     updated[index] = updatedConfiguration
 
     do {
-      guard try await configurationStore.save(
-        updated,
-        ifCurrentMatches: configurations
-      ) else {
+      guard
+        try await configurationStore.save(
+          updated,
+          ifCurrentMatches: configurations
+        )
+      else {
         throw PendingCopyDestinationReconnectError.staleRecoveryState
       }
     } catch let error as PendingCopyDestinationReconnectError {
@@ -213,18 +217,19 @@ public actor PendingCopyDestinationReconnectUseCase {
     expected: PersistentFolderIdentity?,
     selected: PersistentFolderIdentity?
   ) throws {
-    guard let expected,
-              let selected,
-              let expectedVolume = expected.volumeUUIDString,
-              let selectedVolume = selected.volumeUUIDString,
-              let expectedDocument = expected.documentIdentifier,
-              let selectedDocument = selected.documentIdentifier
+    guard
+      let expected,
+      let selected,
+      let expectedVolume = expected.volumeUUIDString,
+      let selectedVolume = selected.volumeUUIDString,
+      let expectedDocument = expected.documentIdentifier,
+      let selectedDocument = selected.documentIdentifier
     else {
       throw PendingCopyDestinationReconnectError.selectedDestinationIdentityUnavailable
     }
 
     guard expectedVolume == selectedVolume,
-              expectedDocument == selectedDocument
+      expectedDocument == selectedDocument
     else {
       throw PendingCopyDestinationReconnectError.selectedDestinationMismatch
     }
