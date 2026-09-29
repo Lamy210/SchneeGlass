@@ -49,6 +49,12 @@ public actor PendingCopyDestinationReconnectUseCase {
   /// Returns `false` when the user cancels folder selection or this reconnect task is cancelled
   /// before the configuration commit point.
   public func execute(operationID: UUID) async throws -> Bool {
+    do {
+      try Task.checkCancellation()
+    } catch {
+      return false
+    }
+
     let preflight: CurrentState
     do {
       preflight = try await loadCurrentState(operationID: operationID)
