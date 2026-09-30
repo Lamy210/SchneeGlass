@@ -1,0 +1,33 @@
+name: Temporary Format Copy Safety Files
+
+on:
+  push:
+    branches:
+      - chore/format-copy-safety-files
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chore/format-copy-safety-files
+          fetch-depth: 0
+      - name: Format target Swift files
+        run: |
+          xcrun swift-format format --in-place             Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/SafeFileCopyEngine.swift             Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift             Packages/SchneeGlassKit/Tests/SchneeGlassFileSystemAdapterTests/PinnedSourceCopyProgressTests.swift
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/SafeFileCopyEngine.swift             Packages/SchneeGlassKit/Sources/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift             Packages/SchneeGlassKit/Tests/SchneeGlassFileSystemAdapterTests/PinnedSourceCopyProgressTests.swift
+          git commit -m "style: format copy safety files"
+          git push origin HEAD:chore/format-copy-safety-files
