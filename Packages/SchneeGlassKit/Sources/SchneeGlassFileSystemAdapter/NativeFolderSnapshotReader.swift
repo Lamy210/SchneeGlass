@@ -272,3 +272,4 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     return comparison == .orderedAscending
   }
 }
+
