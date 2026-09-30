@@ -60,12 +60,20 @@ private struct PlanningLifecycleSnapshotReader: FolderSnapshotReading {
 private actor BlockingLifecycleDropPlanner: DropPlanning {
   private let result: DropPlan
   private let planGate: AsyncStream<Void>
+  private let blockAbandon: Bool
   private var planStarted = false
   private var abandonedRequests: [AuthorizedCopyBatchRequest] = []
+  private var abandonStartedCountValue = 0
+  private var abandonWaiters: [CheckedContinuation<Void, Never>] = []
 
-  init(result: DropPlan, planGate: AsyncStream<Void>) {
+  init(
+    result: DropPlan,
+    planGate: AsyncStream<Void>,
+    blockAbandon: Bool = false
+  ) {
     self.result = result
     self.planGate = planGate
+    self.blockAbandon = blockAbandon
   }
 
   func plan(
@@ -82,10 +90,31 @@ private actor BlockingLifecycleDropPlanner: DropPlanning {
 
   func abandon(_ request: AuthorizedCopyBatchRequest) async {
     abandonedRequests.append(request)
+    abandonStartedCountValue += 1
+
+    guard blockAbandon else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      abandonWaiters.append(continuation)
+    }
   }
 
   func hasStartedPlanning() -> Bool {
     planStarted
+  }
+
+  func abandonStartedCount() -> Int {
+    abandonStartedCountValue
+  }
+
+  func releaseBlockedAbandonments() {
+    let waiters = abandonWaiters
+    abandonWaiters.removeAll(keepingCapacity: false)
+    for waiter in waiters {
+      waiter.resume()
+    }
   }
 
   func abandoned() -> [AuthorizedCopyBatchRequest] {
@@ -126,6 +155,16 @@ private func waitForSubscriptionStop(_ eventStreaming: PlanningLifecycleEventStr
 {
   for _ in 0..<2_000 {
     if await eventStreaming.stopCount() > 0 {
+      return true
+    }
+    await Task.yield()
+  }
+  return false
+}
+
+private func waitForAbandonStart(_ planner: BlockingLifecycleDropPlanner) async -> Bool {
+  for _ in 0..<2_000 {
+    if await planner.abandonStartedCount() > 0 {
       return true
     }
     await Task.yield()
@@ -386,6 +425,73 @@ func cancelledAuthoritativePlanningAbandonsReturnedPlan() async throws {
 
   await session.stop()
 
+  #expect(await planner.abandoned().count == 1)
+  #expect(await accessController.releases() == [fixture.access.id])
+  eventPair.continuation.finish()
+}
+
+@Test
+func explicitPlanAbandonmentKeepsAccessAliveUntilCleanupCompletes() async throws {
+  let fixture = try makePlanningLifecycleFixture()
+  let eventPair = AsyncStream<FileEvent>.makeStream()
+  let planGatePair = AsyncStream<Void>.makeStream()
+  let planner = BlockingLifecycleDropPlanner(
+    result: .copy(fixture.copyPlan),
+    planGate: planGatePair.stream,
+    blockAbandon: true
+  )
+  let accessController = PlanningLifecycleAccessController()
+  let eventStreaming = PlanningLifecycleEventStreaming()
+  let session = GlassRuntimeSession(
+    seed: CreatedGlassRuntimeSeed(
+      configuration: fixture.configuration,
+      access: fixture.access,
+      snapshot: fixture.snapshot,
+      eventSubscription: FileEventSubscription(events: eventPair.stream)
+    ),
+    eventStreaming: eventStreaming,
+    snapshotReader: PlanningLifecycleSnapshotReader(),
+    accessController: accessController,
+    dropPlanning: planner,
+    fileCopying: PlanningLifecycleFileCopying()
+  )
+
+  let states = try await session.start()
+  _ = states
+
+  let planningTask = Task {
+    await session.planDrop(sourceURLs: [fixture.source])
+  }
+  #expect(await waitForPlanningStart(planner))
+  planGatePair.continuation.yield(())
+  planGatePair.continuation.finish()
+
+  let planned = await planningTask.value
+  guard case .copy(let copyPlan) = planned else {
+    Issue.record("Expected authoritative copy plan")
+    await session.stop()
+    eventPair.continuation.finish()
+    return
+  }
+
+  let abandonTask = Task {
+    await session.abandonCopyPlan(copyPlan)
+  }
+  #expect(await waitForAbandonStart(planner))
+
+  let stopTask = Task {
+    await session.stop()
+  }
+  #expect(await waitForSubscriptionStop(eventStreaming))
+
+  #expect(await planner.abandonStartedCount() == 1)
+  #expect(await accessController.releases().isEmpty)
+
+  await planner.releaseBlockedAbandonments()
+  await abandonTask.value
+  await stopTask.value
+
+  #expect(await planner.abandonStartedCount() == 1)
   #expect(await planner.abandoned().count == 1)
   #expect(await accessController.releases() == [fixture.access.id])
   eventPair.continuation.finish()
