@@ -156,3 +156,41 @@ func preCancelledConfigurationMutationReturnsFallbackWithoutStartingOperation() 
   #expect(operationCount == 0)
   #expect(!coordinator.isRunning)
 }
+
+@Test
+@MainActor
+func configurationMutationCoordinatorCanStartReplacementImmediatelyAfterCancellationWait() async {
+  let coordinator = WorkspaceConfigurationMutationTaskCoordinator()
+  let started = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+  var cleanupFinished = false
+
+  let firstTask = Task { @MainActor in
+    await coordinator.run(ifBusy: "busy") {
+      started.continuation.yield(())
+      do {
+        try await Task.sleep(nanoseconds: 10_000_000_000)
+      } catch is CancellationError {
+        cleanupFinished = true
+      } catch {
+        Issue.record("Unexpected error: \(error)")
+      }
+      return "first"
+    }
+  }
+
+  var iterator = started.stream.makeAsyncIterator()
+  _ = await iterator.next()
+
+  await coordinator.cancelAndWait()
+
+  #expect(cleanupFinished)
+  #expect(!coordinator.isRunning)
+
+  let replacement = await coordinator.run(ifBusy: "busy") {
+    "replacement"
+  }
+
+  #expect(replacement == "replacement")
+  _ = await firstTask.value
+  #expect(!coordinator.isRunning)
+}

@@ -402,6 +402,8 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
 
     var pendingPlacements: [(GlassID, GlassPlacement)] = []
     pendingPlacements.reserveCapacity(panels.count)
+    var cancelledPersistenceTasks: [Task<Void, Never>] = []
+    cancelledPersistenceTasks.reserveCapacity(panels.count)
 
     for glassID in Array(panels.keys) {
       guard var record = panels[glassID],
@@ -413,6 +415,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       // Termination supersedes the normal debounce. Otherwise a move or resize immediately before
       // Quit is cancelled by final panel teardown and the latest placement is lost.
       persistenceTask.cancel()
+      cancelledPersistenceTasks.append(persistenceTask)
       record.persistenceTask = nil
       panels[glassID] = record
 
@@ -422,10 +425,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       pendingPlacements.append((glassID, placement))
     }
 
+    // A debounce task may already be inside model persistence when Quit starts. Cancellation alone
+    // does not prove its MainActor cleanup has released the configuration-mutation gate, so join
+    // every cancelled task before making the final placement write.
+    for task in cancelledPersistenceTasks {
+      await task.value
+    }
+
     for (glassID, placement) in pendingPlacements {
-      // Termination cannot wait on the normal busy-retry loop: an unrelated configuration
-      // mutation may be suspended on user interaction. Make one conditional persistence attempt
-      // and prefer prompt, safe process termination over an unbounded Quit wait.
+      // Configuration mutations were quiesced before this flush and cancelled debounce tasks have
+      // now finished. Make one final conditional persistence attempt without entering the normal
+      // busy-retry loop.
       _ = await model.persistPlacement(
         glassID: glassID,
         placement: placement

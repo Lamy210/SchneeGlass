@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class WorkspaceConfigurationMutationTaskCoordinator {
+final class PendingCopyRecoveryTaskCoordinator {
   private struct RunningTask {
     let id: UUID
     let cancel: () -> Void
