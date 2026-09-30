@@ -183,7 +183,8 @@ func runtimeStateStreamTerminatesOnlyAfterAuthorityCleanupCompletes() async thro
 
   #expect(
     await waitForStateTerminationCondition {
-      await probe.snapshot().states.contains(.empty(initialSnapshot))
+      let snapshot = await probe.snapshot()
+      return snapshot.states.contains(.empty(initialSnapshot))
     }
   )
 
@@ -192,8 +193,9 @@ func runtimeStateStreamTerminatesOnlyAfterAuthorityCleanupCompletes() async thro
   #expect(
     await waitForStateTerminationCondition {
       let snapshot = await probe.snapshot()
+      let releaseStarted = await accessController.hasReleaseStarted()
       return snapshot.states.contains(.failed(.unexpected))
-        && await accessController.hasReleaseStarted()
+        && releaseStarted
     }
   )
 
@@ -201,14 +203,16 @@ func runtimeStateStreamTerminatesOnlyAfterAuthorityCleanupCompletes() async thro
     await Task.yield()
   }
 
-  #expect(!(await probe.snapshot().terminated))
+  let beforeRelease = await probe.snapshot()
+  #expect(!beforeRelease.terminated)
   #expect(await accessController.releaseCount() == 0)
   #expect(await eventStreaming.stopCount() == 1)
 
   await accessController.finishRelease()
   await consumer.value
 
-  #expect(await probe.snapshot().terminated)
+  let afterRelease = await probe.snapshot()
+  #expect(afterRelease.terminated)
   #expect(await accessController.releaseCount() == 1)
   #expect(await eventStreaming.stopCount() == 1)
 }
