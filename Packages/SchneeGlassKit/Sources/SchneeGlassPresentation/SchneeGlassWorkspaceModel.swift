@@ -329,39 +329,46 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     defer { isMutatingConfiguration = false }
 
-    do {
-      let removed = try await removeGlassUseCase.execute(glassID: id)
-      guard removed else {
+    await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
         return
       }
 
-      sessionTaskTracker.invalidate(id)
-      stateTasks[id]?.cancel()
-      stateTasks[id] = nil
+      do {
+        let removed = try await removeGlassUseCase.execute(glassID: id)
+        guard removed else {
+          return
+        }
 
-      if let session = sessions[id] {
-        // Keep the session discoverable until stop completes. If app termination starts while this
-        // await is in flight, shutdown() can still find the same session and join its idempotent
-        // concurrent stop instead of approving termination before access/subscription cleanup.
-        await session.stop()
-        sessions[id] = nil
-      }
-      connectedFolderURLs[id] = nil
+        sessionTaskTracker.invalidate(id)
+        stateTasks[id]?.cancel()
+        stateTasks[id] = nil
 
-      glasses.removeAll { $0.id == id }
-      userMessage = nil
-    } catch is CancellationError {
-      return
-    } catch let error as RemoveGlassError {
-      if case .configurationLoadFailed = error {
-        enterConfigurationRecoveryRequiredState()
-      } else {
+        if let session = sessions[id] {
+          // Keep the session discoverable until stop completes. If app termination starts while
+          // this await is in flight, shutdown() can still find the same session and join its
+          // idempotent concurrent stop instead of approving termination before
+          // access/subscription cleanup.
+          await session.stop()
+          sessions[id] = nil
+        }
+        connectedFolderURLs[id] = nil
+
+        glasses.removeAll { $0.id == id }
+        userMessage = nil
+      } catch is CancellationError {
+        return
+      } catch let error as RemoveGlassError {
+        if case .configurationLoadFailed = error {
+          enterConfigurationRecoveryRequiredState()
+        } else {
+          userMessage =
+            "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+        }
+      } catch {
         userMessage =
           "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
       }
-    } catch {
-      userMessage =
-        "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
     }
   }
 
@@ -380,33 +387,39 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     defer { isMutatingConfiguration = false }
 
-    do {
-      let updated = try await updateGlassPlacementUseCase.execute(
-        glassID: glassID,
-        placement: placement
-      )
-      guard updated else {
-        return .missing
+    return await configurationMutationTaskCoordinator.run(ifBusy: .busy) { [weak self] in
+      guard let self else {
+        return .busy
       }
 
-      if let index = glasses.firstIndex(where: { $0.id == glassID }) {
-        glasses[index].placement = placement
-      }
-      return .updated
-    } catch is CancellationError {
-      return .failed
-    } catch let error as UpdateGlassPlacementError {
-      if case .configurationLoadFailed = error {
-        enterConfigurationRecoveryRequiredState()
-      } else {
+      do {
+        let updated = try await updateGlassPlacementUseCase.execute(
+          glassID: glassID,
+          placement: placement
+        )
+        guard updated else {
+          return .missing
+        }
+
+        if let index = glasses.firstIndex(where: { $0.id == glassID }) {
+          glasses[index].placement = placement
+        }
+        return .updated
+      } catch is CancellationError {
+        return .failed
+      } catch let error as UpdateGlassPlacementError {
+        if case .configurationLoadFailed = error {
+          enterConfigurationRecoveryRequiredState()
+        } else {
+          userMessage =
+            "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+        }
+        return .failed
+      } catch {
         userMessage =
           "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+        return .failed
       }
-      return .failed
-    } catch {
-      userMessage =
-        "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
-      return .failed
     }
   }
 
@@ -435,29 +448,35 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     defer { isMutatingConfiguration = false }
 
-    do {
-      _ = try await resetGlassPositionsUseCase.execute(placements: placements)
-      for index in glasses.indices {
-        if let placement = placements[glasses[index].id] {
-          glasses[index].placement = placement
-        }
+    return await configurationMutationTaskCoordinator.run(ifBusy: .busy) { [weak self] in
+      guard let self else {
+        return .busy
       }
-      userMessage = nil
-      return .updated
-    } catch is CancellationError {
-      return .failed
-    } catch let error as ResetGlassPositionsError {
-      if case .configurationLoadFailed = error {
-        enterConfigurationRecoveryRequiredState()
-      } else {
+
+      do {
+        _ = try await resetGlassPositionsUseCase.execute(placements: placements)
+        for index in glasses.indices {
+          if let placement = placements[glasses[index].id] {
+            glasses[index].placement = placement
+          }
+        }
+        userMessage = nil
+        return .updated
+      } catch is CancellationError {
+        return .failed
+      } catch let error as ResetGlassPositionsError {
+        if case .configurationLoadFailed = error {
+          enterConfigurationRecoveryRequiredState()
+        } else {
+          userMessage =
+            "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
+        }
+        return .failed
+      } catch {
         userMessage =
           "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
+        return .failed
       }
-      return .failed
-    } catch {
-      userMessage =
-        "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
-      return .failed
     }
   }
 
@@ -625,38 +644,44 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
     defer { isMutatingConfiguration = false }
 
-    do {
-      let updated = try await updateGlassTitleUseCase.execute(
-        glassID: glassID,
-        title: title
-      )
-      guard updated,
-        let index = glasses.firstIndex(where: { $0.id == glassID })
-      else {
+    await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
         return
       }
 
-      glasses[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-    } catch is CancellationError {
-      return
-    } catch let error as UpdateGlassTitleError {
-      switch error {
-      case .configurationLoadFailed:
-        enterConfigurationRecoveryRequiredState()
-      case .configurationChanged:
-        userMessage =
-          "The Glass configuration changed while renaming. Nothing was overwritten; try again."
-      case .emptyTitle:
-        userMessage = "Glass name cannot be empty."
-      case .titleTooLong:
-        userMessage = "Glass name must be 100 characters or fewer."
-      case .invalidConfiguration:
-        userMessage = "SchneeGlass couldn't build a valid renamed Glass. Nothing was saved."
-      case .configurationSaveFailed:
-        userMessage = "SchneeGlass couldn't save the new Glass name. Nothing was changed."
+      do {
+        let updated = try await updateGlassTitleUseCase.execute(
+          glassID: glassID,
+          title: title
+        )
+        guard updated,
+          let index = glasses.firstIndex(where: { $0.id == glassID })
+        else {
+          return
+        }
+
+        glasses[index].title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+      } catch is CancellationError {
+        return
+      } catch let error as UpdateGlassTitleError {
+        switch error {
+        case .configurationLoadFailed:
+          enterConfigurationRecoveryRequiredState()
+        case .configurationChanged:
+          userMessage =
+            "The Glass configuration changed while renaming. Nothing was overwritten; try again."
+        case .emptyTitle:
+          userMessage = "Glass name cannot be empty."
+        case .titleTooLong:
+          userMessage = "Glass name must be 100 characters or fewer."
+        case .invalidConfiguration:
+          userMessage = "SchneeGlass couldn't build a valid renamed Glass. Nothing was saved."
+        case .configurationSaveFailed:
+          userMessage = "SchneeGlass couldn't save the new Glass name. Nothing was changed."
+        }
+      } catch {
+        userMessage = "SchneeGlass couldn't rename this Glass. Nothing was changed."
       }
-    } catch {
-      userMessage = "SchneeGlass couldn't rename this Glass. Nothing was changed."
     }
   }
 
@@ -682,37 +707,43 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
     defer { isMutatingConfiguration = false }
 
-    do {
-      let updated = try await updateGlassSpacesBehaviorUseCase.execute(
-        glassID: glassID,
-        showOnAllSpaces: showOnAllSpaces
-      )
-      guard updated,
-        let index = glasses.firstIndex(where: { $0.id == glassID })
-      else {
+    await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
         return
       }
 
-      glasses[index].showOnAllSpaces = showOnAllSpaces
-    } catch is CancellationError {
-      return
-    } catch let error as UpdateGlassSpacesBehaviorError {
-      switch error {
-      case .configurationLoadFailed:
-        enterConfigurationRecoveryRequiredState()
-      case .configurationChanged:
+      do {
+        let updated = try await updateGlassSpacesBehaviorUseCase.execute(
+          glassID: glassID,
+          showOnAllSpaces: showOnAllSpaces
+        )
+        guard updated,
+          let index = glasses.firstIndex(where: { $0.id == glassID })
+        else {
+          return
+        }
+
+        glasses[index].showOnAllSpaces = showOnAllSpaces
+      } catch is CancellationError {
+        return
+      } catch let error as UpdateGlassSpacesBehaviorError {
+        switch error {
+        case .configurationLoadFailed:
+          enterConfigurationRecoveryRequiredState()
+        case .configurationChanged:
+          userMessage =
+            "The Glass configuration changed while updating Spaces behavior. Nothing was overwritten; try again."
+        case .invalidConfiguration:
+          userMessage =
+            "SchneeGlass couldn't build a valid Spaces configuration. Nothing was saved."
+        case .configurationSaveFailed:
+          userMessage =
+            "SchneeGlass couldn't save the Spaces behavior. Nothing was changed."
+        }
+      } catch {
         userMessage =
-          "The Glass configuration changed while updating Spaces behavior. Nothing was overwritten; try again."
-      case .invalidConfiguration:
-        userMessage =
-          "SchneeGlass couldn't build a valid Spaces configuration. Nothing was saved."
-      case .configurationSaveFailed:
-        userMessage =
-          "SchneeGlass couldn't save the Spaces behavior. Nothing was changed."
+          "SchneeGlass couldn't update this Glass's Spaces behavior. Nothing was changed."
       }
-    } catch {
-      userMessage =
-        "SchneeGlass couldn't update this Glass's Spaces behavior. Nothing was changed."
     }
   }
 
@@ -813,18 +844,25 @@ public final class SchneeGlassWorkspaceModel {
     isShuttingDown = true
   }
 
-  public func shutdown() async {
+  public func quiesceConfigurationMutationsForTermination() async {
     prepareForTermination()
 
-    // An initial restore can own security-scoped access and event subscriptions before a runtime
-    // session has been activated. Cancel and join it so AppKit cannot terminate the process before
-    // RestoreApplicationUseCase finishes its cancellation cleanup.
+    // Initial restore and every configuration mutation must finish cancellation cleanup before
+    // termination performs its final placement flush. Otherwise a mutation can keep the workspace
+    // busy or continue writing configuration after AppKit has approved process termination.
     await initialRestoreTaskCoordinator.cancelAndWait()
-
-    // Add / reconnect / backup restore can own security-scoped access and event subscriptions
-    // before they become registered runtime sessions. Join their cancellation cleanup before
-    // collecting active sessions so no pre-activation resources can outlive termination approval.
     await configurationMutationTaskCoordinator.cancelAndWait()
+
+    // The tracked operations have completed. Their outer callers may still be scheduled to run
+    // their cleanup on MainActor, so establish the quiesced state explicitly before the
+    // termination-only placement flush starts.
+    isCreatingGlass = false
+    isRestoring = false
+    isMutatingConfiguration = false
+  }
+
+  public func shutdown() async {
+    await quiesceConfigurationMutationsForTermination()
 
     // Application termination is different from configuration recovery: an active user copy must
     // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
