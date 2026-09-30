@@ -40,6 +40,10 @@ private actor PlanningLifecycleEventStreaming: FileEventStreaming {
     func stop(subscriptionID: UUID) async {
         stoppedSubscriptionIDs.append(subscriptionID)
     }
+
+    func stopCount() -> Int {
+        stoppedSubscriptionIDs.count
+    }
 }
 
 private struct PlanningLifecycleSnapshotReader: FolderSnapshotReading {
@@ -117,6 +121,16 @@ private func waitForPlanningStart(_ planner: BlockingLifecycleDropPlanner) async
     return false
 }
 
+private func waitForSubscriptionStop(_ eventStreaming: PlanningLifecycleEventStreaming) async -> Bool {
+    for _ in 0..<2_000 {
+        if await eventStreaming.stopCount() > 0 {
+            return true
+        }
+        await Task.yield()
+    }
+    return false
+}
+
 private func waitForAccessRelease(_ accessController: PlanningLifecycleAccessController) async -> Bool {
     for _ in 0..<2_000 {
         if await accessController.releases().count > 0 {
@@ -185,6 +199,7 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
         planGate: planGatePair.stream
     )
     let accessController = PlanningLifecycleAccessController()
+    let eventStreaming = PlanningLifecycleEventStreaming()
     let fileCopying = PlanningLifecycleFileCopying()
     let subscriptionID = UUID()
     let session = GlassRuntimeSession(
@@ -197,7 +212,7 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
                 events: eventPair.stream
             )
         ),
-        eventStreaming: PlanningLifecycleEventStreaming(),
+        eventStreaming: eventStreaming,
         snapshotReader: PlanningLifecycleSnapshotReader(),
         accessController: accessController,
         dropPlanning: planner,
@@ -215,13 +230,15 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
     let stopTask = Task {
         await session.stop()
     }
-    #expect(await waitForAccessRelease(accessController))
-    await stopTask.value
+    #expect(await waitForSubscriptionStop(eventStreaming))
+    #expect(await accessController.releases().isEmpty)
+    #expect(await planner.abandoned().isEmpty)
 
     planGatePair.continuation.yield(())
     planGatePair.continuation.finish()
 
     let result = await planningTask.value
+    await stopTask.value
     #expect(result == .reject(.destinationUnavailable))
     #expect(await fileCopying.callCount() == 0)
     #expect(await accessController.releases() == [fixture.access.id])
