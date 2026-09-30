@@ -35,6 +35,8 @@ public actor GlassRuntimeSession {
   private var planningWaiters: [CheckedContinuation<Void, Never>] = []
   private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
   private var pendingCopyCancellationBatchIDs: Set<UUID> = []
+  private var activePlanCleanupCount = 0
+  private var planCleanupWaiters: [CheckedContinuation<Void, Never>] = []
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
   private var accessReleased = false
   private var subscriptionStopped = false
@@ -238,6 +240,7 @@ public actor GlassRuntimeSession {
 
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
+    await waitForPlanCleanupIfNeeded()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
     finishStop()
@@ -301,6 +304,7 @@ public actor GlassRuntimeSession {
     await stopSubscriptionIfNeeded()
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
+    await waitForPlanCleanupIfNeeded()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
 
@@ -335,12 +339,46 @@ public actor GlassRuntimeSession {
     }
     pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
     pendingCopyCancellationBatchIDs.remove(plan.batchID)
+    await abandonPlan(plan)
+  }
+
+  private func abandonPlan(_ plan: CopyBatchPlan) async {
+    activePlanCleanupCount += 1
+    defer { finishPlanCleanup() }
+
     await dropPlanning.abandon(
       AuthorizedCopyBatchRequest(
         plan: plan,
         destinationAccess: access
       )
     )
+  }
+
+  private func finishPlanCleanup() {
+    guard activePlanCleanupCount > 0 else {
+      return
+    }
+
+    activePlanCleanupCount -= 1
+    guard activePlanCleanupCount == 0 else {
+      return
+    }
+
+    let waiters = planCleanupWaiters
+    planCleanupWaiters.removeAll(keepingCapacity: false)
+    for waiter in waiters {
+      waiter.resume()
+    }
+  }
+
+  private func waitForPlanCleanupIfNeeded() async {
+    guard activePlanCleanupCount > 0 else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      planCleanupWaiters.append(continuation)
+    }
   }
 
   private func finishPlanning() {
@@ -380,12 +418,7 @@ public actor GlassRuntimeSession {
     pendingAuthoritativePlans.removeAll(keepingCapacity: false)
     pendingCopyCancellationBatchIDs.removeAll(keepingCapacity: false)
     for plan in plans {
-      await dropPlanning.abandon(
-        AuthorizedCopyBatchRequest(
-          plan: plan,
-          destinationAccess: access
-        )
-      )
+      await abandonPlan(plan)
     }
   }
 
