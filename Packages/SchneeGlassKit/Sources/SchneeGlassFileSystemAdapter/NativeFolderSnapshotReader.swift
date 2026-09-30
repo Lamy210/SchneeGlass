@@ -53,8 +53,10 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
 
   init(
     fileManager: FileManager,
-    runtimeIdentityReader: any RuntimeDirectoryIdentityReading = POSIXRuntimeDirectoryIdentityReader(),
-    folderFingerprintReader: any SnapshotFolderFingerprintReading = FoundationSnapshotFolderFingerprintReader()
+    runtimeIdentityReader: any RuntimeDirectoryIdentityReading =
+      POSIXRuntimeDirectoryIdentityReader(),
+    folderFingerprintReader: any SnapshotFolderFingerprintReading =
+      FoundationSnapshotFolderFingerprintReader()
   ) {
     self.fileManager = fileManager
     self.runtimeIdentityReader = runtimeIdentityReader
@@ -104,19 +106,21 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     ]
 
     var enumerationFailure: Error?
-    guard let enumerator = fileManager.enumerator(
-      at: access.url,
-      includingPropertiesForKeys: resourceKeys,
-      options: [
-        .skipsHiddenFiles,
-        .skipsSubdirectoryDescendants,
-        .skipsPackageDescendants,
-      ],
-      errorHandler: { _, error in
-        enumerationFailure = error
-        return false
-      }
-    ) else {
+    guard
+      let enumerator = fileManager.enumerator(
+        at: access.url,
+        includingPropertiesForKeys: resourceKeys,
+        options: [
+          .skipsHiddenFiles,
+          .skipsSubdirectoryDescendants,
+          .skipsPackageDescendants,
+        ],
+        errorHandler: { _, error in
+          enumerationFailure = error
+          return false
+        }
+      )
+    else {
       throw NativeFolderSnapshotReaderError.enumerationUnavailable
     }
 
@@ -150,7 +154,7 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     let finalRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
     if let initialRuntimeIdentity {
       guard let finalRuntimeIdentity,
-         finalRuntimeIdentity == initialRuntimeIdentity
+        finalRuntimeIdentity == initialRuntimeIdentity
       else {
         throw FolderSnapshotReadError.rootIdentityMismatch
       }
@@ -191,8 +195,8 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
       return
     }
     guard let observed,
-       observed.device == expected.deviceIdentifier,
-       observed.inode == expected.objectIdentifier
+      observed.device == expected.deviceIdentifier,
+      observed.inode == expected.objectIdentifier
     else {
       throw FolderSnapshotReadError.rootIdentityMismatch
     }
@@ -204,12 +208,12 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     expectedResourceIdentifier: String?
   ) throws {
     if let expectedVolumeIdentifier,
-     observed.volumeIdentifier != expectedVolumeIdentifier
+      observed.volumeIdentifier != expectedVolumeIdentifier
     {
       throw FolderSnapshotReadError.rootIdentityMismatch
     }
     if let expectedResourceIdentifier,
-     observed.resourceIdentifier != expectedResourceIdentifier
+      observed.resourceIdentifier != expectedResourceIdentifier
     {
       throw FolderSnapshotReadError.rootIdentityMismatch
     }
