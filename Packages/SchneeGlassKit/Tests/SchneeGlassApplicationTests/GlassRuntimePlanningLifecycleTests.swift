@@ -30,7 +30,12 @@ private actor PlanningLifecycleAccessController: FolderAccessControlling {
 }
 
 private actor PlanningLifecycleEventStreaming: FileEventStreaming {
+  private let stopGate: AsyncStream<Void>?
   private var stoppedSubscriptionIDs: [UUID] = []
+
+  init(stopGate: AsyncStream<Void>? = nil) {
+    self.stopGate = stopGate
+  }
 
   func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
     _ = access
@@ -39,6 +44,10 @@ private actor PlanningLifecycleEventStreaming: FileEventStreaming {
 
   func stop(subscriptionID: UUID) async {
     stoppedSubscriptionIDs.append(subscriptionID)
+    if let stopGate {
+      var iterator = stopGate.makeAsyncIterator()
+      _ = await iterator.next()
+    }
   }
 
   func stopCount() -> Int {
@@ -60,12 +69,19 @@ private struct PlanningLifecycleSnapshotReader: FolderSnapshotReading {
 private actor BlockingLifecycleDropPlanner: DropPlanning {
   private let result: DropPlan
   private let planGate: AsyncStream<Void>
+  private let abandonGate: AsyncStream<Void>?
   private var planStarted = false
+  private var abandonCallCountValue = 0
   private var abandonedRequests: [AuthorizedCopyBatchRequest] = []
 
-  init(result: DropPlan, planGate: AsyncStream<Void>) {
+  init(
+    result: DropPlan,
+    planGate: AsyncStream<Void>,
+    abandonGate: AsyncStream<Void>? = nil
+  ) {
     self.result = result
     self.planGate = planGate
+    self.abandonGate = abandonGate
   }
 
   func plan(
@@ -81,11 +97,20 @@ private actor BlockingLifecycleDropPlanner: DropPlanning {
   }
 
   func abandon(_ request: AuthorizedCopyBatchRequest) async {
+    abandonCallCountValue += 1
+    if let abandonGate {
+      var iterator = abandonGate.makeAsyncIterator()
+      _ = await iterator.next()
+    }
     abandonedRequests.append(request)
   }
 
   func hasStartedPlanning() -> Bool {
     planStarted
+  }
+
+  func abandonCallCount() -> Int {
+    abandonCallCountValue
   }
 
   func abandoned() -> [AuthorizedCopyBatchRequest] {
@@ -114,6 +139,16 @@ private actor PlanningLifecycleFileCopying: FileCopying {
 private func waitForPlanningStart(_ planner: BlockingLifecycleDropPlanner) async -> Bool {
   for _ in 0..<2_000 {
     if await planner.hasStartedPlanning() {
+      return true
+    }
+    await Task.yield()
+  }
+  return false
+}
+
+private func waitForAbandonStart(_ planner: BlockingLifecycleDropPlanner) async -> Bool {
+  for _ in 0..<2_000 {
+    if await planner.abandonCallCount() > 0 {
       return true
     }
     await Task.yield()
