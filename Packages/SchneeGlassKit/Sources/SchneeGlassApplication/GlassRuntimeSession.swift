@@ -31,6 +31,8 @@ public actor GlassRuntimeSession {
   private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
   private var eventTask: Task<Void, Never>?
   private var activeCopyTask: Task<CopyBatchResult, Never>?
+  // Includes preview/authoritative planning plus run-owned planning cleanup that still depends on
+  // the runtime's destination access.
   private var activePlanningCount = 0
   private var planningWaiters: [CheckedContinuation<Void, Never>] = []
   private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
