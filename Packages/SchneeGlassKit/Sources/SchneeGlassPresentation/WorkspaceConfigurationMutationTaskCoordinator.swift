@@ -3,6 +3,7 @@ import Foundation
 @MainActor
 final class WorkspaceConfigurationMutationTaskCoordinator {
   private struct RunningTask {
+    let id: UUID
     let cancel: () -> Void
     let wait: () async -> Void
   }
@@ -30,7 +31,9 @@ final class WorkspaceConfigurationMutationTaskCoordinator {
       }
       return await operation()
     }
+    let taskID = UUID()
     runningTask = RunningTask(
+      id: taskID,
       cancel: {
         task.cancel()
       },
@@ -45,7 +48,9 @@ final class WorkspaceConfigurationMutationTaskCoordinator {
       task.cancel()
     }
 
-    runningTask = nil
+    if runningTask?.id == taskID {
+      runningTask = nil
+    }
     return result
   }
 
@@ -56,5 +61,9 @@ final class WorkspaceConfigurationMutationTaskCoordinator {
 
     runningTask.cancel()
     await runningTask.wait()
+
+    if self.runningTask?.id == runningTask.id {
+      self.runningTask = nil
+    }
   }
 }
