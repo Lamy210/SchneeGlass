@@ -16,11 +16,7 @@ public final class NativeFolderSelector: FolderSelecting {
     panel.prompt = "Add Glass"
     panel.message = "Choose a folder to place on your desktop as a SchneeGlass."
 
-    return await withCheckedContinuation { continuation in
-      panel.begin { response in
-        continuation.resume(returning: response == .OK ? panel.url : nil)
-      }
-    }
+    return await awaitNativeFolderSelection(using: panel)
   }
 }
 

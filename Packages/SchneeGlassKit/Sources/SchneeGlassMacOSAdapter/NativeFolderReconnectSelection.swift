@@ -16,10 +16,6 @@ public final class NativeFolderReconnectSelector: FolderSelecting {
     panel.message =
       "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting."
 
-    return await withCheckedContinuation { continuation in
-      panel.begin { response in
-        continuation.resume(returning: response == .OK ? panel.url : nil)
-      }
-    }
+    return await awaitNativeFolderSelection(using: panel)
   }
 }

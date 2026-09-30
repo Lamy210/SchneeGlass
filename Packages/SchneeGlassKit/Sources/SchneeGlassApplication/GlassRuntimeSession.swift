@@ -219,8 +219,6 @@ public actor GlassRuntimeSession {
 
     let task = eventTask
     task?.cancel()
-    stateContinuation?.finish()
-    stateContinuation = nil
 
     await stopSubscriptionIfNeeded()
 
@@ -290,8 +288,6 @@ public actor GlassRuntimeSession {
     }
     lifecycle = .stopping
 
-    stateContinuation?.finish()
-    stateContinuation = nil
     await stopSubscriptionIfNeeded()
     await abandonAllPendingPlans()
     await waitForActiveCopyIfNeeded()
@@ -303,6 +299,11 @@ public actor GlassRuntimeSession {
 
   private func finishStop() {
     lifecycle = .stopped
+    // Stream termination is the Presentation layer's signal that this runtime no longer needs to
+    // stay registered. Do not publish that signal until all runtime-owned authority is released.
+    stateContinuation?.finish()
+    stateContinuation = nil
+
     let waiters = stopWaiters
     stopWaiters.removeAll(keepingCapacity: false)
     for waiter in waiters {

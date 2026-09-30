@@ -137,6 +137,7 @@ public final class SchneeGlassWorkspaceModel {
   private var didAttemptInitialRestore = false
   private var hasLoadedConfigurationSnapshot = false
   private let initialRestoreTaskCoordinator = WorkspaceInitialRestoreTaskCoordinator()
+  private let configurationMutationTaskCoordinator = WorkspaceConfigurationMutationTaskCoordinator()
   private var isShuttingDown = false
 
   public init(
@@ -232,35 +233,50 @@ public final class SchneeGlassWorkspaceModel {
     isMutatingConfiguration = true
     isRestoring = true
     userMessage = nil
-    var backupWasRestored = false
     defer {
       isRestoring = false
       isMutatingConfiguration = false
     }
 
-    do {
-      _ = try await configurationRecoveryUseCase.restoreBackup(id: id)
-      backupWasRestored = true
-
-      await deactivateAllSessions()
-      glasses.removeAll(keepingCapacity: false)
-
-      let result = try await restoreApplicationUseCase.execute()
-      requiresConfigurationRecovery = false
-      await applyRestoreResult(result)
-      hasLoadedConfigurationSnapshot = true
-      return .restored
-    } catch {
-      if backupWasRestored {
-        requiresConfigurationRecovery = true
-        userMessage =
-          "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
-        return .restoredNeedsRestart
+    return await configurationMutationTaskCoordinator.run(ifBusy: .busy) { [weak self] in
+      guard let self else {
+        return .busy
       }
 
-      userMessage =
-        "SchneeGlass couldn't restore that configuration backup. The current configuration was left unchanged."
-      return .failed
+      var backupWasRestored = false
+      do {
+        _ = try await configurationRecoveryUseCase.restoreBackup(id: id)
+        backupWasRestored = true
+
+        await deactivateAllSessions()
+        glasses.removeAll(keepingCapacity: false)
+
+        let result = try await restoreApplicationUseCase.execute()
+        requiresConfigurationRecovery = false
+        await applyRestoreResult(result)
+        hasLoadedConfigurationSnapshot = true
+        return .restored
+      } catch is CancellationError {
+        if backupWasRestored {
+          requiresConfigurationRecovery = true
+          userMessage =
+            "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
+          return .restoredNeedsRestart
+        }
+
+        return .busy
+      } catch {
+        if backupWasRestored {
+          requiresConfigurationRecovery = true
+          userMessage =
+            "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
+          return .restoredNeedsRestart
+        }
+
+        userMessage =
+          "SchneeGlass couldn't restore that configuration backup. The current configuration was left unchanged."
+        return .failed
+      }
     }
   }
 
@@ -278,20 +294,26 @@ public final class SchneeGlassWorkspaceModel {
       isMutatingConfiguration = false
     }
 
-    do {
-      guard let seed = try await createGlassUseCase.execute() else {
+    await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
         return
       }
-      try await activate(seed)
-    } catch is CancellationError {
-      return
-    } catch {
-      if let createError = error as? CreateGlassError,
-        case .configurationLoadFailed = createError
-      {
-        enterConfigurationRecoveryRequiredState()
-      } else {
-        userMessage = Self.userFacingMessage(for: error)
+
+      do {
+        guard let seed = try await createGlassUseCase.execute() else {
+          return
+        }
+        try await activate(seed)
+      } catch is CancellationError {
+        return
+      } catch {
+        if let createError = error as? CreateGlassError,
+          case .configurationLoadFailed = createError
+        {
+          enterConfigurationRecoveryRequiredState()
+        } else {
+          userMessage = Self.userFacingMessage(for: error)
+        }
       }
     }
   }
@@ -317,8 +339,12 @@ public final class SchneeGlassWorkspaceModel {
       stateTasks[id]?.cancel()
       stateTasks[id] = nil
 
-      if let session = sessions.removeValue(forKey: id) {
+      if let session = sessions[id] {
+        // Keep the session discoverable until stop completes. If app termination starts while this
+        // await is in flight, shutdown() can still find the same session and join its idempotent
+        // concurrent stop instead of approving termination before access/subscription cleanup.
         await session.stop()
+        sessions[id] = nil
       }
       connectedFolderURLs[id] = nil
 
@@ -717,33 +743,41 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
     defer { isMutatingConfiguration = false }
 
-    sessionTaskTracker.invalidate(glassID)
-    stateTasks[glassID]?.cancel()
-    stateTasks[glassID] = nil
-    if let session = sessions.removeValue(forKey: glassID) {
-      await session.stop()
-    }
-    connectedFolderURLs[glassID] = nil
-
-    do {
-      guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
+    await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
         return
       }
 
+      sessionTaskTracker.invalidate(glassID)
+      stateTasks[glassID]?.cancel()
+      stateTasks[glassID] = nil
+      if let session = sessions.removeValue(forKey: glassID) {
+        await session.stop()
+      }
+      connectedFolderURLs[glassID] = nil
+
       do {
-        try await activate(seed)
-        userMessage = nil
+        guard let seed = try await reconnectGlassSourceUseCase.execute(glassID: glassID) else {
+          return
+        }
+
+        do {
+          try await activate(seed)
+          userMessage = nil
+        } catch is CancellationError {
+          return
+        } catch {
+          userMessage =
+            "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
+        }
+      } catch is CancellationError {
+        return
+      } catch let error as ReconnectGlassSourceError {
+        handleReconnectError(error)
       } catch {
         userMessage =
-          "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
+          "SchneeGlass couldn't reconnect this Glass. The saved folder connection was left unchanged."
       }
-    } catch is CancellationError {
-      return
-    } catch let error as ReconnectGlassSourceError {
-      handleReconnectError(error)
-    } catch {
-      userMessage =
-        "SchneeGlass couldn't reconnect this Glass. The saved folder connection was left unchanged."
     }
   }
 
@@ -786,6 +820,11 @@ public final class SchneeGlassWorkspaceModel {
     // session has been activated. Cancel and join it so AppKit cannot terminate the process before
     // RestoreApplicationUseCase finishes its cancellation cleanup.
     await initialRestoreTaskCoordinator.cancelAndWait()
+
+    // Add / reconnect / backup restore can own security-scoped access and event subscriptions
+    // before they become registered runtime sessions. Join their cancellation cleanup before
+    // collecting active sessions so no pre-activation resources can outlive termination approval.
+    await configurationMutationTaskCoordinator.cancelAndWait()
 
     // Application termination is different from configuration recovery: an active user copy must
     // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
