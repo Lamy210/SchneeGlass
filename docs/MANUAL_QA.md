@@ -338,6 +338,9 @@ QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を�
 - [ ] Rename / Show on All Spaces / Remove Glass / placement save中にQuitしても、対象configuration mutationのcancel/commit cleanup完了前にtermination replyを返さない
 - [ ] 既存configuration mutationをquiesceした後のfinal placement flushがbusy stateを引きずらず、最新placementを1回だけ保存できる
 - [ ] debounce済みplacement taskがすでに保存処理へ入っている状態でQuitしても、そのtaskをcancel+joinしてからfinal placement flushへ進む
+- [ ] Pending Copy RecoveryのRefresh / Inspect in Finder / Reconnect Destination中にQuitしても、security-scoped accessやconfiguration更新のcleanup完了前にtermination replyを返さない
+- [ ] Remove Incomplete Copy / Discard Metadata中にQuitしても、Recovery mutation leaseとSchneeGlass-owned metadata/staging cleanupの終了をjoinしてからprocess終了へ進む
+- [ ] termination開始後は新しいPending Copy Recovery操作を開始しない
 - [ ] Dock > Quitで同じshutdown pathを通る
 - [ ] Menu BarのQuit SchneeGlassで同じshutdown pathを通る
 - [ ] system termination requestでも同じshutdown pathを通る
