@@ -33,6 +33,8 @@ public actor GlassRuntimeSession {
   private var activeCopyTask: Task<CopyBatchResult, Never>?
   private var activePlanningCount = 0
   private var planningWaiters: [CheckedContinuation<Void, Never>] = []
+  private var activePlanAbandonmentCount = 0
+  private var planAbandonmentWaiters: [CheckedContinuation<Void, Never>] = []
   private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
   private var pendingCopyCancellationBatchIDs: Set<UUID> = []
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
@@ -238,6 +240,7 @@ public actor GlassRuntimeSession {
 
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
+    await waitForPlanAbandonmentIfNeeded()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
     finishStop()
@@ -301,6 +304,7 @@ public actor GlassRuntimeSession {
     await stopSubscriptionIfNeeded()
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
+    await waitForPlanAbandonmentIfNeeded()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
 
@@ -333,14 +337,21 @@ public actor GlassRuntimeSession {
     guard pendingAuthoritativePlans[plan.batchID] == plan else {
       return
     }
+
+    // Remove the pending-plan identity before suspension so concurrent shutdown cannot issue the
+    // same abandonment twice. The separate in-flight count keeps runtime destination access alive
+    // until the planner-side cleanup that still carries that access handle has completed.
+    activePlanAbandonmentCount += 1
     pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
     pendingCopyCancellationBatchIDs.remove(plan.batchID)
+
     await dropPlanning.abandon(
       AuthorizedCopyBatchRequest(
         plan: plan,
         destinationAccess: access
       )
     )
+    finishPlanAbandonment()
   }
 
   private func finishPlanning() {
@@ -367,6 +378,33 @@ public actor GlassRuntimeSession {
 
     await withCheckedContinuation { continuation in
       planningWaiters.append(continuation)
+    }
+  }
+
+  private func finishPlanAbandonment() {
+    guard activePlanAbandonmentCount > 0 else {
+      return
+    }
+
+    activePlanAbandonmentCount -= 1
+    guard activePlanAbandonmentCount == 0 else {
+      return
+    }
+
+    let waiters = planAbandonmentWaiters
+    planAbandonmentWaiters.removeAll(keepingCapacity: false)
+    for waiter in waiters {
+      waiter.resume()
+    }
+  }
+
+  private func waitForPlanAbandonmentIfNeeded() async {
+    guard activePlanAbandonmentCount > 0 else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      planAbandonmentWaiters.append(continuation)
     }
   }
 
