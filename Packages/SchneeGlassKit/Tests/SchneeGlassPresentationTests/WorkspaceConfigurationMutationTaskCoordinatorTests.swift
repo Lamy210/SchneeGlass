@@ -134,3 +134,25 @@ func duplicateConfigurationMutationCancellationWaitersObserveSameCleanup() async
   #expect(await runTask.value)
   #expect(!coordinator.isRunning)
 }
+
+@Test
+@MainActor
+func preCancelledConfigurationMutationReturnsFallbackWithoutStartingOperation() async {
+  let coordinator = WorkspaceConfigurationMutationTaskCoordinator()
+  var operationCount = 0
+
+  let task = Task { @MainActor in
+    withUnsafeCurrentTask { current in
+      current?.cancel()
+    }
+
+    return await coordinator.run(ifBusy: "cancelled") {
+      operationCount += 1
+      return "started"
+    }
+  }
+
+  #expect(await task.value == "cancelled")
+  #expect(operationCount == 0)
+  #expect(!coordinator.isRunning)
+}
