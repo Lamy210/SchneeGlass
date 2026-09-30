@@ -28,6 +28,7 @@ struct SchneeGlassApp: App {
       applicationDelegate.configureShutdown {
         [weak coordinator, weak workspaceModel = root.workspaceModel] in
         workspaceModel?.prepareForTermination()
+        await workspaceModel?.quiesceConfigurationMutationsForTermination()
         await coordinator?.flushPlacementsForTermination()
         await workspaceModel?.shutdown()
       }
