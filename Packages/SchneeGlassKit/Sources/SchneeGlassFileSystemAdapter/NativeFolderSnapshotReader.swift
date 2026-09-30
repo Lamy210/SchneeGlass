@@ -67,7 +67,10 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     for access: FolderAccessHandle,
     generation: UInt64
   ) async throws -> FolderSnapshot {
+    try Task.checkCancellation()
+
     let initialRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
+    try Task.checkCancellation()
     try Self.validate(
       observed: initialRuntimeIdentity,
       expected: access.runtimeDirectoryIdentity
@@ -88,6 +91,8 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     } else {
       initialFingerprint = nil
     }
+
+    try Task.checkCancellation()
 
     let folderIdentity = FolderIdentity(
       resourceIdentifier: initialFingerprint?.resourceIdentifier,
@@ -128,7 +133,11 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     items.reserveCapacity(Self.maximumDisplayedItems)
     var isTruncated = false
 
+    try Task.checkCancellation()
+
     while let candidate = enumerator.nextObject() as? URL {
+      try Task.checkCancellation()
+
       if items.count == Self.maximumDisplayedItems {
         isTruncated = true
         break
@@ -142,7 +151,10 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
       }
 
       items.append(item)
+      try Task.checkCancellation()
     }
+
+    try Task.checkCancellation()
 
     if enumerationFailure != nil {
       throw NativeFolderSnapshotReaderError.enumerationFailed
@@ -152,6 +164,8 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
     // acquired descriptor identity is authoritative on the normal path. A snapshot that began
     // without acquired POSIX proof keeps the previous Foundation fallback comparison.
     let finalRuntimeIdentity = await runtimeIdentityReader.identity(for: access.url)
+    try Task.checkCancellation()
+
     if let initialRuntimeIdentity {
       guard let finalRuntimeIdentity,
         finalRuntimeIdentity == initialRuntimeIdentity
@@ -166,6 +180,7 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
 
     if let initialFingerprint {
       let finalFingerprint = try folderFingerprintReader.fingerprint(for: access.url)
+      try Task.checkCancellation()
       try Self.validate(
         observed: finalFingerprint,
         expectedVolumeIdentifier: access.fingerprint?.volumeIdentifier,
@@ -176,7 +191,9 @@ public actor NativeFolderSnapshotReader: FolderSnapshotReading {
       }
     }
 
+    try Task.checkCancellation()
     items.sort(by: Self.itemSortOrder)
+    try Task.checkCancellation()
 
     return FolderSnapshot(
       folderIdentity: folderIdentity,
