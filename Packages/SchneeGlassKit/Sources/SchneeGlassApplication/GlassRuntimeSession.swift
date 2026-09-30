@@ -337,13 +337,17 @@ public actor GlassRuntimeSession {
     guard pendingAuthoritativePlans[plan.batchID] == plan else {
       return
     }
+
+    // Establish the lifecycle barrier before pending ownership is removed and before the first
+    // external suspension. Shutdown can then observe either the pending plan or active cleanup,
+    // but never a gap where neither protects destination access.
+    activePlanCleanupCount += 1
     pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
     pendingCopyCancellationBatchIDs.remove(plan.batchID)
     await abandonPlan(plan)
   }
 
   private func abandonPlan(_ plan: CopyBatchPlan) async {
-    activePlanCleanupCount += 1
     defer { finishPlanCleanup() }
 
     await dropPlanning.abandon(
@@ -418,6 +422,7 @@ public actor GlassRuntimeSession {
     pendingAuthoritativePlans.removeAll(keepingCapacity: false)
     pendingCopyCancellationBatchIDs.removeAll(keepingCapacity: false)
     for plan in plans {
+      activePlanCleanupCount += 1
       await abandonPlan(plan)
     }
   }
