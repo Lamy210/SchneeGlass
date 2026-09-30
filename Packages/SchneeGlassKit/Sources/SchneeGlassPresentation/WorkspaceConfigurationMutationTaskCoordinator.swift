@@ -17,6 +17,9 @@ final class WorkspaceConfigurationMutationTaskCoordinator {
     ifBusy fallback: Value,
     operation: @escaping @MainActor () async -> Value
   ) async -> Value {
+    guard !Task.isCancelled else {
+      return fallback
+    }
     guard runningTask == nil else {
       return fallback
     }
