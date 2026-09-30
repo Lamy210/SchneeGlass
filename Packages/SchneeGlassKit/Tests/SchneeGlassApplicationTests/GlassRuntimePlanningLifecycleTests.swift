@@ -182,6 +182,106 @@ private func makePlanningLifecycleFixture() throws -> (
 }
 
 @Test
+func previewCompletedAfterRuntimeStopKeepsAccessAliveUntilReturning() async throws {
+  let fixture = try makePlanningLifecycleFixture()
+  let eventPair = AsyncStream<FileEvent>.makeStream()
+  let planGatePair = AsyncStream<Void>.makeStream()
+  let planner = BlockingLifecycleDropPlanner(
+    result: .reject(.collision),
+    planGate: planGatePair.stream
+  )
+  let accessController = PlanningLifecycleAccessController()
+  let eventStreaming = PlanningLifecycleEventStreaming()
+  let fileCopying = PlanningLifecycleFileCopying()
+  let session = GlassRuntimeSession(
+    seed: CreatedGlassRuntimeSeed(
+      configuration: fixture.configuration,
+      access: fixture.access,
+      snapshot: fixture.snapshot,
+      eventSubscription: FileEventSubscription(events: eventPair.stream)
+    ),
+    eventStreaming: eventStreaming,
+    snapshotReader: PlanningLifecycleSnapshotReader(),
+    accessController: accessController,
+    dropPlanning: planner,
+    fileCopying: fileCopying
+  )
+
+  let states = try await session.start()
+  _ = states
+
+  let previewTask = Task {
+    await session.previewDrop(sourceURLs: [fixture.source])
+  }
+  #expect(await waitForPlanningStart(planner))
+
+  let stopTask = Task {
+    await session.stop()
+  }
+  #expect(await waitForSubscriptionStop(eventStreaming))
+  #expect(await accessController.releases().isEmpty)
+
+  planGatePair.continuation.yield(())
+  planGatePair.continuation.finish()
+
+  #expect(await previewTask.value == .reject(.destinationUnavailable))
+  await stopTask.value
+
+  #expect(await accessController.releases() == [fixture.access.id])
+  #expect(await planner.abandoned().isEmpty)
+  #expect(await fileCopying.callCount() == 0)
+  eventPair.continuation.finish()
+}
+
+@Test
+func cancelledPreviewRejectsReturnedResultWithoutCreatingCopyAuthority() async throws {
+  let fixture = try makePlanningLifecycleFixture()
+  let eventPair = AsyncStream<FileEvent>.makeStream()
+  let planGatePair = AsyncStream<Void>.makeStream()
+  let planner = BlockingLifecycleDropPlanner(
+    result: .reject(.collision),
+    planGate: planGatePair.stream
+  )
+  let accessController = PlanningLifecycleAccessController()
+  let fileCopying = PlanningLifecycleFileCopying()
+  let session = GlassRuntimeSession(
+    seed: CreatedGlassRuntimeSeed(
+      configuration: fixture.configuration,
+      access: fixture.access,
+      snapshot: fixture.snapshot,
+      eventSubscription: FileEventSubscription(events: eventPair.stream)
+    ),
+    eventStreaming: PlanningLifecycleEventStreaming(),
+    snapshotReader: PlanningLifecycleSnapshotReader(),
+    accessController: accessController,
+    dropPlanning: planner,
+    fileCopying: fileCopying
+  )
+
+  let states = try await session.start()
+  _ = states
+
+  let previewTask = Task {
+    await session.previewDrop(sourceURLs: [fixture.source])
+  }
+  #expect(await waitForPlanningStart(planner))
+
+  previewTask.cancel()
+  planGatePair.continuation.yield(())
+  planGatePair.continuation.finish()
+
+  #expect(await previewTask.value == .reject(.destinationUnavailable))
+  #expect(await planner.abandoned().isEmpty)
+  #expect(await fileCopying.callCount() == 0)
+  #expect(await accessController.releases().isEmpty)
+
+  await session.stop()
+
+  #expect(await accessController.releases() == [fixture.access.id])
+  eventPair.continuation.finish()
+}
+
+@Test
 func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() async throws {
   let fixture = try makePlanningLifecycleFixture()
   let eventPair = AsyncStream<FileEvent>.makeStream()
