@@ -31,8 +31,8 @@ public actor GlassRuntimeSession {
   private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
   private var eventTask: Task<Void, Never>?
   private var activeCopyTask: Task<CopyBatchResult, Never>?
-  private var activeAuthoritativePlanningCount = 0
-  private var authoritativePlanningWaiters: [CheckedContinuation<Void, Never>] = []
+  private var activePlanningCount = 0
+  private var planningWaiters: [CheckedContinuation<Void, Never>] = []
   private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
   private var pendingCopyCancellationBatchIDs: Set<UUID> = []
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
@@ -92,18 +92,22 @@ public actor GlassRuntimeSession {
   }
 
   public func previewDrop(sourceURLs: [URL]) async -> DropPlan {
-    guard lifecycle == .running else {
+    guard lifecycle == .running, !Task.isCancelled else {
       return .reject(.destinationUnavailable)
     }
 
+    activePlanningCount += 1
     let plan = await dropPlanning.preview(
       sourceURLs: sourceURLs,
       destinationAccess: access
     )
 
-    guard lifecycle == .running else {
+    guard lifecycle == .running, !Task.isCancelled else {
+      finishPlanning()
       return .reject(.destinationUnavailable)
     }
+
+    finishPlanning()
     return plan
   }
 
@@ -112,7 +116,7 @@ public actor GlassRuntimeSession {
       return .reject(.destinationUnavailable)
     }
 
-    activeAuthoritativePlanningCount += 1
+    activePlanningCount += 1
     let plan = await dropPlanning.plan(
       sourceURLs: sourceURLs,
       destinationAccess: access
@@ -127,14 +131,14 @@ public actor GlassRuntimeSession {
           )
         )
       }
-      finishAuthoritativePlanning()
+      finishPlanning()
       return .reject(.destinationUnavailable)
     }
 
     if case .copy(let copyPlan) = plan {
       pendingAuthoritativePlans[copyPlan.batchID] = copyPlan
     }
-    finishAuthoritativePlanning()
+    finishPlanning()
     return plan
   }
 
@@ -232,7 +236,7 @@ public actor GlassRuntimeSession {
       eventTask = nil
     }
 
-    await waitForAuthoritativePlanningIfNeeded()
+    await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
@@ -295,7 +299,7 @@ public actor GlassRuntimeSession {
     lifecycle = .stopping
 
     await stopSubscriptionIfNeeded()
-    await waitForAuthoritativePlanningIfNeeded()
+    await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
     await waitForActiveCopyIfNeeded()
     await releaseAccessIfNeeded()
@@ -339,30 +343,30 @@ public actor GlassRuntimeSession {
     )
   }
 
-  private func finishAuthoritativePlanning() {
-    guard activeAuthoritativePlanningCount > 0 else {
+  private func finishPlanning() {
+    guard activePlanningCount > 0 else {
       return
     }
 
-    activeAuthoritativePlanningCount -= 1
-    guard activeAuthoritativePlanningCount == 0 else {
+    activePlanningCount -= 1
+    guard activePlanningCount == 0 else {
       return
     }
 
-    let waiters = authoritativePlanningWaiters
-    authoritativePlanningWaiters.removeAll(keepingCapacity: false)
+    let waiters = planningWaiters
+    planningWaiters.removeAll(keepingCapacity: false)
     for waiter in waiters {
       waiter.resume()
     }
   }
 
-  private func waitForAuthoritativePlanningIfNeeded() async {
-    guard activeAuthoritativePlanningCount > 0 else {
+  private func waitForPlanningIfNeeded() async {
+    guard activePlanningCount > 0 else {
       return
     }
 
     await withCheckedContinuation { continuation in
-      authoritativePlanningWaiters.append(continuation)
+      planningWaiters.append(continuation)
     }
   }
 
