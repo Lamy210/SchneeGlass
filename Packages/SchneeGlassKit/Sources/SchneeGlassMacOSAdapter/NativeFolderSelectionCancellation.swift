@@ -11,7 +11,7 @@ extension NSOpenPanel: NativeFolderSelectionPanel {}
 
 @MainActor
 private final class NativeFolderSelectionCancellationState {
-  private weak var panel: (any NativeFolderSelectionPanel)?
+  private let panel: any NativeFolderSelectionPanel
   private var continuation: CheckedContinuation<URL?, Never>?
   private var isCancelled = false
   private var isFinished = false
@@ -26,7 +26,7 @@ private final class NativeFolderSelectionCancellationState {
         continuation.resume(returning: nil)
         return
       }
-      guard !isCancelled, let panel else {
+      guard !isCancelled else {
         isFinished = true
         continuation.resume(returning: nil)
         return
@@ -34,8 +34,9 @@ private final class NativeFolderSelectionCancellationState {
 
       self.continuation = continuation
       panel.begin { [weak self] response in
-        Task { @MainActor [weak self] in
-          self?.finish(response: response)
+        let didAccept = response == .OK
+        Task { @MainActor [weak self, didAccept] in
+          self?.finish(didAccept: didAccept)
         }
       }
     }
@@ -53,7 +54,7 @@ private final class NativeFolderSelectionCancellationState {
 
     // Resume ourselves instead of depending on AppKit to invoke the panel completion after cancel.
     // Any late completion is ignored by finish(), which prevents a double resume.
-    panel?.cancel(nil)
+    panel.cancel(nil)
     finish(nil)
   }
 
@@ -68,8 +69,8 @@ private final class NativeFolderSelectionCancellationState {
     continuation?.resume(returning: result)
   }
 
-  private func finish(response: NSApplication.ModalResponse) {
-    finish(response == .OK ? panel?.url : nil)
+  private func finish(didAccept: Bool) {
+    finish(didAccept ? panel.url : nil)
   }
 }
 
