@@ -40,6 +40,10 @@ private actor PlanningLifecycleEventStreaming: FileEventStreaming {
   func stop(subscriptionID: UUID) async {
     stoppedSubscriptionIDs.append(subscriptionID)
   }
+
+  func stopCount() -> Int {
+    stoppedSubscriptionIDs.count
+  }
 }
 
 private struct PlanningLifecycleSnapshotReader: FolderSnapshotReading {
@@ -117,11 +121,11 @@ private func waitForPlanningStart(_ planner: BlockingLifecycleDropPlanner) async
   return false
 }
 
-private func waitForAccessRelease(_ accessController: PlanningLifecycleAccessController) async
+private func waitForSubscriptionStop(_ eventStreaming: PlanningLifecycleEventStreaming) async
   -> Bool
 {
   for _ in 0..<2_000 {
-    if await accessController.releases().count > 0 {
+    if await eventStreaming.stopCount() > 0 {
       return true
     }
     await Task.yield()
@@ -187,6 +191,7 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
     planGate: planGatePair.stream
   )
   let accessController = PlanningLifecycleAccessController()
+  let eventStreaming = PlanningLifecycleEventStreaming()
   let fileCopying = PlanningLifecycleFileCopying()
   let subscriptionID = UUID()
   let session = GlassRuntimeSession(
@@ -199,7 +204,7 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
         events: eventPair.stream
       )
     ),
-    eventStreaming: PlanningLifecycleEventStreaming(),
+    eventStreaming: eventStreaming,
     snapshotReader: PlanningLifecycleSnapshotReader(),
     accessController: accessController,
     dropPlanning: planner,
@@ -217,13 +222,15 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
   let stopTask = Task {
     await session.stop()
   }
-  #expect(await waitForAccessRelease(accessController))
-  await stopTask.value
+  #expect(await waitForSubscriptionStop(eventStreaming))
+  #expect(await accessController.releases().isEmpty)
+  #expect(await planner.abandoned().isEmpty)
 
   planGatePair.continuation.yield(())
   planGatePair.continuation.finish()
 
   let result = await planningTask.value
+  await stopTask.value
   #expect(result == .reject(.destinationUnavailable))
   #expect(await fileCopying.callCount() == 0)
   #expect(await accessController.releases() == [fixture.access.id])
@@ -233,6 +240,54 @@ func authoritativePlanCompletedAfterRuntimeStopIsAbandonedBeforeReturning() asyn
   #expect(abandoned.first?.plan == fixture.copyPlan)
   #expect(abandoned.first?.destinationAccess == fixture.access)
 
+  eventPair.continuation.finish()
+}
+
+@Test
+func cancelledAuthoritativePlanningAbandonsReturnedPlan() async throws {
+  let fixture = try makePlanningLifecycleFixture()
+  let eventPair = AsyncStream<FileEvent>.makeStream()
+  let planGatePair = AsyncStream<Void>.makeStream()
+  let planner = BlockingLifecycleDropPlanner(
+    result: .copy(fixture.copyPlan),
+    planGate: planGatePair.stream
+  )
+  let accessController = PlanningLifecycleAccessController()
+  let fileCopying = PlanningLifecycleFileCopying()
+  let session = GlassRuntimeSession(
+    seed: CreatedGlassRuntimeSeed(
+      configuration: fixture.configuration,
+      access: fixture.access,
+      snapshot: fixture.snapshot,
+      eventSubscription: FileEventSubscription(events: eventPair.stream)
+    ),
+    eventStreaming: PlanningLifecycleEventStreaming(),
+    snapshotReader: PlanningLifecycleSnapshotReader(),
+    accessController: accessController,
+    dropPlanning: planner,
+    fileCopying: fileCopying
+  )
+
+  let states = try await session.start()
+  _ = states
+
+  let planningTask = Task {
+    await session.planDrop(sourceURLs: [fixture.source])
+  }
+  #expect(await waitForPlanningStart(planner))
+
+  planningTask.cancel()
+  planGatePair.continuation.yield(())
+  planGatePair.continuation.finish()
+
+  #expect(await planningTask.value == .reject(.destinationUnavailable))
+  #expect(await planner.abandoned().count == 1)
+  #expect(await fileCopying.callCount() == 0)
+
+  await session.stop()
+
+  #expect(await planner.abandoned().count == 1)
+  #expect(await accessController.releases() == [fixture.access.id])
   eventPair.continuation.finish()
 }
 
