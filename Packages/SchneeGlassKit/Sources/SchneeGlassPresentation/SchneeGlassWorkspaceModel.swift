@@ -339,8 +339,12 @@ public final class SchneeGlassWorkspaceModel {
       stateTasks[id]?.cancel()
       stateTasks[id] = nil
 
-      if let session = sessions.removeValue(forKey: id) {
+      if let session = sessions[id] {
+        // Keep the session discoverable until stop completes. If app termination starts while this
+        // await is in flight, shutdown() can still find the same session and join its idempotent
+        // concurrent stop instead of approving termination before access/subscription cleanup.
         await session.stop()
+        sessions[id] = nil
       }
       connectedFolderURLs[id] = nil
 
