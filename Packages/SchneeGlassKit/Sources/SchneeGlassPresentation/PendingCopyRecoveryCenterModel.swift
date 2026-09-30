@@ -14,6 +14,8 @@ public final class PendingCopyRecoveryCenterModel {
   private let useCase: PendingCopyRecoveryCenterUseCase
   private let reconnectUseCase: PendingCopyDestinationReconnectUseCase
   private let navigationUseCase: PendingCopyRecoveryNavigationUseCase
+  private let taskCoordinator = PendingCopyRecoveryTaskCoordinator()
+  private var isTerminating = false
 
   public init(
     workspaceModel: SchneeGlassWorkspaceModel,
@@ -28,6 +30,9 @@ public final class PendingCopyRecoveryCenterModel {
   }
 
   public func refresh() async {
+    guard !isTerminating else {
+      return
+    }
     guard
       PendingCopyRecoveryActivityPolicy.canStart(
         isLoading: isLoading,
@@ -45,18 +50,24 @@ public final class PendingCopyRecoveryCenterModel {
     isLoading = true
     defer { isLoading = false }
 
-    do {
-      items = try await useCase.loadItems()
-      message = nil
-    } catch is CancellationError {
-      return
-    } catch let error as PendingCopyRecoveryCenterError {
-      items = []
-      message = Self.message(for: error)
-    } catch {
-      items = []
-      message =
-        "SchneeGlass couldn't inspect pending copy recovery information. No files were changed."
+    await taskCoordinator.run(ifBusy: ()) { [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        items = try await useCase.loadItems()
+        message = nil
+      } catch is CancellationError {
+        return
+      } catch let error as PendingCopyRecoveryCenterError {
+        items = []
+        message = Self.message(for: error)
+      } catch {
+        items = []
+        message =
+          "SchneeGlass couldn't inspect pending copy recovery information. No files were changed."
+      }
     }
   }
 
@@ -64,6 +75,9 @@ public final class PendingCopyRecoveryCenterModel {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async -> Bool {
+    guard !isTerminating else {
+      return false
+    }
     guard
       PendingCopyRecoveryActivityPolicy.canStart(
         isLoading: isLoading,
@@ -89,19 +103,25 @@ public final class PendingCopyRecoveryCenterModel {
     activeOperationID = operationID
     defer { activeOperationID = nil }
 
-    do {
-      try await useCase.executeMutation(action: action, operationID: operationID)
-      await refreshAfterMutation()
-      return true
-    } catch is CancellationError {
-      return false
-    } catch let error as PendingCopyRecoveryCenterError {
-      message = Self.message(for: error)
-      return false
-    } catch {
-      message =
-        "SchneeGlass couldn't complete that Recovery action. No final user file was deleted or overwritten."
-      return false
+    return await taskCoordinator.run(ifBusy: false) { [weak self] in
+      guard let self else {
+        return false
+      }
+
+      do {
+        try await useCase.executeMutation(action: action, operationID: operationID)
+        await refreshAfterMutation()
+        return true
+      } catch is CancellationError {
+        return false
+      } catch let error as PendingCopyRecoveryCenterError {
+        message = Self.message(for: error)
+        return false
+      } catch {
+        message =
+          "SchneeGlass couldn't complete that Recovery action. No final user file was deleted or overwritten."
+        return false
+      }
     }
   }
 
@@ -109,6 +129,9 @@ public final class PendingCopyRecoveryCenterModel {
     action: PendingCopyRecoveryAction,
     operationID: UUID
   ) async -> Bool {
+    guard !isTerminating else {
+      return false
+    }
     guard
       PendingCopyRecoveryActivityPolicy.canStart(
         isLoading: isLoading,
@@ -134,25 +157,34 @@ public final class PendingCopyRecoveryCenterModel {
     activeOperationID = operationID
     defer { activeOperationID = nil }
 
-    do {
-      try await navigationUseCase.reveal(action: action, operationID: operationID)
-      message =
-        action == .revealStaging
-        ? "Finder opened the incomplete staging item for manual inspection. SchneeGlass did not modify it."
-        : "Finder opened the final destination item for manual inspection. SchneeGlass did not modify it."
-      return true
-    } catch is CancellationError {
-      return false
-    } catch let error as PendingCopyRecoveryNavigationError {
-      message = Self.message(for: error)
-      return false
-    } catch {
-      message = "SchneeGlass couldn't reveal that recovery item. No files were changed."
-      return false
+    return await taskCoordinator.run(ifBusy: false) { [weak self] in
+      guard let self else {
+        return false
+      }
+
+      do {
+        try await navigationUseCase.reveal(action: action, operationID: operationID)
+        message =
+          action == .revealStaging
+          ? "Finder opened the incomplete staging item for manual inspection. SchneeGlass did not modify it."
+          : "Finder opened the final destination item for manual inspection. SchneeGlass did not modify it."
+        return true
+      } catch is CancellationError {
+        return false
+      } catch let error as PendingCopyRecoveryNavigationError {
+        message = Self.message(for: error)
+        return false
+      } catch {
+        message = "SchneeGlass couldn't reveal that recovery item. No files were changed."
+        return false
+      }
     }
   }
 
   public func reconnectDestination(operationID: UUID) async -> Bool {
+    guard !isTerminating else {
+      return false
+    }
     guard
       PendingCopyRecoveryActivityPolicy.canStart(
         isLoading: isLoading,
@@ -174,38 +206,58 @@ public final class PendingCopyRecoveryCenterModel {
     activeOperationID = operationID
     defer { activeOperationID = nil }
 
-    do {
-      let reconnected = try await reconnectUseCase.execute(operationID: operationID)
-      guard reconnected else {
+    return await taskCoordinator.run(ifBusy: false) { [weak self] in
+      guard let self else {
         return false
       }
 
       do {
-        items = try await useCase.loadItems()
-        message =
-          "Destination access was reconnected and saved. Pending Copy Recovery was refreshed. If the current Glass remains unavailable, restart SchneeGlass to start a new runtime session from the updated bookmark."
+        let reconnected = try await reconnectUseCase.execute(operationID: operationID)
+        guard reconnected else {
+          return false
+        }
+
+        do {
+          items = try await useCase.loadItems()
+          message =
+            "Destination access was reconnected and saved. Pending Copy Recovery was refreshed. If the current Glass remains unavailable, restart SchneeGlass to start a new runtime session from the updated bookmark."
+        } catch is CancellationError {
+          discardStaleItemsAfterPostActionReloadFailure()
+          message = nil
+        } catch let error as PendingCopyRecoveryCenterError {
+          discardStaleItemsAfterPostActionReloadFailure()
+          message = Self.message(for: error)
+        } catch {
+          discardStaleItemsAfterPostActionReloadFailure()
+          message =
+            "Destination access was saved, but SchneeGlass couldn't refresh the Recovery list. Refresh Pending Copies before taking another Recovery action."
+        }
+        return true
       } catch is CancellationError {
-        discardStaleItemsAfterPostActionReloadFailure()
-        message = nil
-      } catch let error as PendingCopyRecoveryCenterError {
-        discardStaleItemsAfterPostActionReloadFailure()
+        return false
+      } catch let error as PendingCopyDestinationReconnectError {
         message = Self.message(for: error)
+        return false
       } catch {
-        discardStaleItemsAfterPostActionReloadFailure()
         message =
-          "Destination access was saved, but SchneeGlass couldn't refresh the Recovery list. Refresh Pending Copies before taking another Recovery action."
+          "SchneeGlass couldn't reconnect that destination. The existing Glass configuration was not changed."
+        return false
       }
-      return true
-    } catch is CancellationError {
-      return false
-    } catch let error as PendingCopyDestinationReconnectError {
-      message = Self.message(for: error)
-      return false
-    } catch {
-      message =
-        "SchneeGlass couldn't reconnect that destination. The existing Glass configuration was not changed."
-      return false
     }
+  }
+
+  public func prepareForTermination() {
+    isTerminating = true
+  }
+
+  public func shutdown() async {
+    prepareForTermination()
+    await taskCoordinator.cancelAndWait()
+
+    // The tracked operation has finished its cancellation cleanup. Its outer caller may still be
+    // scheduled to execute a defer on MainActor, so establish the quiesced presentation state now.
+    isLoading = false
+    activeOperationID = nil
   }
 
   public func dismissMessage() {
