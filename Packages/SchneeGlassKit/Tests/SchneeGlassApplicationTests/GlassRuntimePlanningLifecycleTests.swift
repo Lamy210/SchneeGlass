@@ -147,7 +147,6 @@ private actor BlockingAbandonmentDropPlanner: DropPlanning {
   }
 }
 
-
 private func waitForPlanningStart(_ planner: BlockingLifecycleDropPlanner) async -> Bool {
   for _ in 0..<2_000 {
     if await planner.hasStartedPlanning() {
@@ -179,7 +178,6 @@ private func waitForAbandonmentStart(_ planner: BlockingAbandonmentDropPlanner) 
   }
   return false
 }
-
 
 private func makePlanningLifecycleFixture() throws -> (
   configuration: GlassConfiguration,
