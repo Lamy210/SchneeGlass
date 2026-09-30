@@ -33,13 +33,10 @@ private final class NativeFolderSelectionCancellationState {
       }
 
       self.continuation = continuation
-      panel.begin { [weak self, weak panel] response in
-        guard let self else {
-          return
+      panel.begin { [weak self] response in
+        Task { @MainActor [weak self] in
+          self?.finish(response: response)
         }
-        self.finish(
-          response == .OK ? panel?.url : nil
-        )
       }
     }
   }
@@ -70,12 +67,20 @@ private final class NativeFolderSelectionCancellationState {
     self.continuation = nil
     continuation?.resume(returning: result)
   }
+
+  private func finish(response: NSApplication.ModalResponse) {
+    finish(response == .OK ? panel?.url : nil)
+  }
 }
 
 @MainActor
 func awaitNativeFolderSelection(
   using panel: any NativeFolderSelectionPanel
 ) async -> URL? {
+  guard !Task.isCancelled else {
+    return nil
+  }
+
   let state = NativeFolderSelectionCancellationState(panel: panel)
 
   return await withTaskCancellationHandler {
