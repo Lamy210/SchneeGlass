@@ -21,15 +21,16 @@ enum RecoveryDestinationRuntimeIdentityValidator {
             return true
         }
 
-        var keys: Set<URLResourceKey> = []
+        // A volume identifier alone cannot distinguish two directories on the same volume. Match
+        // the production destination-binding contract by requiring an exact directory resource ID
+        // whenever descriptor-derived runtime identity is unavailable.
+        guard let expectedResourceIdentifier = expectedFingerprint.resourceIdentifier else {
+            return false
+        }
+
+        var keys: Set<URLResourceKey> = [.fileResourceIdentifierKey]
         if expectedFingerprint.volumeIdentifier != nil {
             keys.insert(.volumeIdentifierKey)
-        }
-        if expectedFingerprint.resourceIdentifier != nil {
-            keys.insert(.fileResourceIdentifierKey)
-        }
-        guard !keys.isEmpty else {
-            return true
         }
 
         let values: URLResourceValues
@@ -46,13 +47,7 @@ enum RecoveryDestinationRuntimeIdentityValidator {
             }
         }
 
-        if let expectedResourceIdentifier = expectedFingerprint.resourceIdentifier {
-            let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
-            guard observedResourceIdentifier == expectedResourceIdentifier else {
-                return false
-            }
-        }
-
-        return true
+        let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+        return observedResourceIdentifier == expectedResourceIdentifier
     }
 }
