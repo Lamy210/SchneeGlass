@@ -181,7 +181,9 @@ public actor GlassRuntimeSession {
       return Self.cancelledResult(for: plan)
     }
 
-    transferPendingPlanIfOwned(plan)
+    guard transferPendingPlanIfOwned(plan) else {
+      throw GlassCopyExecutionError.planNotPending
+    }
 
     let request = AuthorizedCopyBatchRequest(
       plan: plan,
@@ -326,11 +328,12 @@ public actor GlassRuntimeSession {
     }
   }
 
-  private func transferPendingPlanIfOwned(_ plan: CopyBatchPlan) {
+  private func transferPendingPlanIfOwned(_ plan: CopyBatchPlan) -> Bool {
     guard pendingAuthoritativePlans[plan.batchID] == plan else {
-      return
+      return false
     }
     pendingAuthoritativePlans.removeValue(forKey: plan.batchID)
+    return true
   }
 
   private func abandonPendingPlanIfOwned(_ plan: CopyBatchPlan) async {

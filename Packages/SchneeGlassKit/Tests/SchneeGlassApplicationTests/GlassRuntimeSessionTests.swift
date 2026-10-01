@@ -86,7 +86,7 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
 }
 
 private actor RuntimeDropPlanner: DropPlanning {
-  private let result: DropPlan
+  private var result: DropPlan
   private var observedSourceURLs: [URL] = []
   private var observedAccess: FolderAccessHandle?
 
@@ -101,6 +101,10 @@ private actor RuntimeDropPlanner: DropPlanning {
     observedSourceURLs = sourceURLs
     observedAccess = destinationAccess
     return result
+  }
+
+  func setResult(_ result: DropPlan) {
+    self.result = result
   }
 
   func observations() -> (sourceURLs: [URL], access: FolderAccessHandle?) {
@@ -254,6 +258,20 @@ private func copyPlan(for fixture: RuntimeFixture) throws -> CopyBatchPlan {
       )
     ]
   )
+}
+
+private func authorizeCopyPlan(
+  _ plan: CopyBatchPlan,
+  in fixture: RuntimeFixture
+) async -> CopyBatchPlan? {
+  await fixture.dropPlanner.setResult(.copy(plan))
+  let result = await fixture.session.planDrop(
+    sourceURLs: plan.items.map(\.sourceURL)
+  )
+  guard case .copy(let authoritativePlan) = result else {
+    return nil
+  }
+  return authoritativePlan
 }
 
 private func waitForCopyStart(_ copying: RuntimeFileCopying) async -> Bool {
@@ -528,6 +546,127 @@ func runtimeDropPlanningUsesTheSessionsAuthorizedDestination() async throws {
 }
 
 @Test
+func runtimeCopyRejectsPlanWithoutPendingAuthorityBeforeMutation() async throws {
+  let fixture = try makeRuntimeFixture()
+  let states = try await fixture.session.start()
+  _ = states
+  let plan = try copyPlan(for: fixture)
+
+  do {
+    _ = try await fixture.session.executeCopy(plan)
+    Issue.record("Expected missing pending-plan authority rejection")
+  } catch let error as GlassCopyExecutionError {
+    #expect(error == .planNotPending)
+  } catch {
+    Issue.record("Unexpected error: \(error)")
+  }
+
+  #expect(await fixture.fileCopying.callCount() == 0)
+  await fixture.session.stop()
+}
+
+@Test
+func runtimeCopyRejectsExplicitlyAbandonedPlanBeforeMutation() async throws {
+  let fixture = try makeRuntimeFixture()
+  let states = try await fixture.session.start()
+  _ = states
+  let candidate = try copyPlan(for: fixture)
+  guard let plan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
+
+  await fixture.session.abandonCopyPlan(plan)
+
+  do {
+    _ = try await fixture.session.executeCopy(plan)
+    Issue.record("Expected abandoned-plan rejection")
+  } catch let error as GlassCopyExecutionError {
+    #expect(error == .planNotPending)
+  } catch {
+    Issue.record("Unexpected error: \(error)")
+  }
+
+  #expect(await fixture.fileCopying.callCount() == 0)
+  await fixture.session.stop()
+}
+
+@Test
+func runtimeCopyRejectsReplayAfterSuccessfulExecution() async throws {
+  let fixture = try makeRuntimeFixture()
+  let states = try await fixture.session.start()
+  _ = states
+  let candidate = try copyPlan(for: fixture)
+  guard let plan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
+
+  let firstResult = try await fixture.session.executeCopy(plan)
+  #expect(firstResult.failed == nil)
+  #expect(await fixture.fileCopying.callCount() == 1)
+
+  do {
+    _ = try await fixture.session.executeCopy(plan)
+    Issue.record("Expected replay rejection")
+  } catch let error as GlassCopyExecutionError {
+    #expect(error == .planNotPending)
+  } catch {
+    Issue.record("Unexpected error: \(error)")
+  }
+
+  #expect(await fixture.fileCopying.callCount() == 1)
+  await fixture.session.stop()
+}
+
+@Test
+func rejectedSameBatchPlanDoesNotConsumeLegitimatePendingAuthority() async throws {
+  let fixture = try makeRuntimeFixture()
+  let states = try await fixture.session.start()
+  _ = states
+  let candidate = try copyPlan(for: fixture)
+  guard let authoritativePlan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
+
+  let forgedSource = URL(fileURLWithPath: "/tmp/External/forged.txt")
+  let forgedPlan = try CopyBatchPlan(
+    batchID: authoritativePlan.batchID,
+    destination: authoritativePlan.destination,
+    items: [
+      CopyItemPlan(
+        sourceURL: forgedSource,
+        originalFilename: forgedSource.lastPathComponent,
+        destinationFilename: forgedSource.lastPathComponent,
+        expectedSize: 9
+      )
+    ],
+    createdAt: authoritativePlan.createdAt
+  )
+
+  do {
+    _ = try await fixture.session.executeCopy(forgedPlan)
+    Issue.record("Expected same-batch mismatched-plan rejection")
+  } catch let error as GlassCopyExecutionError {
+    #expect(error == .planNotPending)
+  } catch {
+    Issue.record("Unexpected error: \(error)")
+  }
+
+  #expect(await fixture.fileCopying.callCount() == 0)
+
+  let result = try await fixture.session.executeCopy(authoritativePlan)
+  #expect(result.failed == nil)
+  #expect(await fixture.fileCopying.callCount() == 1)
+
+  await fixture.session.stop()
+}
+
+@Test
 func runtimeCopyRejectsPlanForAnotherDestinationBeforeMutation() async throws {
   let fixture = try makeRuntimeFixture()
   let states = try await fixture.session.start()
@@ -562,7 +701,12 @@ func runtimeRejectsSecondCopyWhileOneIsInProgress() async throws {
   let fixture = try makeRuntimeFixture(blockCopy: true)
   let states = try await fixture.session.start()
   _ = states
-  let plan = try copyPlan(for: fixture)
+  let candidate = try copyPlan(for: fixture)
+  guard let plan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
   let session = fixture.session
   let firstCopy = Task {
     try await session.executeCopy(plan)
@@ -592,7 +736,12 @@ func runtimeStopWaitsForActiveCopyBeforeReleasingSecurityScope() async throws {
   let fixture = try makeRuntimeFixture(blockCopy: true)
   let states = try await fixture.session.start()
   _ = states
-  let plan = try copyPlan(for: fixture)
+  let candidate = try copyPlan(for: fixture)
+  guard let plan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
   let session = fixture.session
   let copyTask = Task {
     try await session.executeCopy(plan)
