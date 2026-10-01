@@ -3,108 +3,172 @@ import SchneeGlassApplication
 import SchneeGlassDomain
 import SchneeGlassPOSIXSupport
 import Testing
+
 @testable import SchneeGlassFileSystemAdapter
 
 private func makeRecoveryDestinationIdentityRoot() throws -> (workspace: URL, destination: URL) {
-    let workspace = FileManager.default.temporaryDirectory
-        .appendingPathComponent(
-            "schneeglass-recovery-destination-identity-\(UUID().uuidString)",
-            isDirectory: true
-        )
-    let destination = workspace.appendingPathComponent("destination", isDirectory: true)
-    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
-    return (workspace, destination)
+  let workspace = FileManager.default.temporaryDirectory
+    .appendingPathComponent(
+      "schneeglass-recovery-destination-identity-\(UUID().uuidString)",
+      isDirectory: true
+    )
+  let destination = workspace.appendingPathComponent("destination", isDirectory: true)
+  try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+  return (workspace, destination)
 }
 
 private func acquiredRecoveryRuntimeIdentity(for url: URL) throws -> RuntimeDirectoryIdentity {
-    let identity = try #require(POSIXDirectoryIdentityReader.identity(at: url))
-    return RuntimeDirectoryIdentity(
-        deviceIdentifier: identity.device,
-        objectIdentifier: identity.inode
-    )
+  let identity = try #require(POSIXDirectoryIdentityReader.identity(at: url))
+  return RuntimeDirectoryIdentity(
+    deviceIdentifier: identity.device,
+    objectIdentifier: identity.inode
+  )
+}
+
+private func acquiredRecoveryResourceFingerprint(for url: URL) throws -> ResourceFingerprint {
+  let values = try url.standardizedFileURL.resourceValues(
+    forKeys: [.fileResourceIdentifierKey]
+  )
+  let resourceIdentifier = try #require(
+    values.fileResourceIdentifier.map { String(describing: $0) }
+  )
+  return ResourceFingerprint(
+    volumeIdentifier: nil,
+    resourceIdentifier: resourceIdentifier
+  )
+}
+
+private func acquiredRecoveryVolumeIdentifier(for url: URL) throws -> String {
+  let values = try url.standardizedFileURL.resourceValues(
+    forKeys: [.volumeIdentifierKey]
+  )
+  return try #require(values.volumeIdentifier.map { String(describing: $0) })
 }
 
 private func recoveryDestinationIdentityRecord(
-    glassID: GlassID,
-    operationID: UUID = UUID(),
-    stagingResourceIdentifier: String? = nil
+  glassID: GlassID,
+  operationID: UUID = UUID(),
+  stagingResourceIdentifier: String? = nil
 ) -> PendingCopyRecord {
-    PendingCopyRecord(
-        operationID: operationID,
-        batchID: UUID(),
-        destinationGlassID: glassID,
-        stagingFilename: ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial",
-        finalFilename: "report.txt",
-        expectedSize: 7,
-        stagingResourceIdentifier: stagingResourceIdentifier,
-        state: .staging
+  PendingCopyRecord(
+    operationID: operationID,
+    batchID: UUID(),
+    destinationGlassID: glassID,
+    stagingFilename: ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial",
+    finalFilename: "report.txt",
+    expectedSize: 7,
+    stagingResourceIdentifier: stagingResourceIdentifier,
+    state: .staging
+  )
+}
+
+@Test
+func recoveryIdentityValidatorUsesFingerprintWhenRuntimeIdentityIsUnavailable() throws {
+  let roots = try makeRecoveryDestinationIdentityRoot()
+  defer { try? FileManager.default.removeItem(at: roots.workspace) }
+
+  let glassID = GlassID()
+  let handle = FolderAccessHandle(
+    glassID: glassID,
+    url: roots.destination,
+    fingerprint: try acquiredRecoveryResourceFingerprint(for: roots.destination)
+  )
+
+  #expect(RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(handle))
+
+  let movedDestination = roots.workspace.appendingPathComponent(
+    "original-destination",
+    isDirectory: true
+  )
+  try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
+  try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
+
+  #expect(!RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(handle))
+}
+
+@Test
+func recoveryIdentityValidatorRejectsVolumeOnlyFingerprint() throws {
+  let roots = try makeRecoveryDestinationIdentityRoot()
+  defer { try? FileManager.default.removeItem(at: roots.workspace) }
+
+  let handle = FolderAccessHandle(
+    glassID: GlassID(),
+    url: roots.destination,
+    fingerprint: ResourceFingerprint(
+      volumeIdentifier: try acquiredRecoveryVolumeIdentifier(for: roots.destination),
+      resourceIdentifier: nil
     )
+  )
+
+  #expect(!RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(handle))
 }
 
 @Test
 func recoveryInspectorRejectsDestinationPathReplacementAfterAccessAcquisition() async throws {
-    let roots = try makeRecoveryDestinationIdentityRoot()
-    defer { try? FileManager.default.removeItem(at: roots.workspace) }
+  let roots = try makeRecoveryDestinationIdentityRoot()
+  defer { try? FileManager.default.removeItem(at: roots.workspace) }
 
-    let glassID = GlassID()
-    let handle = FolderAccessHandle(
-        glassID: glassID,
-        url: roots.destination,
-        runtimeDirectoryIdentity: try acquiredRecoveryRuntimeIdentity(for: roots.destination)
-    )
-    let movedDestination = roots.workspace.appendingPathComponent("original-destination", isDirectory: true)
-    try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
-    try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
+  let glassID = GlassID()
+  let handle = FolderAccessHandle(
+    glassID: glassID,
+    url: roots.destination,
+    runtimeDirectoryIdentity: try acquiredRecoveryRuntimeIdentity(for: roots.destination)
+  )
+  let movedDestination = roots.workspace.appendingPathComponent(
+    "original-destination", isDirectory: true)
+  try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
+  try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
 
-    let assessment = await PendingCopyRecoveryInspector().assess(
-        recoveryDestinationIdentityRecord(glassID: glassID),
-        destinationAccess: handle
-    )
+  let assessment = await PendingCopyRecoveryInspector().assess(
+    recoveryDestinationIdentityRecord(glassID: glassID),
+    destinationAccess: handle
+  )
 
-    #expect(assessment.disposition == .destinationUnavailable)
+  #expect(assessment.disposition == .destinationUnavailable)
 }
 
 @Test
 func recoveryCleanerRejectsDestinationPathReplacementBeforeDeletion() async throws {
-    let roots = try makeRecoveryDestinationIdentityRoot()
-    defer { try? FileManager.default.removeItem(at: roots.workspace) }
+  let roots = try makeRecoveryDestinationIdentityRoot()
+  defer { try? FileManager.default.removeItem(at: roots.workspace) }
 
-    let glassID = GlassID()
-    let operationID = UUID()
-    let stagingFilename = ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
-    let stagingURL = roots.destination.appendingPathComponent(stagingFilename, isDirectory: false)
-    try Data("staging".utf8).write(to: stagingURL)
-    let stagingIdentityValue = try PendingCopyFileIdentity.createToken(
-        at: stagingURL,
-        fileManager: .default
-    )
-    let stagingIdentity = try #require(stagingIdentityValue)
-    let handle = FolderAccessHandle(
-        glassID: glassID,
-        url: roots.destination,
-        runtimeDirectoryIdentity: try acquiredRecoveryRuntimeIdentity(for: roots.destination)
-    )
-    let record = recoveryDestinationIdentityRecord(
-        glassID: glassID,
-        operationID: operationID,
-        stagingResourceIdentifier: stagingIdentity
-    )
+  let glassID = GlassID()
+  let operationID = UUID()
+  let stagingFilename = ".schneeglass-copy-\(operationID.uuidString.lowercased()).partial"
+  let stagingURL = roots.destination.appendingPathComponent(stagingFilename, isDirectory: false)
+  try Data("staging".utf8).write(to: stagingURL)
+  let stagingIdentityValue = try PendingCopyFileIdentity.createToken(
+    at: stagingURL,
+    fileManager: .default
+  )
+  let stagingIdentity = try #require(stagingIdentityValue)
+  let handle = FolderAccessHandle(
+    glassID: glassID,
+    url: roots.destination,
+    runtimeDirectoryIdentity: try acquiredRecoveryRuntimeIdentity(for: roots.destination)
+  )
+  let record = recoveryDestinationIdentityRecord(
+    glassID: glassID,
+    operationID: operationID,
+    stagingResourceIdentifier: stagingIdentity
+  )
 
-    let movedDestination = roots.workspace.appendingPathComponent("original-destination", isDirectory: true)
-    try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
-    try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
-    try FileManager.default.moveItem(
-        at: movedDestination.appendingPathComponent(stagingFilename, isDirectory: false),
-        to: stagingURL
-    )
+  let movedDestination = roots.workspace.appendingPathComponent(
+    "original-destination", isDirectory: true)
+  try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
+  try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
+  try FileManager.default.moveItem(
+    at: movedDestination.appendingPathComponent(stagingFilename, isDirectory: false),
+    to: stagingURL
+  )
 
-    let cleaner = OwnedStagingRecoveryCleaner()
-    var rejectedReplacement = false
-    do {
-        try await cleaner.removeOwnedStaging(record: record, destinationAccess: handle)
-    } catch let error as OwnedStagingRecoveryCleanupError {
-        rejectedReplacement = error == .destinationMismatch
-    }
+  let cleaner = OwnedStagingRecoveryCleaner()
+  var rejectedReplacement = false
+  do {
+    try await cleaner.removeOwnedStaging(record: record, destinationAccess: handle)
+  } catch let error as OwnedStagingRecoveryCleanupError {
+    rejectedReplacement = error == .destinationMismatch
+  }
 
-    #expect(rejectedReplacement && FileManager.default.fileExists(atPath: stagingURL.path))
+  #expect(rejectedReplacement && FileManager.default.fileExists(atPath: stagingURL.path))
 }
