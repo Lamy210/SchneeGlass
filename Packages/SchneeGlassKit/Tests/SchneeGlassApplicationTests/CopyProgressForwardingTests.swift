@@ -216,7 +216,7 @@ func runtimeSessionForwardsCopyProgressFromFileCopying() async throws {
   let planned = await fixture.session.planDrop(
     sourceURLs: fixture.plan.items.map(\.sourceURL)
   )
-  guard case let .copy(plan) = planned else {
+  guard case .copy(let plan) = planned else {
     Issue.record("Expected authoritative copy plan")
     fixture.eventContinuation.finish()
     await fixture.session.stop()
