@@ -596,7 +596,8 @@ public final class SchneeGlassWorkspaceModel {
       case .copyInProgress:
         userMessage = "A copy is already running for this Glass."
       case .planNotPending:
-        userMessage = "This Drop is no longer authorized for copying. Nothing was copied; try again."
+        userMessage =
+          "This Drop is no longer authorized for copying. Nothing was copied; try again."
       }
       return false
     } catch {
