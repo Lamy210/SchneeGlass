@@ -24,6 +24,19 @@ private func acquiredRecoveryRuntimeIdentity(for url: URL) throws -> RuntimeDire
     )
 }
 
+private func acquiredRecoveryResourceFingerprint(for url: URL) throws -> ResourceFingerprint {
+    let values = try url.standardizedFileURL.resourceValues(
+        forKeys: [.fileResourceIdentifierKey]
+    )
+    let resourceIdentifier = try #require(
+        values.fileResourceIdentifier.map { String(describing: $0) }
+    )
+    return ResourceFingerprint(
+        volumeIdentifier: nil,
+        resourceIdentifier: resourceIdentifier
+    )
+}
+
 private func recoveryDestinationIdentityRecord(
     glassID: GlassID,
     operationID: UUID = UUID(),
@@ -39,6 +52,30 @@ private func recoveryDestinationIdentityRecord(
         stagingResourceIdentifier: stagingResourceIdentifier,
         state: .staging
     )
+}
+
+@Test
+func recoveryIdentityValidatorUsesFingerprintWhenRuntimeIdentityIsUnavailable() throws {
+    let roots = try makeRecoveryDestinationIdentityRoot()
+    defer { try? FileManager.default.removeItem(at: roots.workspace) }
+
+    let glassID = GlassID()
+    let handle = FolderAccessHandle(
+        glassID: glassID,
+        url: roots.destination,
+        fingerprint: try acquiredRecoveryResourceFingerprint(for: roots.destination)
+    )
+
+    #expect(RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(handle))
+
+    let movedDestination = roots.workspace.appendingPathComponent(
+        "original-destination",
+        isDirectory: true
+    )
+    try FileManager.default.moveItem(at: roots.destination, to: movedDestination)
+    try FileManager.default.createDirectory(at: roots.destination, withIntermediateDirectories: true)
+
+    #expect(!RecoveryDestinationRuntimeIdentityValidator.matchesAcquiredIdentity(handle))
 }
 
 @Test
