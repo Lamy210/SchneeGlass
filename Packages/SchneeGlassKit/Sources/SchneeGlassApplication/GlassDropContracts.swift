@@ -38,4 +38,5 @@ public enum GlassCopyExecutionError: Error, Hashable, Sendable {
   case sessionNotRunning
   case copyInProgress
   case destinationMismatch
+  case planNotPending
 }
