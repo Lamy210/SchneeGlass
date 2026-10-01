@@ -4,19 +4,55 @@ import SchneeGlassPOSIXSupport
 
 enum RecoveryDestinationRuntimeIdentityValidator {
     static func matchesAcquiredIdentity(_ access: FolderAccessHandle) -> Bool {
-        guard let expected = access.runtimeDirectoryIdentity else {
-            // Older/fallback access paths may not have descriptor-derived runtime identity.
-            // Preserve their existing compatibility behavior rather than inventing new authority.
+        if let expected = access.runtimeDirectoryIdentity {
+            guard let observed = POSIXDirectoryIdentityReader.identity(
+                at: access.url.standardizedFileURL
+            ) else {
+                return false
+            }
+
+            return observed.device == expected.deviceIdentifier
+                && observed.inode == expected.objectIdentifier
+        }
+
+        guard let expectedFingerprint = access.fingerprint else {
+            // Compatibility path for access providers that cannot expose either descriptor-derived
+            // identity or Foundation's boot-local resource identifiers.
             return true
         }
 
-        guard let observed = POSIXDirectoryIdentityReader.identity(
-            at: access.url.standardizedFileURL
-        ) else {
+        var keys: Set<URLResourceKey> = []
+        if expectedFingerprint.volumeIdentifier != nil {
+            keys.insert(.volumeIdentifierKey)
+        }
+        if expectedFingerprint.resourceIdentifier != nil {
+            keys.insert(.fileResourceIdentifierKey)
+        }
+        guard !keys.isEmpty else {
+            return true
+        }
+
+        let values: URLResourceValues
+        do {
+            values = try access.url.standardizedFileURL.resourceValues(forKeys: keys)
+        } catch {
             return false
         }
 
-        return observed.device == expected.deviceIdentifier
-            && observed.inode == expected.objectIdentifier
+        if let expectedVolumeIdentifier = expectedFingerprint.volumeIdentifier {
+            let observedVolumeIdentifier = values.volumeIdentifier.map { String(describing: $0) }
+            guard observedVolumeIdentifier == expectedVolumeIdentifier else {
+                return false
+            }
+        }
+
+        if let expectedResourceIdentifier = expectedFingerprint.resourceIdentifier {
+            let observedResourceIdentifier = values.fileResourceIdentifier.map { String(describing: $0) }
+            guard observedResourceIdentifier == expectedResourceIdentifier else {
+                return false
+            }
+        }
+
+        return true
     }
 }
