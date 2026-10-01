@@ -268,7 +268,7 @@ private func authorizeCopyPlan(
   let result = await fixture.session.planDrop(
     sourceURLs: plan.items.map(\.sourceURL)
   )
-  guard case let .copy(authoritativePlan) = result else {
+  guard case .copy(let authoritativePlan) = result else {
     return nil
   }
   return authoritativePlan
