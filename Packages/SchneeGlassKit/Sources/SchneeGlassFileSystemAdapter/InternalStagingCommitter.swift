@@ -2,349 +2,362 @@ import Darwin
 import Foundation
 
 public enum StagingCommitError: Error, Hashable, Sendable {
-    case invalidStagingFile
-    case crossDirectoryCommit
-    case collision
-    case stagingMissing
-    case unexpectedFileType
-    case sizeMismatch
-    case resourceIdentityUnavailable
-    case resourceIdentityMismatch
-    case coordinationFailed
-    case commitFailed
+  case invalidStagingFile
+  case crossDirectoryCommit
+  case collision
+  case stagingMissing
+  case unexpectedFileType
+  case sizeMismatch
+  case resourceIdentityUnavailable
+  case resourceIdentityMismatch
+  case coordinationFailed
+  case commitFailed
 }
 
 struct StagingCommitAuthorization: Hashable, Sendable {
-    let expectedSize: Int64
-    let expectedResourceIdentifier: String
+  let expectedSize: Int64
+  let expectedResourceIdentifier: String
 }
 
 protocol StagingCommitting: Sendable {
-    func commit(
-        stagingURL: URL,
-        finalURL: URL,
-        authorization: StagingCommitAuthorization
-    ) async throws
+  func commit(
+    stagingURL: URL,
+    finalURL: URL,
+    authorization: StagingCommitAuthorization
+  ) async throws
 }
 
 public actor InternalStagingCommitter: StagingCommitting {
-    private static let stagingPrefix = ".schneeglass-copy-"
-    private static let stagingSuffix = ".partial"
+  private static let stagingPrefix = ".schneeglass-copy-"
+  private static let stagingSuffix = ".partial"
 
-    private let fileManager: FileManager
-    private let semanticMetadataReader: any SourceSemanticMetadataReading
+  private let fileManager: FileManager
+  private let semanticMetadataReader: any SourceSemanticMetadataReading
 
-    public init() {
-        self.fileManager = .default
-        self.semanticMetadataReader = FoundationSourceSemanticMetadataReader()
+  public init() {
+    self.fileManager = .default
+    self.semanticMetadataReader = FoundationSourceSemanticMetadataReader()
+  }
+
+  init(
+    fileManager: FileManager,
+    semanticMetadataReader: any SourceSemanticMetadataReading =
+      FoundationSourceSemanticMetadataReader()
+  ) {
+    self.fileManager = fileManager
+    self.semanticMetadataReader = semanticMetadataReader
+  }
+
+  /// Test/support convenience that derives authorization from a fresh app-owned staging item.
+  /// Production Safe Copy uses the explicit authorization overload so the verifier's proof is
+  /// carried across the verification-to-commit boundary rather than regenerated here.
+  func commit(stagingURL: URL, finalURL: URL) async throws {
+    let staging = stagingURL.standardizedFileURL
+    guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
+      throw StagingCommitError.invalidStagingFile
     }
 
-    init(
-        fileManager: FileManager,
-        semanticMetadataReader: any SourceSemanticMetadataReading = FoundationSourceSemanticMetadataReader()
-    ) {
-        self.fileManager = fileManager
-        self.semanticMetadataReader = semanticMetadataReader
+    let authorization = try Self.currentAuthorization(
+      at: staging,
+      fileManager: fileManager,
+      semanticMetadataReader: semanticMetadataReader
+    )
+    try await commit(
+      stagingURL: staging,
+      finalURL: finalURL,
+      authorization: authorization
+    )
+  }
+
+  func commit(
+    stagingURL: URL,
+    finalURL: URL,
+    authorization: StagingCommitAuthorization
+  ) async throws {
+    let staging = stagingURL.standardizedFileURL
+    let final = finalURL.standardizedFileURL
+    let destinationDirectory = final.deletingLastPathComponent().standardizedFileURL
+
+    guard staging.deletingLastPathComponent() == destinationDirectory else {
+      throw StagingCommitError.crossDirectoryCommit
     }
 
-    /// Test/support convenience that derives authorization from a fresh app-owned staging item.
-    /// Production Safe Copy uses the explicit authorization overload so the verifier's proof is
-    /// carried across the verification-to-commit boundary rather than regenerated here.
-    func commit(stagingURL: URL, finalURL: URL) async throws {
-        let staging = stagingURL.standardizedFileURL
-        guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
-            throw StagingCommitError.invalidStagingFile
-        }
-
-        let authorization = try Self.currentAuthorization(
-            at: staging,
-            fileManager: fileManager,
-            semanticMetadataReader: semanticMetadataReader
-        )
-        try await commit(
-            stagingURL: staging,
-            finalURL: finalURL,
-            authorization: authorization
-        )
+    guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
+      throw StagingCommitError.invalidStagingFile
     }
 
-    func commit(
-        stagingURL: URL,
-        finalURL: URL,
-        authorization: StagingCommitAuthorization
-    ) async throws {
-        let staging = stagingURL.standardizedFileURL
-        let final = finalURL.standardizedFileURL
-        let destinationDirectory = final.deletingLastPathComponent().standardizedFileURL
+    let stagingDescriptor = try Self.openReadOnlyNoFollow(staging)
+    defer { close(stagingDescriptor) }
 
-        guard staging.deletingLastPathComponent() == destinationDirectory else {
-            throw StagingCommitError.crossDirectoryCommit
-        }
+    // Pin the exact inode for the whole coordinated commit. Even if another process unlinks
+    // and recreates the staging path, the original inode cannot be recycled while this file
+    // descriptor is alive, and the final path-to-descriptor check will fail closed.
+    try Self.revalidateOwnedStaging(
+      at: staging,
+      expectedDestination: destinationDirectory,
+      expectedFilename: staging.lastPathComponent,
+      authorization: authorization,
+      stagingDescriptor: stagingDescriptor,
+      fileManager: fileManager,
+      semanticMetadataReader: semanticMetadataReader
+    )
 
-        guard Self.isOwnedStagingFilename(staging.lastPathComponent) else {
-            throw StagingCommitError.invalidStagingFile
-        }
+    let fileManager = self.fileManager
+    let semanticMetadataReader = self.semanticMetadataReader
+    var coordinationError: NSError?
+    var operationError: StagingCommitError?
 
-        let stagingDescriptor = try Self.openReadOnlyNoFollow(staging)
-        defer { close(stagingDescriptor) }
+    let coordinator = NSFileCoordinator(filePresenter: nil)
+    coordinator.coordinate(
+      writingItemAt: staging,
+      options: .forMoving,
+      writingItemAt: destinationDirectory,
+      options: [],
+      error: &coordinationError
+    ) { coordinatedStaging, coordinatedDirectory in
+      let coordinatedDestination = coordinatedDirectory
+        .standardizedFileURL
+        .appendingPathComponent(final.lastPathComponent, isDirectory: false)
+        .standardizedFileURL
 
-        // Pin the exact inode for the whole coordinated commit. Even if another process unlinks
-        // and recreates the staging path, the original inode cannot be recycled while this file
-        // descriptor is alive, and the final path-to-descriptor check will fail closed.
+      do {
         try Self.revalidateOwnedStaging(
-            at: staging,
-            expectedDestination: destinationDirectory,
-            expectedFilename: staging.lastPathComponent,
-            authorization: authorization,
-            stagingDescriptor: stagingDescriptor,
-            fileManager: fileManager,
-            semanticMetadataReader: semanticMetadataReader
+          at: coordinatedStaging,
+          expectedDestination: coordinatedDirectory.standardizedFileURL,
+          expectedFilename: staging.lastPathComponent,
+          authorization: authorization,
+          stagingDescriptor: stagingDescriptor,
+          fileManager: fileManager,
+          semanticMetadataReader: semanticMetadataReader
         )
 
-        let fileManager = self.fileManager
-        let semanticMetadataReader = self.semanticMetadataReader
-        var coordinationError: NSError?
-        var operationError: StagingCommitError?
-
-        let coordinator = NSFileCoordinator(filePresenter: nil)
-        coordinator.coordinate(
-            writingItemAt: staging,
-            options: .forMoving,
-            writingItemAt: destinationDirectory,
-            options: [],
-            error: &coordinationError
-        ) { coordinatedStaging, coordinatedDirectory in
-            let coordinatedDestination = coordinatedDirectory
-                .standardizedFileURL
-                .appendingPathComponent(final.lastPathComponent, isDirectory: false)
-                .standardizedFileURL
-
-            do {
-                try Self.revalidateOwnedStaging(
-                    at: coordinatedStaging,
-                    expectedDestination: coordinatedDirectory.standardizedFileURL,
-                    expectedFilename: staging.lastPathComponent,
-                    authorization: authorization,
-                    stagingDescriptor: stagingDescriptor,
-                    fileManager: fileManager,
-                    semanticMetadataReader: semanticMetadataReader
-                )
-
-                guard !fileManager.fileExists(atPath: coordinatedDestination.path) else {
-                    throw StagingCommitError.collision
-                }
-
-                // Recheck immediately before the only allowed final-name mutation. This catches a
-                // non-cooperating process that replaces the path after NSFileCoordinator begins.
-                guard PendingCopyFileIdentity.descriptorMatchesPath(
-                    stagingDescriptor,
-                    pathURL: coordinatedStaging
-                ) else {
-                    throw StagingCommitError.resourceIdentityMismatch
-                }
-
-                do {
-                    try fileManager.moveItem(
-                        at: coordinatedStaging,
-                        to: coordinatedDestination
-                    )
-                } catch {
-                    if fileManager.fileExists(atPath: coordinatedDestination.path) {
-                        throw StagingCommitError.collision
-                    }
-                    throw StagingCommitError.commitFailed
-                }
-            } catch let error as StagingCommitError {
-                operationError = error
-            } catch {
-                operationError = .commitFailed
-            }
+        guard !fileManager.fileExists(atPath: coordinatedDestination.path) else {
+          throw StagingCommitError.collision
         }
 
-        if let operationError {
-            throw operationError
-        }
-        if coordinationError != nil {
-            throw StagingCommitError.coordinationFailed
-        }
-    }
-
-    static func isOwnedStagingFilename(_ filename: String) -> Bool {
-        guard filename.hasPrefix(stagingPrefix), filename.hasSuffix(stagingSuffix) else {
-            return false
-        }
-
-        let start = filename.index(filename.startIndex, offsetBy: stagingPrefix.count)
-        let end = filename.index(filename.endIndex, offsetBy: -stagingSuffix.count)
-        guard start < end else {
-            return false
-        }
-
-        let operationID = String(filename[start..<end])
-        return UUID(uuidString: operationID) != nil
-    }
-
-    private static func currentAuthorization(
-        at url: URL,
-        fileManager: FileManager,
-        semanticMetadataReader: any SourceSemanticMetadataReading
-    ) throws -> StagingCommitAuthorization {
-        let candidate = url.standardizedFileURL
-        let attributes: [FileAttributeKey: Any]
-        do {
-            attributes = try fileManager.attributesOfItem(atPath: candidate.path)
-        } catch {
-            if Self.isMissingFileError(error) {
-                throw StagingCommitError.stagingMissing
-            }
-            throw StagingCommitError.commitFailed
-        }
-
-        guard attributes[.type] as? FileAttributeType == .typeRegular else {
-            throw StagingCommitError.unexpectedFileType
-        }
-        guard let size = (attributes[.size] as? NSNumber)?.int64Value else {
-            throw StagingCommitError.sizeMismatch
-        }
-
-        let semanticMetadata: SourceSemanticMetadata
-        do {
-            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
-        } catch {
-            throw StagingCommitError.commitFailed
-        }
-
-        guard RegularSourceSemanticClassifier.isPlainFile(
-            isAlias: semanticMetadata.isAlias,
-            isPackage: semanticMetadata.isPackage
-        ) else {
-            throw StagingCommitError.unexpectedFileType
-        }
-        guard let identity = try PendingCopyFileIdentity.createToken(
-            at: candidate,
-            fileManager: fileManager
-        ) else {
-            throw StagingCommitError.resourceIdentityUnavailable
-        }
-
-        return StagingCommitAuthorization(
-            expectedSize: size,
-            expectedResourceIdentifier: identity
-        )
-    }
-
-    private static func revalidateOwnedStaging(
-        at url: URL,
-        expectedDestination: URL,
-        expectedFilename: String,
-        authorization: StagingCommitAuthorization,
-        stagingDescriptor: Int32,
-        fileManager: FileManager,
-        semanticMetadataReader: any SourceSemanticMetadataReading
-    ) throws {
-        let candidate = url.standardizedFileURL
-        guard candidate.deletingLastPathComponent() == expectedDestination,
-              candidate.lastPathComponent == expectedFilename
-        else {
-            throw StagingCommitError.invalidStagingFile
-        }
-
-        guard PendingCopyFileIdentity.descriptorMatchesPath(
+        // Recheck immediately before the only allowed final-name mutation. This catches a
+        // non-cooperating process that replaces the path after NSFileCoordinator begins.
+        guard
+          PendingCopyFileIdentity.descriptorMatchesPath(
             stagingDescriptor,
-            pathURL: candidate
-        ) else {
-            throw StagingCommitError.resourceIdentityMismatch
-        }
-
-        let attributes: [FileAttributeKey: Any]
-        do {
-            attributes = try fileManager.attributesOfItem(atPath: candidate.path)
-        } catch {
-            if Self.isMissingFileError(error) {
-                throw StagingCommitError.stagingMissing
-            }
-            throw StagingCommitError.commitFailed
-        }
-
-        guard attributes[.type] as? FileAttributeType == .typeRegular else {
-            throw StagingCommitError.unexpectedFileType
-        }
-
-        guard let observedSize = (attributes[.size] as? NSNumber)?.int64Value,
-              observedSize == authorization.expectedSize
+            pathURL: coordinatedStaging
+          )
         else {
-            throw StagingCommitError.sizeMismatch
+          throw StagingCommitError.resourceIdentityMismatch
         }
 
-        var descriptorStat = stat()
-        guard fstat(stagingDescriptor, &descriptorStat) == 0,
-              Int64(descriptorStat.st_size) == authorization.expectedSize
-        else {
-            throw StagingCommitError.sizeMismatch
-        }
-
-        let semanticMetadata: SourceSemanticMetadata
         do {
-            semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
+          try fileManager.moveItem(
+            at: coordinatedStaging,
+            to: coordinatedDestination
+          )
         } catch {
-            throw StagingCommitError.commitFailed
+          if fileManager.fileExists(atPath: coordinatedDestination.path) {
+            throw StagingCommitError.collision
+          }
+          throw StagingCommitError.commitFailed
         }
-
-        guard RegularSourceSemanticClassifier.isPlainFile(
-            isAlias: semanticMetadata.isAlias,
-            isPackage: semanticMetadata.isPackage
-        ) else {
-            throw StagingCommitError.unexpectedFileType
-        }
-
-        guard let observedIdentity = PendingCopyFileIdentity.token(
-            onFileDescriptor: stagingDescriptor
-        ) else {
-            throw StagingCommitError.resourceIdentityUnavailable
-        }
-        guard observedIdentity == authorization.expectedResourceIdentifier else {
-            throw StagingCommitError.resourceIdentityMismatch
-        }
+      } catch let error as StagingCommitError {
+        operationError = error
+      } catch {
+        operationError = .commitFailed
+      }
     }
 
-    private static func openReadOnlyNoFollow(_ url: URL) throws -> Int32 {
-        let candidate = url.standardizedFileURL
-        return try candidate.withUnsafeFileSystemRepresentation { path in
-            guard let path else {
-                throw StagingCommitError.commitFailed
-            }
+    if let operationError {
+      throw operationError
+    }
+    if coordinationError != nil {
+      throw StagingCommitError.coordinationFailed
+    }
+  }
 
-            var pathStat = stat()
-            guard lstat(path, &pathStat) == 0 else {
-                if errno == ENOENT {
-                    throw StagingCommitError.stagingMissing
-                }
-                throw StagingCommitError.commitFailed
-            }
-            guard (pathStat.st_mode & S_IFMT) == S_IFREG else {
-                throw StagingCommitError.unexpectedFileType
-            }
-
-            let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-            guard descriptor >= 0 else {
-                if errno == ENOENT {
-                    throw StagingCommitError.stagingMissing
-                }
-                if errno == ELOOP {
-                    throw StagingCommitError.unexpectedFileType
-                }
-                throw StagingCommitError.commitFailed
-            }
-            return descriptor
-        }
+  static func isOwnedStagingFilename(_ filename: String) -> Bool {
+    guard filename.hasPrefix(stagingPrefix), filename.hasSuffix(stagingSuffix) else {
+      return false
     }
 
-    private static func isMissingFileError(_ error: Error) -> Bool {
-        let cocoa = error as NSError
-        guard cocoa.domain == NSCocoaErrorDomain else {
-            return false
-        }
-        return cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
-            || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
+    let start = filename.index(filename.startIndex, offsetBy: stagingPrefix.count)
+    let end = filename.index(filename.endIndex, offsetBy: -stagingSuffix.count)
+    guard start < end else {
+      return false
     }
+
+    let operationID = String(filename[start..<end])
+    return UUID(uuidString: operationID) != nil
+  }
+
+  private static func currentAuthorization(
+    at url: URL,
+    fileManager: FileManager,
+    semanticMetadataReader: any SourceSemanticMetadataReading
+  ) throws -> StagingCommitAuthorization {
+    let candidate = url.standardizedFileURL
+    let attributes: [FileAttributeKey: Any]
+    do {
+      attributes = try fileManager.attributesOfItem(atPath: candidate.path)
+    } catch {
+      if Self.isMissingFileError(error) {
+        throw StagingCommitError.stagingMissing
+      }
+      throw StagingCommitError.commitFailed
+    }
+
+    guard attributes[.type] as? FileAttributeType == .typeRegular else {
+      throw StagingCommitError.unexpectedFileType
+    }
+    guard let size = (attributes[.size] as? NSNumber)?.int64Value else {
+      throw StagingCommitError.sizeMismatch
+    }
+
+    let semanticMetadata: SourceSemanticMetadata
+    do {
+      semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
+    } catch {
+      throw StagingCommitError.commitFailed
+    }
+
+    guard
+      RegularSourceSemanticClassifier.isPlainFile(
+        isAlias: semanticMetadata.isAlias,
+        isPackage: semanticMetadata.isPackage
+      )
+    else {
+      throw StagingCommitError.unexpectedFileType
+    }
+    guard
+      let identity = try PendingCopyFileIdentity.createToken(
+        at: candidate,
+        fileManager: fileManager
+      )
+    else {
+      throw StagingCommitError.resourceIdentityUnavailable
+    }
+
+    return StagingCommitAuthorization(
+      expectedSize: size,
+      expectedResourceIdentifier: identity
+    )
+  }
+
+  private static func revalidateOwnedStaging(
+    at url: URL,
+    expectedDestination: URL,
+    expectedFilename: String,
+    authorization: StagingCommitAuthorization,
+    stagingDescriptor: Int32,
+    fileManager: FileManager,
+    semanticMetadataReader: any SourceSemanticMetadataReading
+  ) throws {
+    let candidate = url.standardizedFileURL
+    guard candidate.deletingLastPathComponent() == expectedDestination,
+      candidate.lastPathComponent == expectedFilename
+    else {
+      throw StagingCommitError.invalidStagingFile
+    }
+
+    guard
+      PendingCopyFileIdentity.descriptorMatchesPath(
+        stagingDescriptor,
+        pathURL: candidate
+      )
+    else {
+      throw StagingCommitError.resourceIdentityMismatch
+    }
+
+    let attributes: [FileAttributeKey: Any]
+    do {
+      attributes = try fileManager.attributesOfItem(atPath: candidate.path)
+    } catch {
+      if Self.isMissingFileError(error) {
+        throw StagingCommitError.stagingMissing
+      }
+      throw StagingCommitError.commitFailed
+    }
+
+    guard attributes[.type] as? FileAttributeType == .typeRegular else {
+      throw StagingCommitError.unexpectedFileType
+    }
+
+    guard let observedSize = (attributes[.size] as? NSNumber)?.int64Value,
+      observedSize == authorization.expectedSize
+    else {
+      throw StagingCommitError.sizeMismatch
+    }
+
+    var descriptorStat = stat()
+    guard fstat(stagingDescriptor, &descriptorStat) == 0,
+      Int64(descriptorStat.st_size) == authorization.expectedSize
+    else {
+      throw StagingCommitError.sizeMismatch
+    }
+
+    let semanticMetadata: SourceSemanticMetadata
+    do {
+      semanticMetadata = try semanticMetadataReader.metadata(at: candidate)
+    } catch {
+      throw StagingCommitError.commitFailed
+    }
+
+    guard
+      RegularSourceSemanticClassifier.isPlainFile(
+        isAlias: semanticMetadata.isAlias,
+        isPackage: semanticMetadata.isPackage
+      )
+    else {
+      throw StagingCommitError.unexpectedFileType
+    }
+
+    guard
+      let observedIdentity = PendingCopyFileIdentity.token(
+        onFileDescriptor: stagingDescriptor
+      )
+    else {
+      throw StagingCommitError.resourceIdentityUnavailable
+    }
+    guard observedIdentity == authorization.expectedResourceIdentifier else {
+      throw StagingCommitError.resourceIdentityMismatch
+    }
+  }
+
+  private static func openReadOnlyNoFollow(_ url: URL) throws -> Int32 {
+    let candidate = url.standardizedFileURL
+    return try candidate.withUnsafeFileSystemRepresentation { path in
+      guard let path else {
+        throw StagingCommitError.commitFailed
+      }
+
+      var pathStat = stat()
+      guard lstat(path, &pathStat) == 0 else {
+        if errno == ENOENT {
+          throw StagingCommitError.stagingMissing
+        }
+        throw StagingCommitError.commitFailed
+      }
+      guard (pathStat.st_mode & S_IFMT) == S_IFREG else {
+        throw StagingCommitError.unexpectedFileType
+      }
+
+      let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+      guard descriptor >= 0 else {
+        if errno == ENOENT {
+          throw StagingCommitError.stagingMissing
+        }
+        if errno == ELOOP {
+          throw StagingCommitError.unexpectedFileType
+        }
+        throw StagingCommitError.commitFailed
+      }
+      return descriptor
+    }
+  }
+
+  private static func isMissingFileError(_ error: Error) -> Bool {
+    let cocoa = error as NSError
+    guard cocoa.domain == NSCocoaErrorDomain else {
+      return false
+    }
+    return cocoa.code == CocoaError.Code.fileNoSuchFile.rawValue
+      || cocoa.code == CocoaError.Code.fileReadNoSuchFile.rawValue
+  }
 }
