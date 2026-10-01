@@ -46,13 +46,19 @@ private actor ProgressForwardingSnapshotReader: FolderSnapshotReading {
 }
 
 private actor ProgressForwardingDropPlanner: DropPlanning {
+  private let result: DropPlan
+
+  init(result: DropPlan) {
+    self.result = result
+  }
+
   func plan(
     sourceURLs: [URL],
     destinationAccess: FolderAccessHandle
   ) async -> DropPlan {
     _ = sourceURLs
     _ = destinationAccess
-    return .noOperation
+    return result
   }
 }
 
@@ -169,7 +175,7 @@ private func makeProgressForwardingFixture() throws -> (
     eventStreaming: ProgressForwardingEventStreaming(),
     snapshotReader: ProgressForwardingSnapshotReader(),
     accessController: ProgressForwardingAccessController(),
-    dropPlanning: ProgressForwardingDropPlanner(),
+    dropPlanning: ProgressForwardingDropPlanner(result: .copy(plan)),
     fileCopying: ProgressEmittingFileCopying()
   )
   return (session, plan, eventPair.continuation)
@@ -207,7 +213,17 @@ func runtimeSessionForwardsCopyProgressFromFileCopying() async throws {
   let recorder = ProgressForwardingRecorder()
   _ = try await fixture.session.start()
 
-  let result = try await fixture.session.executeCopy(fixture.plan) { progress in
+  let planned = await fixture.session.planDrop(
+    sourceURLs: fixture.plan.items.map(\.sourceURL)
+  )
+  guard case let .copy(plan) = planned else {
+    Issue.record("Expected authoritative copy plan")
+    fixture.eventContinuation.finish()
+    await fixture.session.stop()
+    return
+  }
+
+  let result = try await fixture.session.executeCopy(plan) { progress in
     await recorder.record(progress)
   }
 
