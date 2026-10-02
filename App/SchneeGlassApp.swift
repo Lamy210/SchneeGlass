@@ -31,9 +31,10 @@ struct SchneeGlassApp: App {
           weak workspaceModel = root.workspaceModel,
           weak pendingCopyRecoveryModel = root.pendingCopyRecoveryModel,
         ] in
+        workspaceModel?.prepareForTermination()
         pendingCopyRecoveryModel?.prepareForTermination()
-        await workspaceModel?.prepareForTermination()
 
+        await workspaceModel?.cancelActiveCopiesForTermination()
         await pendingCopyRecoveryModel?.shutdown()
         await workspaceModel?.quiesceConfigurationMutationsForTermination()
         await coordinator?.flushPlacementsForTermination()
