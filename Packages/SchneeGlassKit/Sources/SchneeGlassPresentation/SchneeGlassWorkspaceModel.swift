@@ -1146,7 +1146,8 @@ public final class SchneeGlassWorkspaceModel {
       return prefix + "SchneeGlass could not verify a copied file safely."
     case .commitStateUnknown:
       return
-        "SchneeGlass may have created the destination file, but could not verify its final state. "
+        prefix
+        + "SchneeGlass may have created the current destination file, but could not verify its final state. "
         + "Check Recovery before retrying; source files were not moved or deleted."
     case .cancelled:
       return prefix + "The copy was cancelled."
