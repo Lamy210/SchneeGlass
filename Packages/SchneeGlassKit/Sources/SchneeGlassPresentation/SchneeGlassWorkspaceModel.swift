@@ -1145,8 +1145,9 @@ public final class SchneeGlassWorkspaceModel {
     case .verificationFailed:
       return prefix + "SchneeGlass could not verify a copied file safely."
     case .commitStateUnknown:
+      let completedPrefix = succeededCount > 0 ? prefix : ""
       return
-        prefix
+        completedPrefix
         + "SchneeGlass may have created the current destination file, but could not verify its final state. "
         + "Check Recovery before retrying; source files were not moved or deleted."
     case .cancelled:
