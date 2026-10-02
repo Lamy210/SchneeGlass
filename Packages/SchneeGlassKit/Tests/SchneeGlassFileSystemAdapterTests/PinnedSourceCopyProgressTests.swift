@@ -259,4 +259,23 @@ func pinnedSourceCopyCancellationInterruptsCurrentFileAndPreservesRecoveryState(
   #expect(records.count == 1)
   #expect(records.first?.operationID == plan.items[0].operationID)
   #expect(records.first?.state == .staging)
+
+  guard let record = records.first else {
+    Issue.record("Expected pending recovery record")
+    return
+  }
+
+  let assessment = await PendingCopyRecoveryInspector().assess(
+    record,
+    destinationAccess: access
+  )
+  guard case .stagingPresent(let verification) = assessment.disposition else {
+    Issue.record("Expected staging-present recovery state, got \(assessment.disposition)")
+    return
+  }
+
+  #expect(verification.resourceIdentity == .recordedIdentityUnavailable)
+  #expect(
+    PendingCopyRecoveryActionPlanner.plan(for: assessment).actions == [.revealStaging]
+  )
 }
