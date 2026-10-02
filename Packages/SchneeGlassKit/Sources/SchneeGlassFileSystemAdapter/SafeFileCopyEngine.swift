@@ -488,6 +488,10 @@ actor SafeFileCopyEngine: FileCopying {
         throw CopyFileSystemError.verificationFailed
       }
 
+      guard !Task.isCancelled else {
+        throw CopyFileSystemError.cancelled
+      }
+
       commitAuthorization = StagingCommitAuthorization(
         expectedSize: stagedSize,
         expectedResourceIdentifier: stagingResourceIdentifier
@@ -515,7 +519,16 @@ actor SafeFileCopyEngine: FileCopying {
     }
 
     do {
+      guard !Task.isCancelled else {
+        throw CopyFileSystemError.cancelled
+      }
+
       try await recoveryStore.upsert(verifiedRecord.updating(state: .committing))
+
+      guard !Task.isCancelled else {
+        throw CopyFileSystemError.cancelled
+      }
+
       try await committer.commit(
         stagingURL: item.stagingURL,
         finalURL: item.finalURL,
