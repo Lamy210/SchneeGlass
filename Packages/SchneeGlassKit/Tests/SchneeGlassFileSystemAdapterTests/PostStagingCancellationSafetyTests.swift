@@ -144,6 +144,49 @@ private actor PendingCopyStateGateStore: PendingCopyRecording {
   }
 }
 
+private actor PostCommitCleanupCancellationStore: PendingCopyRecording {
+  private var stored: [UUID: PendingCopyRecord] = [:]
+  private var removalStarted = false
+  private var observerContinuation: CheckedContinuation<Void, Never>?
+  private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+  func records() async throws -> [PendingCopyRecord] {
+    Array(stored.values)
+  }
+
+  func upsert(_ record: PendingCopyRecord) async throws {
+    stored[record.operationID] = record
+  }
+
+  func remove(operationID: UUID) async throws {
+    removalStarted = true
+    observerContinuation?.resume()
+    observerContinuation = nil
+
+    await withCheckedContinuation { continuation in
+      releaseContinuation = continuation
+    }
+
+    try Task.checkCancellation()
+    stored.removeValue(forKey: operationID)
+  }
+
+  func waitUntilRemovalStarts() async {
+    guard !removalStarted else {
+      return
+    }
+
+    await withCheckedContinuation { continuation in
+      observerContinuation = continuation
+    }
+  }
+
+  func releaseRemoval() {
+    releaseContinuation?.resume()
+    releaseContinuation = nil
+  }
+}
+
 private actor CancelledCommitGate {
   private var started = false
   private var observerContinuation: CheckedContinuation<Void, Never>?
@@ -357,6 +400,52 @@ func safeCopyCancellationAfterCommittingRecordKeepsStagingAndSkipsFinalCommit() 
   )
   #expect(await environment.committed().isEmpty)
   #expect(await environment.hasStaging(stagingURL))
+
+  let records = try await store.records()
+  #expect(records.count == 1)
+  #expect(records.first?.operationID == item.operationID)
+  #expect(records.first?.state == .committing)
+}
+
+@Test
+func cancellationDuringPostCommitCleanupPreservesCommittedSuccess() async throws {
+  let destination = URL(
+    fileURLWithPath: "/tmp/schneeglass-post-commit-cleanup-cancel",
+    isDirectory: true
+  )
+  let source = URL(fileURLWithPath: "/tmp/schneeglass-post-commit-cleanup-source.txt")
+  let environment = PostStagingCancellationEnvironment(sourceURL: source, sourceSize: 29)
+  let store = PostCommitCleanupCancellationStore()
+  let engine = SafeFileCopyEngine(
+    fileSystem: environment,
+    committer: environment,
+    recoveryStore: store
+  )
+  let request = try makePostStagingCancellationRequest(
+    destination: destination,
+    source: source,
+    size: 29
+  )
+  let item = request.plan.items[0]
+
+  let copyTask = Task {
+    await engine.copy(request)
+  }
+
+  await store.waitUntilRemovalStarts()
+  copyTask.cancel()
+  await store.releaseRemoval()
+
+  let result = await copyTask.value
+  let finalURL = destination.appendingPathComponent(item.destinationFilename)
+
+  #expect(result.failed == nil)
+  #expect(result.notAttempted.isEmpty)
+  #expect(result.succeeded.count == 1)
+  #expect(result.succeeded.first?.operationID == item.operationID)
+  #expect(result.succeeded.first?.destinationURL == finalURL.standardizedFileURL)
+  #expect(result.succeeded.first?.recoveryMetadataCleanupPending == true)
+  #expect(await environment.committed() == [finalURL.standardizedFileURL])
 
   let records = try await store.records()
   #expect(records.count == 1)
