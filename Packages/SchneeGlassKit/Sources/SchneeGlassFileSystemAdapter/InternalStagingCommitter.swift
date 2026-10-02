@@ -10,6 +10,7 @@ public enum StagingCommitError: Error, Hashable, Sendable {
   case sizeMismatch
   case resourceIdentityUnavailable
   case resourceIdentityMismatch
+  case postCommitVerificationFailed
   case coordinationFailed
   case commitFailed
 }
