@@ -271,7 +271,8 @@ func safeCopyCancellationAfterVerificationKeepsStagingAndSkipsFinalCommit() asyn
     size: 17
   )
   let item = request.plan.items[0]
-  let stagingURL = destination
+  let stagingURL =
+    destination
     .appendingPathComponent(
       ".schneeglass-copy-\(item.operationID.uuidString.lowercased()).partial"
     )
