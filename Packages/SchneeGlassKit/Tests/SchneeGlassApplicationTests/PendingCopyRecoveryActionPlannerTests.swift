@@ -94,6 +94,30 @@ func finalPresentCanBeRevealedAndMetadataDismissed() {
     #expect(!plan.actions.contains(.removeOwnedStaging))
 }
 
+@Test(
+    "final-present recovery never offers file deletion when identity is untrusted",
+    arguments: [
+        PendingCopyResourceIdentityVerification.mismatchesRecordedIdentity,
+        .recordedIdentityUnavailable,
+        .observedIdentityUnavailable,
+    ]
+)
+func finalPresentWithUntrustedIdentityNeverOffersFileDeletion(
+    identity: PendingCopyResourceIdentityVerification
+) {
+    let plan = PendingCopyRecoveryActionPlanner.plan(
+        for: makeAssessment(
+            .finalPresent(
+                verification(identity: identity)
+            )
+        )
+    )
+
+    #expect(plan.actions == [.revealFinal, .discardMetadata])
+    #expect(!plan.actions.contains(.revealStaging))
+    #expect(!plan.actions.contains(.removeOwnedStaging))
+}
+
 @Test
 func conflictWithMatchingStagingIdentityCanOfferOwnedStagingCleanup() {
     let plan = PendingCopyRecoveryActionPlanner.plan(
