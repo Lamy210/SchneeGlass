@@ -1120,7 +1120,7 @@ public final class SchneeGlassWorkspaceModel {
   private static let configurationRecoveryRequiredMessage =
     "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
 
-  private static func copyFailureMessage(
+  static func copyFailureMessage(
     _ failure: CopyItemFailure,
     succeededCount: Int
   ) -> String {
@@ -1144,6 +1144,10 @@ public final class SchneeGlassWorkspaceModel {
       return prefix + "A file with the same name already exists. Nothing was overwritten."
     case .verificationFailed:
       return prefix + "SchneeGlass could not verify a copied file safely."
+    case .commitStateUnknown:
+      return
+        "SchneeGlass may have created the destination file, but could not verify its final state. "
+        + "Check Recovery before retrying; source files were not moved or deleted."
     case .cancelled:
       return prefix + "The copy was cancelled."
     case .unexpected:
