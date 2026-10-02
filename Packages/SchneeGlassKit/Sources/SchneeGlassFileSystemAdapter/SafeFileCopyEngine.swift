@@ -612,6 +612,8 @@ actor SafeFileCopyEngine: FileCopying {
         .resourceIdentityUnavailable,
         .resourceIdentityMismatch:
         return .verificationFailed
+      case .postCommitVerificationFailed:
+        return .commitStateUnknown
       case .invalidStagingFile,
         .crossDirectoryCommit,
         .coordinationFailed,
