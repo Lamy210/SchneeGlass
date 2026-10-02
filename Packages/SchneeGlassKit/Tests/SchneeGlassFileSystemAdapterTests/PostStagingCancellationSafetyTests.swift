@@ -321,11 +321,6 @@ func cancelledPinnedCommitTaskDoesNotRenameStagingIntoFinalDestination() async t
   )
   let leases = DestinationDirectoryLeaseRegistry()
   try await leases.bind(fixture.request)
-  defer {
-    Task {
-      await leases.release(batchID: fixture.request.plan.batchID)
-    }
-  }
 
   let stagingFilename = DestinationDirectoryLeaseRegistry.stagingFilename(
     operationID: fixture.item.operationID
@@ -341,6 +336,7 @@ func cancelledPinnedCommitTaskDoesNotRenameStagingIntoFinalDestination() async t
     )
   else {
     Issue.record("Expected staging ownership token")
+    await leases.release(batchID: fixture.request.plan.batchID)
     return
   }
 
