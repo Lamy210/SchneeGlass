@@ -161,15 +161,29 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
     }
 
     // The open staging descriptor survives rename. Verify the final directory entry now names
-    // that exact inode; if not, recovery metadata remains and the copy fails closed.
+    // that exact inode. A failure here is materially different from a pre-commit verification
+    // failure because the exclusive rename has already succeeded; keep recovery metadata and
+    // surface the final destination state as uncertain.
+    try Self.requireCommittedEntryMatches(
+      stagingDescriptor: stagingDescriptor,
+      directoryDescriptor: directoryDescriptor,
+      filename: final.lastPathComponent
+    )
+  }
+
+  static func requireCommittedEntryMatches(
+    stagingDescriptor: Int32,
+    directoryDescriptor: Int32,
+    filename: String
+  ) throws {
     guard
       PendingCopyFileIdentity.descriptorMatchesDirectoryEntry(
         stagingDescriptor,
         directoryDescriptor: directoryDescriptor,
-        filename: final.lastPathComponent
+        filename: filename
       )
     else {
-      throw StagingCommitError.resourceIdentityMismatch
+      throw StagingCommitError.postCommitVerificationFailed
     }
   }
 
