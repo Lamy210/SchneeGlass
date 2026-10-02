@@ -131,6 +131,10 @@ actor PinnedDestinationStagingCommitter: StagingCommitting {
       throw StagingCommitError.resourceIdentityMismatch
     }
 
+    guard !Task.isCancelled else {
+      throw CopyFileSystemError.cancelled
+    }
+
     let renameResult = staging.lastPathComponent.withCString { sourceName in
       final.lastPathComponent.withCString { destinationName in
         renameatx_np(
