@@ -307,7 +307,10 @@ func safeCopyCancellationAfterVerificationKeepsStagingAndSkipsFinalCommit() asyn
 @Test
 func cancelledPinnedCommitTaskDoesNotRenameStagingIntoFinalDestination() async throws {
   let root = FileManager.default.temporaryDirectory
-    .appendingPathComponent("schneeglass-cancelled-pinned-commit-\(UUID().uuidString)", isDirectory: true)
+    .appendingPathComponent(
+      "schneeglass-cancelled-pinned-commit-\(UUID().uuidString)",
+      isDirectory: true
+    )
   let destination = root.appendingPathComponent("destination", isDirectory: true)
   try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: root) }
