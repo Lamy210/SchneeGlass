@@ -93,11 +93,16 @@ private actor PostStagingCancellationEnvironment: CopyFileSystemAccessing, Stagi
   }
 }
 
-private actor VerifyingRecordGateStore: PendingCopyRecording {
+private actor PendingCopyStateGateStore: PendingCopyRecording {
+  private let blockedState: PendingCopyState
   private var stored: [UUID: PendingCopyRecord] = [:]
-  private var verificationObserved = false
+  private var blockedStateObserved = false
   private var observerContinuation: CheckedContinuation<Void, Never>?
   private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+  init(blockedState: PendingCopyState) {
+    self.blockedState = blockedState
+  }
 
   func records() async throws -> [PendingCopyRecord] {
     Array(stored.values)
@@ -106,11 +111,11 @@ private actor VerifyingRecordGateStore: PendingCopyRecording {
   func upsert(_ record: PendingCopyRecord) async throws {
     stored[record.operationID] = record
 
-    guard record.state == .verifying else {
+    guard record.state == blockedState else {
       return
     }
 
-    verificationObserved = true
+    blockedStateObserved = true
     observerContinuation?.resume()
     observerContinuation = nil
 
@@ -123,8 +128,8 @@ private actor VerifyingRecordGateStore: PendingCopyRecording {
     stored.removeValue(forKey: operationID)
   }
 
-  func waitUntilVerifyingRecordIsStored() async {
-    guard !verificationObserved else {
+  func waitUntilBlockedStateIsStored() async {
+    guard !blockedStateObserved else {
       return
     }
 
@@ -133,7 +138,7 @@ private actor VerifyingRecordGateStore: PendingCopyRecording {
     }
   }
 
-  func releaseVerifyingWrite() {
+  func releaseBlockedWrite() {
     releaseContinuation?.resume()
     releaseContinuation = nil
   }
@@ -259,7 +264,7 @@ func safeCopyCancellationAfterVerificationKeepsStagingAndSkipsFinalCommit() asyn
   let destination = URL(fileURLWithPath: "/tmp/schneeglass-post-staging-cancel", isDirectory: true)
   let source = URL(fileURLWithPath: "/tmp/schneeglass-post-staging-source.txt")
   let environment = PostStagingCancellationEnvironment(sourceURL: source, sourceSize: 17)
-  let store = VerifyingRecordGateStore()
+  let store = PendingCopyStateGateStore(blockedState: .verifying)
   let engine = SafeFileCopyEngine(
     fileSystem: environment,
     committer: environment,
@@ -282,9 +287,9 @@ func safeCopyCancellationAfterVerificationKeepsStagingAndSkipsFinalCommit() asyn
     await engine.copy(request)
   }
 
-  await store.waitUntilVerifyingRecordIsStored()
+  await store.waitUntilBlockedStateIsStored()
   copyTask.cancel()
-  await store.releaseVerifyingWrite()
+  await store.releaseBlockedWrite()
 
   let result = await copyTask.value
 
@@ -303,6 +308,60 @@ func safeCopyCancellationAfterVerificationKeepsStagingAndSkipsFinalCommit() asyn
   #expect(records.count == 1)
   #expect(records.first?.operationID == item.operationID)
   #expect(records.first?.state == .verifying)
+}
+
+@Test
+func safeCopyCancellationAfterCommittingRecordKeepsStagingAndSkipsFinalCommit() async throws {
+  let destination = URL(
+    fileURLWithPath: "/tmp/schneeglass-committing-cancel",
+    isDirectory: true
+  )
+  let source = URL(fileURLWithPath: "/tmp/schneeglass-committing-source.txt")
+  let environment = PostStagingCancellationEnvironment(sourceURL: source, sourceSize: 23)
+  let store = PendingCopyStateGateStore(blockedState: .committing)
+  let engine = SafeFileCopyEngine(
+    fileSystem: environment,
+    committer: environment,
+    recoveryStore: store
+  )
+  let request = try makePostStagingCancellationRequest(
+    destination: destination,
+    source: source,
+    size: 23
+  )
+  let item = request.plan.items[0]
+  let stagingURL =
+    destination
+    .appendingPathComponent(
+      ".schneeglass-copy-\(item.operationID.uuidString.lowercased()).partial"
+    )
+    .standardizedFileURL
+
+  let copyTask = Task {
+    await engine.copy(request)
+  }
+
+  await store.waitUntilBlockedStateIsStored()
+  copyTask.cancel()
+  await store.releaseBlockedWrite()
+
+  let result = await copyTask.value
+
+  #expect(result.succeeded.isEmpty)
+  #expect(
+    result.failed
+      == CopyItemFailure(
+        operationID: item.operationID,
+        reason: .cancelled
+      )
+  )
+  #expect(await environment.committed().isEmpty)
+  #expect(await environment.hasStaging(stagingURL))
+
+  let records = try await store.records()
+  #expect(records.count == 1)
+  #expect(records.first?.operationID == item.operationID)
+  #expect(records.first?.state == .committing)
 }
 
 @Test
