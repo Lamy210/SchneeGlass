@@ -843,12 +843,16 @@ public final class SchneeGlassWorkspaceModel {
     userMessage = nil
   }
 
-  public func prepareForTermination() async {
+  public func prepareForTermination() {
     isShuttingDown = true
+  }
 
-    // Begin copy cancellation at the termination boundary itself. The remaining shutdown sequence
-    // may await Recovery, configuration quiescence, or placement persistence before shutdown()
-    // deactivates sessions; copies must not continue toward final commit during that delay.
+  public func cancelActiveCopiesForTermination() async {
+    prepareForTermination()
+
+    // Start copy cancellation before the remaining shutdown sequence awaits Recovery,
+    // configuration quiescence, or placement persistence. This prevents an in-flight copy from
+    // continuing toward final commit merely because termination cleanup has other work to finish.
     let activeSessions = Array(sessions.values)
     for session in activeSessions {
       await session.cancelCopy()
@@ -856,7 +860,7 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func quiesceConfigurationMutationsForTermination() async {
-    await prepareForTermination()
+    prepareForTermination()
 
     // Initial restore and every configuration mutation must finish cancellation cleanup before
     // termination performs its final placement flush. Otherwise a mutation can keep the workspace
@@ -873,6 +877,7 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func shutdown() async {
+    await cancelActiveCopiesForTermination()
     await quiesceConfigurationMutationsForTermination()
     await deactivateAllSessions()
   }
