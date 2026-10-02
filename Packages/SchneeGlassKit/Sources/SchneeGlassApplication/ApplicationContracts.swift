@@ -75,6 +75,7 @@ public struct CopyItemFailure: Error, Hashable, Sendable {
     case insufficientSpace
     case collision
     case verificationFailed
+    case commitStateUnknown
     case cancelled
     case unexpected
   }
