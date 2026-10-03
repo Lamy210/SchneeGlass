@@ -11,6 +11,7 @@ on:
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
       - 'App/Info.plist'
+      - 'App/SchneeGlass.entitlements'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
       - 'RELEASE.md'
   workflow_dispatch:
