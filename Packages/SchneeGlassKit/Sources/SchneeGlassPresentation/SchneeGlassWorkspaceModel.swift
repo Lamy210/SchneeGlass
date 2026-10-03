@@ -847,6 +847,18 @@ public final class SchneeGlassWorkspaceModel {
     isShuttingDown = true
   }
 
+  public func cancelActiveCopiesForTermination() async {
+    prepareForTermination()
+
+    // Start copy cancellation before the remaining shutdown sequence awaits Recovery,
+    // configuration quiescence, or placement persistence. This prevents an in-flight copy from
+    // continuing toward final commit merely because termination cleanup has other work to finish.
+    let activeSessions = Array(sessions.values)
+    for session in activeSessions {
+      await session.cancelCopy()
+    }
+  }
+
   public func quiesceConfigurationMutationsForTermination() async {
     prepareForTermination()
 
@@ -865,16 +877,8 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func shutdown() async {
+    await cancelActiveCopiesForTermination()
     await quiesceConfigurationMutationsForTermination()
-
-    // Application termination is different from configuration recovery: an active user copy must
-    // enter the existing cancellation/recovery path instead of making Quit wait for the copy to
-    // finish naturally.
-    let activeSessions = Array(sessions.values)
-    for session in activeSessions {
-      await session.cancelCopy()
-    }
-
     await deactivateAllSessions()
   }
 

@@ -34,6 +34,7 @@ struct SchneeGlassApp: App {
         workspaceModel?.prepareForTermination()
         pendingCopyRecoveryModel?.prepareForTermination()
 
+        await workspaceModel?.cancelActiveCopiesForTermination()
         await pendingCopyRecoveryModel?.shutdown()
         await workspaceModel?.quiesceConfigurationMutationsForTermination()
         await coordinator?.flushPlacementsForTermination()
