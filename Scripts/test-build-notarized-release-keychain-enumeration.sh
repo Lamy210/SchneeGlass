@@ -64,7 +64,8 @@ chmod +x "$FIXTURE/bin/security"
 export SECURITY_FIXTURE_LOG="$LOG"
 export PATH="$FIXTURE/bin:$PATH"
 export RUNNER_TEMP="$FIXTURE/runner-temp"
-export RELEASE_VERSION='0.1.0'
+RELEASE_VERSION="$(bash Scripts/resolve-release-version.sh)"
+export RELEASE_VERSION
 DEVELOPER_ID_P12_BASE64="$(bash Scripts/encode-release-fixture-base64.sh "$FIXTURE/DeveloperID.p12")"
 export DEVELOPER_ID_P12_BASE64
 export DEVELOPER_ID_P12_PASSWORD='fixture-password'
