@@ -24,9 +24,12 @@ REQUIRED_PATHS=(
   'Scripts/test-required-plist-value-probes.sh'
   'Scripts/verify-production-release-path-coverage.sh'
   'Scripts/test-production-release-path-coverage-enumeration.sh'
+  'App/Info.plist'
+  'App/SchneeGlass.entitlements'
+  'SchneeGlass.xcodeproj/project.pbxproj'
 )
 
-# Control: the real workflow remains fully covered.
+# Control: every file that can change production preflight policy must trigger this workflow.
 bash Scripts/verify-production-release-path-coverage.sh \
   .github/workflows/production-release.yml \
   "${REQUIRED_PATHS[@]}" >/dev/null
@@ -83,6 +86,9 @@ cat <<'EOF'
       - 'Scripts/test-required-plist-value-probes.sh'
       - 'Scripts/verify-production-release-path-coverage.sh'
       - 'Scripts/test-production-release-path-coverage-enumeration.sh'
+      - 'App/Info.plist'
+      - 'App/SchneeGlass.entitlements'
+      - 'SchneeGlass.xcodeproj/project.pbxproj'
 permissions:
 EOF
 echo 'fixture: pull_request.paths enumeration failed after partial output' >&2

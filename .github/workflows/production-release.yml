@@ -43,6 +43,9 @@ on:
       - 'Scripts/verify-release-secret-export-boundary.sh'
       - 'Scripts/test-release-secret-export-boundary.sh'
       - 'Scripts/test-production-release-path-coverage-enumeration.sh'
+      - 'App/Info.plist'
+      - 'App/SchneeGlass.entitlements'
+      - 'SchneeGlass.xcodeproj/project.pbxproj'
       - 'docs/RELEASE_CREDENTIALS.md'
 
 permissions:
