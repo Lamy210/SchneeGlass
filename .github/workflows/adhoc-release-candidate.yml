@@ -16,6 +16,7 @@ on:
       - 'Scripts/verify-required-plist-value.sh'
       - 'Scripts/verify-optional-release-entitlements.sh'
       - 'Scripts/verify-xcode-version.sh'
+      - 'App/Info.plist'
       - 'App/SchneeGlass.entitlements'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
       - 'RELEASE.md'
