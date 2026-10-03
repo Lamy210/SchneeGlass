@@ -38,17 +38,27 @@ RELEASE_VERSION="$(setting_from "$RELEASE_SETTINGS" MARKETING_VERSION)"
 DEBUG_BUILD="$(setting_from "$DEBUG_SETTINGS" CURRENT_PROJECT_VERSION)"
 RELEASE_BUILD="$(setting_from "$RELEASE_SETTINGS" CURRENT_PROJECT_VERSION)"
 BUNDLE_ID="$(setting_from "$RELEASE_SETTINGS" PRODUCT_BUNDLE_IDENTIFIER)"
+DEBUG_MULTIPLE_INSTANCES_PROHIBITED="$(setting_from "$DEBUG_SETTINGS" INFOPLIST_KEY_LSMultipleInstancesProhibited)"
+RELEASE_MULTIPLE_INSTANCES_PROHIBITED="$(setting_from "$RELEASE_SETTINGS" INFOPLIST_KEY_LSMultipleInstancesProhibited)"
 
 [[ -n "$DEBUG_VERSION" ]] || fail "Debug MARKETING_VERSION is missing"
 [[ -n "$RELEASE_VERSION" ]] || fail "Release MARKETING_VERSION is missing"
 [[ -n "$DEBUG_BUILD" ]] || fail "Debug CURRENT_PROJECT_VERSION is missing"
 [[ -n "$RELEASE_BUILD" ]] || fail "Release CURRENT_PROJECT_VERSION is missing"
 [[ -n "$BUNDLE_ID" ]] || fail "Release PRODUCT_BUNDLE_IDENTIFIER is missing"
+[[ -n "$DEBUG_MULTIPLE_INSTANCES_PROHIBITED" ]] \
+  || fail "Debug INFOPLIST_KEY_LSMultipleInstancesProhibited is missing"
+[[ -n "$RELEASE_MULTIPLE_INSTANCES_PROHIBITED" ]] \
+  || fail "Release INFOPLIST_KEY_LSMultipleInstancesProhibited is missing"
 
 [[ "$DEBUG_VERSION" == "$RELEASE_VERSION" ]] \
   || fail "Debug/Release MARKETING_VERSION differ: $DEBUG_VERSION vs $RELEASE_VERSION"
 [[ "$DEBUG_BUILD" == "$RELEASE_BUILD" ]] \
   || fail "Debug/Release CURRENT_PROJECT_VERSION differ: $DEBUG_BUILD vs $RELEASE_BUILD"
+[[ "$DEBUG_MULTIPLE_INSTANCES_PROHIBITED" == "YES" ]] \
+  || fail "Debug must prohibit multiple app instances"
+[[ "$RELEASE_MULTIPLE_INSTANCES_PROHIBITED" == "YES" ]] \
+  || fail "Release must prohibit multiple app instances"
 
 [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
   || fail "MARKETING_VERSION must be strict X.Y.Z SemVer for v0.1 releases: $RELEASE_VERSION"
