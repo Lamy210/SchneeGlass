@@ -38,17 +38,25 @@ RELEASE_VERSION="$(setting_from "$RELEASE_SETTINGS" MARKETING_VERSION)"
 DEBUG_BUILD="$(setting_from "$DEBUG_SETTINGS" CURRENT_PROJECT_VERSION)"
 RELEASE_BUILD="$(setting_from "$RELEASE_SETTINGS" CURRENT_PROJECT_VERSION)"
 BUNDLE_ID="$(setting_from "$RELEASE_SETTINGS" PRODUCT_BUNDLE_IDENTIFIER)"
+DEBUG_INFO_PLIST="$(setting_from "$DEBUG_SETTINGS" INFOPLIST_FILE)"
+RELEASE_INFO_PLIST="$(setting_from "$RELEASE_SETTINGS" INFOPLIST_FILE)"
 
 [[ -n "$DEBUG_VERSION" ]] || fail "Debug MARKETING_VERSION is missing"
 [[ -n "$RELEASE_VERSION" ]] || fail "Release MARKETING_VERSION is missing"
 [[ -n "$DEBUG_BUILD" ]] || fail "Debug CURRENT_PROJECT_VERSION is missing"
 [[ -n "$RELEASE_BUILD" ]] || fail "Release CURRENT_PROJECT_VERSION is missing"
 [[ -n "$BUNDLE_ID" ]] || fail "Release PRODUCT_BUNDLE_IDENTIFIER is missing"
+[[ -n "$DEBUG_INFO_PLIST" ]] || fail "Debug INFOPLIST_FILE is missing"
+[[ -n "$RELEASE_INFO_PLIST" ]] || fail "Release INFOPLIST_FILE is missing"
 
 [[ "$DEBUG_VERSION" == "$RELEASE_VERSION" ]] \
   || fail "Debug/Release MARKETING_VERSION differ: $DEBUG_VERSION vs $RELEASE_VERSION"
 [[ "$DEBUG_BUILD" == "$RELEASE_BUILD" ]] \
   || fail "Debug/Release CURRENT_PROJECT_VERSION differ: $DEBUG_BUILD vs $RELEASE_BUILD"
+[[ "$DEBUG_INFO_PLIST" == "App/Info.plist" ]] \
+  || fail "Unexpected Debug INFOPLIST_FILE: $DEBUG_INFO_PLIST"
+[[ "$RELEASE_INFO_PLIST" == "App/Info.plist" ]] \
+  || fail "Unexpected Release INFOPLIST_FILE: $RELEASE_INFO_PLIST"
 
 [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
   || fail "MARKETING_VERSION must be strict X.Y.Z SemVer for v0.1 releases: $RELEASE_VERSION"
@@ -56,6 +64,12 @@ BUNDLE_ID="$(setting_from "$RELEASE_SETTINGS" PRODUCT_BUNDLE_IDENTIFIER)"
   || fail "CURRENT_PROJECT_VERSION must be a positive integer: $RELEASE_BUILD"
 [[ "$BUNDLE_ID" == "io.github.lamy210.schneeglass" ]] \
   || fail "Unexpected bundle identifier: $BUNDLE_ID"
+
+bash Scripts/verify-required-plist-value.sh \
+  "$RELEASE_INFO_PLIST" \
+  'LSMultipleInstancesProhibited' \
+  'true' \
+  'Release metadata single-instance policy'
 
 if [[ -n "$EXPECTED_TAG" ]]; then
   [[ "$EXPECTED_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
