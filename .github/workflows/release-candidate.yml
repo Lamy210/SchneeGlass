@@ -7,6 +7,7 @@ on:
       - 'Scripts/verify-xcode-version.sh'
       - 'Scripts/resolve-release-version.sh'
       - 'Scripts/test-release-candidate-version-extraction.sh'
+      - 'Scripts/test-release-candidate-path-coverage.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
       - 'App/Info.plist'
@@ -62,6 +63,9 @@ jobs:
 
       - name: Release version extraction failure fixture
         run: bash Scripts/test-release-candidate-version-extraction.sh
+
+      - name: Release candidate path coverage fixture
+        run: bash Scripts/test-release-candidate-path-coverage.sh
 
       - name: Resolve release version
         id: release
