@@ -17,9 +17,16 @@ fi
 [[ "$POLICY_LINE" =~ ^[1-9][0-9]*$ ]] \
   || fail "single-instance verification must appear exactly once in the production build script"
 
-grep -F '"$APP/Contents/Info.plist"' "$SCRIPT" >/dev/null \
+POLICY_START=$((POLICY_LINE - 2))
+POLICY_END=$((POLICY_LINE + 2))
+(( POLICY_START > 0 )) || fail "single-instance verification block starts unexpectedly early"
+POLICY_BLOCK="$(sed -n "${POLICY_START},${POLICY_END}p" "$SCRIPT")"
+
+grep -Fq 'bash Scripts/verify-required-plist-value.sh' <<< "$POLICY_BLOCK" \
+  || fail "single-instance verification must use the required plist verifier"
+grep -Fq '"$APP/Contents/Info.plist"' <<< "$POLICY_BLOCK" \
   || fail "single-instance verification must inspect the built app Info.plist"
-grep -F "'true'" "$SCRIPT" >/dev/null \
+grep -Fq "'true'" <<< "$POLICY_BLOCK" \
   || fail "single-instance verification must require the exact boolean true value"
 
 NOTARY_LINE=''
