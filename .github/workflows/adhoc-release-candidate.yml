@@ -11,6 +11,7 @@ on:
       - 'Scripts/test-adhoc-candidate-source.sh'
       - 'Scripts/test-adhoc-release-single-instance-bundle-policy.sh'
       - 'Scripts/test-adhoc-release-path-coverage.sh'
+      - 'Scripts/test-adhoc-release-path-coverage-scope.sh'
       - 'Scripts/resolve-release-version.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
@@ -86,6 +87,7 @@ jobs:
           bash -n Scripts/test-adhoc-candidate-source.sh
           bash -n Scripts/test-adhoc-release-single-instance-bundle-policy.sh
           bash -n Scripts/test-adhoc-release-path-coverage.sh
+          bash -n Scripts/test-adhoc-release-path-coverage-scope.sh
 
       - name: Ad-hoc signature-details fixture
         run: bash Scripts/test-adhoc-signature-details.sh
@@ -98,6 +100,9 @@ jobs:
 
       - name: Ad-hoc release path coverage fixture
         run: bash Scripts/test-adhoc-release-path-coverage.sh
+
+      - name: Ad-hoc release path coverage scope fixture
+        run: bash Scripts/test-adhoc-release-path-coverage-scope.sh
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
