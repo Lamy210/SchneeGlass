@@ -19,7 +19,17 @@ fail() {
 }
 
 REQUIRED_PATHS=(
+  '.github/workflows/release-candidate.yml'
+  'Scripts/verify-xcode-version.sh'
+  'Scripts/resolve-release-version.sh'
+  'Scripts/test-release-candidate-version-extraction.sh'
+  'Scripts/test-release-candidate-path-coverage.sh'
+  'Scripts/verify-release-metadata.sh'
+  'Scripts/verify-required-plist-value.sh'
+  'App/Info.plist'
   'App/SchneeGlass.entitlements'
+  'SchneeGlass.xcodeproj/project.pbxproj'
+  'RELEASE.md'
 )
 
 validate_workflow_paths() {
@@ -76,23 +86,9 @@ validate_workflow_paths() {
 
 validate_workflow_paths "$WORKFLOW" || fail "current workflow path coverage is invalid"
 
-# Regression: every existing release-critical trigger must be part of the canonical
-# REQUIRED_PATHS contract. The current contract intentionally starts incomplete so this
-# test proves it can detect the missing protection before the fix is applied.
-UNCOVERED_CRITICAL_PATHS=(
-  '.github/workflows/release-candidate.yml'
-  'Scripts/verify-xcode-version.sh'
-  'Scripts/resolve-release-version.sh'
-  'Scripts/test-release-candidate-version-extraction.sh'
-  'Scripts/test-release-candidate-path-coverage.sh'
-  'Scripts/verify-release-metadata.sh'
-  'Scripts/verify-required-plist-value.sh'
-  'App/Info.plist'
-  'SchneeGlass.xcodeproj/project.pbxproj'
-  'RELEASE.md'
-)
-
-for missing_path in "${UNCOVERED_CRITICAL_PATHS[@]}"; do
+# Regression: remove every current release-critical trigger one at a time. The canonical
+# required set must reject each synthetic workflow so future trigger deletions cannot remain green.
+for missing_path in "${REQUIRED_PATHS[@]}"; do
   "$REAL_GREP" -Fv \
     "      - '$missing_path'" \
     "$WORKFLOW" \
