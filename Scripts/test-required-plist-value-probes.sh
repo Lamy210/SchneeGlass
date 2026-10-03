@@ -104,4 +104,7 @@ run_partial_failure 'RequiredFlag' 'true' "$FIXTURE/partial-boolean.log"
 run_partial_failure 'BundleID' 'io.github.lamy210.schneeglass' "$FIXTURE/partial-string.log"
 
 rm -rf "$FIXTURE"
+
+bash Scripts/test-production-release-single-instance-bundle-policy.sh
+
 echo 'Required plist probe failure fixtures passed'
