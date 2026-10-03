@@ -61,6 +61,12 @@ bash Scripts/verify-required-plist-value.sh \
   "$RELEASE_VERSION" \
   'Ad-hoc release candidate'
 
+bash Scripts/verify-required-plist-value.sh \
+  "$INFO_PLIST" \
+  'LSMultipleInstancesProhibited' \
+  'true' \
+  'Ad-hoc release candidate single-instance policy'
+
 BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$INFO_PLIST")"
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] \
   || fail "CFBundleVersion must be a positive integer"

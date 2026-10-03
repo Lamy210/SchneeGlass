@@ -9,6 +9,7 @@ on:
       - 'Scripts/test-adhoc-signature-details.sh'
       - 'Scripts/verify-adhoc-candidate-source.sh'
       - 'Scripts/test-adhoc-candidate-source.sh'
+      - 'Scripts/test-adhoc-release-single-instance-bundle-policy.sh'
       - 'Scripts/resolve-release-version.sh'
       - 'Scripts/verify-release-metadata.sh'
       - 'Scripts/verify-required-plist-value.sh'
@@ -81,12 +82,16 @@ jobs:
           bash -n Scripts/test-adhoc-signature-details.sh
           bash -n Scripts/verify-adhoc-candidate-source.sh
           bash -n Scripts/test-adhoc-candidate-source.sh
+          bash -n Scripts/test-adhoc-release-single-instance-bundle-policy.sh
 
       - name: Ad-hoc signature-details fixture
         run: bash Scripts/test-adhoc-signature-details.sh
 
       - name: Ad-hoc candidate source fixture
         run: bash Scripts/test-adhoc-candidate-source.sh
+
+      - name: Ad-hoc single-instance bundle policy fixture
+        run: bash Scripts/test-adhoc-release-single-instance-bundle-policy.sh
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
