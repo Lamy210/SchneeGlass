@@ -158,6 +158,14 @@ xcodebuild archive \
 
 APP="$ARCHIVE_PATH/Products/Applications/SchneeGlass.app"
 [[ -d "$APP" ]] || fail "signed archive app is missing"
+[[ -f "$APP/Contents/Info.plist" ]] || fail "signed archive Info.plist is missing"
+plutil -lint "$APP/Contents/Info.plist" >/dev/null \
+  || fail "signed archive Info.plist is invalid"
+bash Scripts/verify-required-plist-value.sh \
+  "$APP/Contents/Info.plist" \
+  'LSMultipleInstancesProhibited' \
+  'true' \
+  'Signed production release single-instance policy'
 
 codesign --verify --deep --strict --verbose=2 "$APP"
 codesign -dv --verbose=4 "$APP" 2> "$CODESIGN_DETAILS"
