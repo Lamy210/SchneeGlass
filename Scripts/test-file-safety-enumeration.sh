@@ -45,45 +45,70 @@ fi
   "$OUTPUT"
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
-printf '%s\n' \
+
+expect_forbidden_source_line() {
+  local label="$1"
+  local source_line="$2"
+  local expected_fragment="$3"
+
+  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
+
+  set +e
+  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+  local status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "File Safety Guard unexpectedly allowed: $label" >&2
+    return 1
+  fi
+
+  "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
+  "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"
+}
+
+expect_forbidden_source_line \
+  'a forbidden mutation hidden by an allowlisted token' \
   'private let fileSafetySmuggledMutation = unlink("/tmp/schneeglass-file-safety-fixture")  // O_CREAT' \
-  >> "$LOCK_SOURCE"
+  'unlink('
 
-set +e
-bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-STATUS=$?
-set -e
-
-cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT"
-  echo 'File Safety Guard unexpectedly allowed a forbidden mutation hidden by an allowlisted token.' >&2
-  exit 1
-fi
-
-"$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-"$REAL_GREP" -Fq 'unlink(' "$OUTPUT"
-
-printf '%s\n' \
+expect_forbidden_source_line \
+  'a destructive O_TRUNC open' \
   'private let fileSafetyTruncatingOpen = open("/tmp/schneeglass-file-safety-fixture", O_WRONLY | O_TRUNC)' \
-  >> "$LOCK_SOURCE"
+  'O_TRUNC'
 
-set +e
-bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-STATUS=$?
-set -e
+FAILURES=0
+for destructive_case in creat truncate ftruncate; do
+  case "$destructive_case" in
+    creat)
+      source_line='private let fileSafetyCreat = creat("/tmp/schneeglass-file-safety-fixture", mode_t(0o600))'
+      expected_fragment='creat('
+      ;;
+    truncate)
+      source_line='private let fileSafetyTruncate = truncate("/tmp/schneeglass-file-safety-fixture", 0)'
+      expected_fragment='truncate('
+      ;;
+    ftruncate)
+      source_line='private let fileSafetyFtruncate = ftruncate(0, 0)'
+      expected_fragment='ftruncate('
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "a destructive $destructive_case mutation" \
+    "$source_line" \
+    "$expected_fragment"; then
+    FAILURES=$((FAILURES + 1))
+  fi
+done
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 rm -f "$LOCK_BACKUP"
 
-if [[ "$STATUS" -eq 0 ]]; then
-  cat "$OUTPUT"
-  echo 'File Safety Guard unexpectedly allowed a destructive O_TRUNC open.' >&2
+if [[ "$FAILURES" -ne 0 ]]; then
+  echo "$FAILURES destructive truncation primitive fixture(s) were not rejected." >&2
   exit 1
 fi
 
-"$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-"$REAL_GREP" -Fq 'O_TRUNC' "$OUTPUT"
-
-echo 'File Safety Guard enumeration, allowlist-boundary, and destructive-open fixtures passed'
+echo 'File Safety Guard enumeration, allowlist-boundary, and destructive-truncation fixtures passed'
