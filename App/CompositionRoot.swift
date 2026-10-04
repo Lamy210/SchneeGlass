@@ -10,10 +10,14 @@ final class SchneeGlassCompositionRoot {
   let workspaceModel: SchneeGlassWorkspaceModel
   let pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
 
+  private let processInstanceLock: ApplicationProcessLock
+
   private init(
+    processInstanceLock: ApplicationProcessLock,
     workspaceModel: SchneeGlassWorkspaceModel,
     pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
   ) {
+    self.processInstanceLock = processInstanceLock
     self.workspaceModel = workspaceModel
     self.pendingCopyRecoveryModel = pendingCopyRecoveryModel
   }
@@ -25,6 +29,12 @@ final class SchneeGlassCompositionRoot {
       in: .userDomainMask,
       appropriateFor: nil,
       create: true
+    )
+    let processInstanceLock = try ApplicationProcessLock(
+      lockFileURL: applicationSupport.appendingPathComponent(
+        ".io.github.lamy210.schneeglass.instance.lock",
+        isDirectory: false
+      )
     )
     let baseDirectory =
       applicationSupport
@@ -170,6 +180,7 @@ final class SchneeGlassCompositionRoot {
     )
 
     return SchneeGlassCompositionRoot(
+      processInstanceLock: processInstanceLock,
       workspaceModel: workspaceModel,
       pendingCopyRecoveryModel: pendingCopyRecoveryModel
     )
