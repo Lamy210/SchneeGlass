@@ -29,6 +29,7 @@ REQUIRED_PATHS=(
   'App/Info.plist'
   'App/SchneeGlass.entitlements'
   'SchneeGlass.xcodeproj/project.pbxproj'
+  'SchneeGlass.xcodeproj/xcshareddata/xcschemes/SchneeGlass.xcscheme'
   'RELEASE.md'
 )
 
