@@ -55,7 +55,6 @@ STATUS=$?
 set -e
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-rm -f "$LOCK_BACKUP"
 
 if [[ "$STATUS" -eq 0 ]]; then
   cat "$OUTPUT"
@@ -66,4 +65,25 @@ fi
 "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
 "$REAL_GREP" -Fq 'unlink(' "$OUTPUT"
 
-echo 'File Safety Guard enumeration and allowlist-boundary fixtures passed'
+printf '%s\n' \
+  'private let fileSafetyTruncatingOpen = open("/tmp/schneeglass-file-safety-fixture", O_WRONLY | O_TRUNC)' \
+  >> "$LOCK_SOURCE"
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+STATUS=$?
+set -e
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+rm -f "$LOCK_BACKUP"
+
+if [[ "$STATUS" -eq 0 ]]; then
+  cat "$OUTPUT"
+  echo 'File Safety Guard unexpectedly allowed a destructive O_TRUNC open.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
+"$REAL_GREP" -Fq 'O_TRUNC' "$OUTPUT"
+
+echo 'File Safety Guard enumeration, allowlist-boundary, and destructive-open fixtures passed'
