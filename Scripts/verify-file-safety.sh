@@ -56,6 +56,7 @@ scan_pattern 'renameatx_np' '(^|[^[:alnum:]_])renameatx_np\('
 scan_pattern 'mkdirat' '(^|[^[:alnum:]_])mkdirat\('
 scan_pattern 'fcopyfile' '(^|[^[:alnum:]_])fcopyfile\('
 scan_pattern 'O_CREAT' 'O_CREAT'
+scan_pattern 'O_TRUNC' 'O_TRUNC'
 
 if ! sort -u "$MATCHES_FILE" > "$SORTED_MATCHES_FILE"; then
   fail "unable to sort filesystem mutation matches"
