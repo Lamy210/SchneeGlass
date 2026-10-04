@@ -50,6 +50,7 @@ REQUIRED_PATHS=(
   'App/Info.plist'
   'App/SchneeGlass.entitlements'
   'SchneeGlass.xcodeproj/project.pbxproj'
+  'SchneeGlass.xcodeproj/xcshareddata/xcschemes/SchneeGlass.xcscheme'
   'docs/RELEASE_CREDENTIALS.md'
 )
 
@@ -81,6 +82,7 @@ UNCOVERED_CRITICAL_PATHS=(
   'Scripts/test-release-secret-environment-lifecycle.sh'
   'Scripts/verify-release-secret-export-boundary.sh'
   'Scripts/test-release-secret-export-boundary.sh'
+  'SchneeGlass.xcodeproj/xcshareddata/xcschemes/SchneeGlass.xcscheme'
   'docs/RELEASE_CREDENTIALS.md'
 )
 
@@ -242,6 +244,7 @@ cat <<'EOF'
       - 'App/Info.plist'
       - 'App/SchneeGlass.entitlements'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
+      - 'SchneeGlass.xcodeproj/xcshareddata/xcschemes/SchneeGlass.xcscheme'
       - 'docs/RELEASE_CREDENTIALS.md'
 permissions:
 EOF
