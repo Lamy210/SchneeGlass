@@ -43,8 +43,8 @@ validate_workflow_paths() {
   local workflow="$1"
   local paths_section="$FIXTURE/paths-section.txt"
   local sed_status=0
-  local path='App/Info.plist'
-  local expected="      - '$path'"
+  local required_path=''
+  local expected=''
   local count=''
   local awk_status=0
 
@@ -68,29 +68,33 @@ validate_workflow_paths() {
     return 1
   }
 
-  if count="$(awk -v expected="$expected" '$0 == expected { count += 1 } END { print count + 0 }' "$paths_section")"; then
-    awk_status=0
-  else
-    awk_status=$?
-  fi
+  for required_path in "${REQUIRED_PATHS[@]}"; do
+    expected="      - '$required_path'"
+    if count="$(awk -v expected="$expected" '$0 == expected { count += 1 } END { print count + 0 }' "$paths_section")"; then
+      awk_status=0
+    else
+      awk_status=$?
+    fi
 
-  [[ "$awk_status" -eq 0 ]] || {
-    echo "Ad-hoc release path coverage validation failed: unable to count pull_request.paths entry for $path (awk status $awk_status)" >&2
-    return 1
-  }
-  [[ "$count" =~ ^[0-9]+$ ]] || {
-    echo "Ad-hoc release path coverage validation failed: pull_request path count is not numeric for $path: $count" >&2
-    return 1
-  }
-  [[ "$count" == '1' ]] || {
-    echo "Ad-hoc release path coverage validation failed: expected exactly one pull_request path for $path; found $count" >&2
-    return 1
-  }
+    [[ "$awk_status" -eq 0 ]] || {
+      echo "Ad-hoc release path coverage validation failed: unable to count pull_request.paths entry for $required_path (awk status $awk_status)" >&2
+      return 1
+    }
+    [[ "$count" =~ ^[0-9]+$ ]] || {
+      echo "Ad-hoc release path coverage validation failed: pull_request path count is not numeric for $required_path: $count" >&2
+      return 1
+    }
+    [[ "$count" == '1' ]] || {
+      echo "Ad-hoc release path coverage validation failed: expected exactly one pull_request path for $required_path; found $count" >&2
+      return 1
+    }
+  done
 }
 
 validate_workflow_paths "$WORKFLOW" || fail "current workflow path coverage is invalid"
 
-# Regression: removing any current release-critical trigger must make validation fail.
+# Regression: remove every current release-critical trigger one at a time. The canonical
+# required set must reject each synthetic workflow so future trigger deletions cannot remain green.
 for missing_path in "${REQUIRED_PATHS[@]}"; do
   "$REAL_GREP" -Fv \
     "      - '$missing_path'" \
@@ -101,6 +105,10 @@ for missing_path in "${REQUIRED_PATHS[@]}"; do
     cat "$MISSING_OUTPUT"
     fail "unexpectedly accepted a workflow missing: $missing_path"
   fi
+
+  "$REAL_GREP" -Fq \
+    "Ad-hoc release path coverage validation failed: expected exactly one pull_request path for $missing_path; found 0" \
+    "$MISSING_OUTPUT"
 done
 
 rm -rf "$FIXTURE"
