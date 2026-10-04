@@ -10,6 +10,7 @@ on:
       - 'Scripts/test-setup-production-release-environment.sh'
       - 'Scripts/test-setup-production-release-environment-existing.sh'
       - 'Scripts/test-production-release-environment-credential-names.sh'
+      - 'Scripts/test-release-environment-path-coverage.sh'
       - 'Scripts/verify-release-branch-protection.sh'
       - 'Scripts/verify-release-required-branch-rules.sh'
       - 'Scripts/verify-release-required-checks.sh'
