@@ -16,21 +16,27 @@ public final class ApplicationProcessLock {
 
   public init(lockFileURL: URL) throws {
     let candidate = lockFileURL.standardizedFileURL
+    let openResult = candidate.withUnsafeFileSystemRepresentation {
+      path -> (descriptor: Int32, error: Int32)? in
+      guard let path else {
+        return nil
+      }
+      let descriptor = open(
+        path,
+        O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW,
+        mode_t(S_IRUSR | S_IWUSR)
+      )
+      return (descriptor, descriptor >= 0 ? 0 : errno)
+    }
 
-    guard let path = candidate.withUnsafeFileSystemRepresentation({ $0.map(String.init(cString:)) })
-    else {
+    guard let openResult else {
       throw ApplicationProcessLockError.lockFileUnavailable(EINVAL)
     }
-
-    let descriptor = open(
-      path,
-      O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW,
-      mode_t(S_IRUSR | S_IWUSR)
-    )
-    guard descriptor >= 0 else {
-      throw ApplicationProcessLockError.lockFileUnavailable(errno)
+    guard openResult.descriptor >= 0 else {
+      throw ApplicationProcessLockError.lockFileUnavailable(openResult.error)
     }
 
+    let descriptor = openResult.descriptor
     guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
       let observedErrno = errno
       close(descriptor)
