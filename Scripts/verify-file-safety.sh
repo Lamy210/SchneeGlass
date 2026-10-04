@@ -12,32 +12,43 @@ fail() {
 TMP_BASE="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 MATCHES_FILE="$(mktemp "$TMP_BASE/schneeglass-file-safety-matches.XXXXXX")"
 SORTED_MATCHES_FILE="$(mktemp "$TMP_BASE/schneeglass-file-safety-sorted.XXXXXX")"
+SCAN_FILE="$(mktemp "$TMP_BASE/schneeglass-file-safety-scan.XXXXXX")"
 cleanup() {
-  rm -f "$MATCHES_FILE" "$SORTED_MATCHES_FILE"
+  rm -f "$MATCHES_FILE" "$SORTED_MATCHES_FILE" "$SCAN_FILE"
 }
 trap cleanup EXIT
 
 scan_pattern() {
-  local label="$1"
+  local mutation="$1"
   local pattern="$2"
   local status
+  local match
 
+  : > "$SCAN_FILE"
   set +e
-  grep -RInE "$pattern" "$SRC" --include='*.swift' >> "$MATCHES_FILE"
+  grep -RInE "$pattern" "$SRC" --include='*.swift' > "$SCAN_FILE"
   status=$?
   set -e
 
   case "$status" in
-    0|1)
+    0)
+      while IFS= read -r match; do
+        [[ -z "$match" ]] && continue
+        printf '%s\t%s\n' "$mutation" "$match" >> "$MATCHES_FILE"
+      done < "$SCAN_FILE"
+      ;;
+    1)
       ;;
     *)
-      fail "unable to enumerate filesystem mutation pattern: $label (grep status $status)"
+      fail "unable to enumerate filesystem mutation pattern: $mutation (grep status $status)"
       ;;
   esac
 }
 
 : > "$MATCHES_FILE"
-scan_pattern 'Foundation FileManager mutation' '\.(removeItem|moveItem|replaceItem)\('
+scan_pattern 'FileManager removeItem' '\.removeItem\('
+scan_pattern 'FileManager moveItem' '\.moveItem\('
+scan_pattern 'FileManager replaceItem' '\.replaceItem\('
 scan_pattern 'unlink' '(^|[^[:alnum:]_])unlink\('
 scan_pattern 'unlinkat' '(^|[^[:alnum:]_])unlinkat\('
 scan_pattern 'renameat' '(^|[^[:alnum:]_])renameat\('
@@ -55,41 +66,47 @@ violations=0
 while IFS= read -r match; do
   [[ -z "$match" ]] && continue
 
-  file="${match%%:*}"
-  rest="${match#*:}"
+  mutation="${match%%$'\t'*}"
+  detail="${match#*$'\t'}"
+  if [[ "$detail" == "$match" ]]; then
+    fail "malformed filesystem mutation match"
+  fi
+
+  file="${detail%%:*}"
+  rest="${detail#*:}"
   line="${rest%%:*}"
   text="${rest#*:}"
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/InternalStagingCommitter.swift"* ]] \
-     && [[ "$text" == *".moveItem("* ]]; then
+     && [[ "$mutation" == 'FileManager moveItem' ]]; then
     continue
   fi
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/PinnedDestinationStagingCommitter.swift"* ]] \
-     && [[ "$text" == *"renameatx_np("* ]]; then
+     && [[ "$mutation" == 'renameatx_np' ]]; then
     continue
   fi
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/OwnedStagingRecoveryCleaner.swift"* ]] \
-     && [[ "$text" == *".removeItem("* ]]; then
+     && [[ "$mutation" == 'FileManager removeItem' ]]; then
     continue
   fi
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift"* ]] \
-     && { [[ "$text" == *"fcopyfile("* ]] || [[ "$text" == *"O_CREAT"* ]]; }; then
+     && { [[ "$mutation" == 'fcopyfile' ]] || [[ "$mutation" == 'O_CREAT' ]]; }; then
     continue
   fi
 
   if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ApplicationProcessLock.swift"* ]] \
-     && [[ "$text" == *"O_CREAT"* ]]; then
+     && [[ "$mutation" == 'O_CREAT' ]]; then
     continue
   fi
 
   if [[ "$file" == *"/SchneeGlassPOSIXSupport/PhysicalStateStore.swift"* ]] \
-     && { [[ "$text" == *"O_CREAT"* ]] \
-          || [[ "$text" == *"mkdirat("* ]] \
-          || [[ "$text" == *"renameat("* ]] \
-          || [[ "$text" == *"unlinkat("* ]]; }; then
+     && { [[ "$mutation" == 'O_CREAT' ]] \
+          || [[ "$mutation" == 'mkdirat' ]] \
+          || [[ "$mutation" == 'renameat' ]] \
+          || [[ "$mutation" == 'unlinkat' ]]; }; then
     continue
   fi
 
