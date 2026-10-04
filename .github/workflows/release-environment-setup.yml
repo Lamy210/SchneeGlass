@@ -10,6 +10,7 @@ on:
       - 'Scripts/test-setup-production-release-environment.sh'
       - 'Scripts/test-setup-production-release-environment-existing.sh'
       - 'Scripts/test-production-release-environment-credential-names.sh'
+      - 'Scripts/test-release-environment-path-coverage.sh'
       - 'Scripts/verify-release-branch-protection.sh'
       - 'Scripts/verify-release-required-branch-rules.sh'
       - 'Scripts/verify-release-required-checks.sh'
@@ -35,6 +36,10 @@ jobs:
           bash -n Scripts/test-setup-production-release-environment.sh
           bash -n Scripts/test-setup-production-release-environment-existing.sh
           bash -n Scripts/test-production-release-environment-credential-names.sh
+          bash -n Scripts/test-release-environment-path-coverage.sh
+
+      - name: Release Environment path coverage fixture
+        run: bash Scripts/test-release-environment-path-coverage.sh
 
       - name: Local release source fixture
         run: bash Scripts/test-verify-local-release-source.sh
