@@ -109,45 +109,64 @@ for missing_path in "${UNCOVERED_CRITICAL_PATHS[@]}"; do
     "$MISSING_PATH_OUTPUT"
 done
 
-# RED regression for the publication workflow: mirror the currently enforced inline path set.
-# publish-notarized-release.sh is release-critical but is not part of that set today, so removing
-# it from a synthetic workflow is incorrectly accepted. This block must fail until the canonical
-# publication path set is completed.
-PUBLISH_INLINE_REQUIRED_PATHS=(
-  'Scripts/test-publish-release-history-enumeration-base.sh'
-  'Scripts/test-publish-release-provenance.sh'
+# The publication workflow has its own release-critical trigger surface. Keep a canonical set here
+# because its inline preflight historically covered only a subset, allowing a critical trigger to
+# disappear while publication CI stayed green.
+PUBLISH_REQUIRED_PATHS=(
+  '.github/workflows/publish-release.yml'
+  '.github/rulesets/main-release-governance.json'
+  'Scripts/publish-notarized-release.sh'
   'Scripts/materialize-public-release-build-history.sh'
   'Scripts/verify-legacy-release-build-info.sh'
   'Scripts/test-public-release-build-history-materialization.sh'
   'Scripts/test-legacy-release-build-info.sh'
   'docs/release-history/legacy-public-releases.tsv'
   'Scripts/verify-current-release-governance.sh'
+  'Scripts/test-publish-release-history-enumeration.sh'
+  'Scripts/test-publish-release-history-enumeration-base.sh'
+  'Scripts/test-publish-release-provenance.sh'
+  'Scripts/verify-production-candidate-run.sh'
+  'Scripts/verify-release-build-history.sh'
   'Scripts/test-release-build-history-key-enumeration.sh'
+  'Scripts/verify-release-evidence.sh'
   'Scripts/test-release-evidence-enumeration.sh'
   'Scripts/verify-release-checksum-manifest.sh'
   'Scripts/test-release-checksum-manifest.sh'
   'Scripts/verify-production-release-path-coverage.sh'
   'Scripts/test-production-release-path-coverage-enumeration.sh'
+  'Scripts/verify-release-branch-protection.sh'
+  'Scripts/verify-release-required-branch-rules.sh'
+  'Scripts/verify-release-required-checks.sh'
 )
 
-"$REAL_GREP" -Fv \
-  "      - 'Scripts/publish-notarized-release.sh'" \
-  .github/workflows/publish-release.yml \
-  > "$PUBLISH_MISSING_PATH_WORKFLOW"
-
-set +e
 bash Scripts/verify-production-release-path-coverage.sh \
-  "$PUBLISH_MISSING_PATH_WORKFLOW" \
-  "${PUBLISH_INLINE_REQUIRED_PATHS[@]}" \
-  >"$PUBLISH_MISSING_PATH_OUTPUT" 2>&1
-PUBLISH_MISSING_PATH_STATUS=$?
-set -e
+  .github/workflows/publish-release.yml \
+  "${PUBLISH_REQUIRED_PATHS[@]}" >/dev/null
 
-if [[ "$PUBLISH_MISSING_PATH_STATUS" -eq 0 ]]; then
-  cat "$PUBLISH_MISSING_PATH_OUTPUT"
-  echo 'Publish release path-coverage fixture unexpectedly accepted a workflow missing: Scripts/publish-notarized-release.sh' >&2
-  exit 1
-fi
+for missing_path in "${PUBLISH_REQUIRED_PATHS[@]}"; do
+  "$REAL_GREP" -Fv \
+    "      - '$missing_path'" \
+    .github/workflows/publish-release.yml \
+    > "$PUBLISH_MISSING_PATH_WORKFLOW"
+
+  set +e
+  bash Scripts/verify-production-release-path-coverage.sh \
+    "$PUBLISH_MISSING_PATH_WORKFLOW" \
+    "${PUBLISH_REQUIRED_PATHS[@]}" \
+    >"$PUBLISH_MISSING_PATH_OUTPUT" 2>&1
+  PUBLISH_MISSING_PATH_STATUS=$?
+  set -e
+
+  if [[ "$PUBLISH_MISSING_PATH_STATUS" -eq 0 ]]; then
+    cat "$PUBLISH_MISSING_PATH_OUTPUT"
+    echo "Publish release path-coverage fixture unexpectedly accepted a workflow missing: $missing_path" >&2
+    exit 1
+  fi
+
+  "$REAL_GREP" -Fq \
+    "Production release path coverage validation failed: pull_request.paths is missing required path: $missing_path" \
+    "$PUBLISH_MISSING_PATH_OUTPUT"
+done
 
 # Scope regression: a same-indented value under pull_request.branches must not satisfy
 # pull_request.paths coverage. The old helper scanned the whole pull_request block and
