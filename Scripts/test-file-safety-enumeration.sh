@@ -78,6 +78,11 @@ expect_forbidden_source_line \
   'private let fileSafetyTruncatingOpen = open("/tmp/schneeglass-file-safety-fixture", O_WRONLY | O_TRUNC)' \
   'O_TRUNC'
 
+expect_forbidden_source_line \
+  'an unreviewed raw POSIX write' \
+  'private let fileSafetyRawWrite = Darwin.write(0, nil, 0)' \
+  'Darwin.write('
+
 FAILURES=0
 for destructive_case in creat truncate ftruncate; do
   case "$destructive_case" in
@@ -111,4 +116,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, allowlist-boundary, and destructive-truncation fixtures passed'
+echo 'File Safety Guard enumeration, allowlist-boundary, destructive-truncation, and raw-write fixtures passed'
