@@ -10,6 +10,8 @@ on:
       - 'Scripts/encode-release-fixture-base64.sh'
       - 'Scripts/test-build-notarized-release-keychain-enumeration.sh'
       - 'Scripts/test-build-notarized-release-identity-enumeration.sh'
+      - 'Scripts/verify-production-release-path-coverage.sh'
+      - 'Scripts/test-release-keychain-path-coverage.sh'
 
 permissions:
   contents: read
@@ -37,6 +39,11 @@ jobs:
           bash -n Scripts/encode-release-fixture-base64.sh
           bash -n Scripts/test-build-notarized-release-keychain-enumeration.sh
           bash -n Scripts/test-build-notarized-release-identity-enumeration.sh
+          bash -n Scripts/verify-production-release-path-coverage.sh
+          bash -n Scripts/test-release-keychain-path-coverage.sh
+
+      - name: Keychain release path coverage fixture
+        run: bash Scripts/test-release-keychain-path-coverage.sh
 
       - name: Keychain enumeration failure fixture
         run: bash Scripts/test-build-notarized-release-keychain-enumeration.sh
