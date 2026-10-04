@@ -13,6 +13,7 @@ on:
       - 'Scripts/test-verify-local-release-source.sh'
       - 'Scripts/verify-release-canonical-ruleset.sh'
       - 'Scripts/test-setup-release-governance.sh'
+      - 'Scripts/test-release-governance-path-coverage.sh'
       - 'Scripts/verify-release-branch-protection.sh'
       - 'Scripts/verify-release-required-branch-rules.sh'
       - 'Scripts/verify-release-required-checks.sh'
