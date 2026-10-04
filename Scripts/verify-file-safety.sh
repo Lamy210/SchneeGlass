@@ -58,6 +58,7 @@ scan_pattern 'fcopyfile' '(^|[^[:alnum:]_])fcopyfile\('
 scan_pattern 'creat' '(^|[^[:alnum:]_])creat\('
 scan_pattern 'truncate' '(^|[^[:alnum:]_])truncate\('
 scan_pattern 'ftruncate' '(^|[^[:alnum:]_])ftruncate\('
+scan_pattern 'Darwin.write' 'Darwin\.write\('
 scan_pattern 'O_CREAT' 'O_CREAT'
 scan_pattern 'O_TRUNC' 'O_TRUNC'
 
@@ -110,7 +111,8 @@ while IFS= read -r match; do
      && { [[ "$mutation" == 'O_CREAT' ]] \
           || [[ "$mutation" == 'mkdirat' ]] \
           || [[ "$mutation" == 'renameat' ]] \
-          || [[ "$mutation" == 'unlinkat' ]]; }; then
+          || [[ "$mutation" == 'unlinkat' ]] \
+          || [[ "$mutation" == 'Darwin.write' ]]; }; then
     continue
   fi
 
