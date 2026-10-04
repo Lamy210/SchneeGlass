@@ -46,6 +46,7 @@ on:
       - 'App/Info.plist'
       - 'App/SchneeGlass.entitlements'
       - 'SchneeGlass.xcodeproj/project.pbxproj'
+      - 'SchneeGlass.xcodeproj/xcshareddata/xcschemes/SchneeGlass.xcscheme'
       - 'docs/RELEASE_CREDENTIALS.md'
 
 permissions:
