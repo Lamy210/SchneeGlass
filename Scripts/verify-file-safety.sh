@@ -80,6 +80,11 @@ while IFS= read -r match; do
     continue
   fi
 
+  if [[ "$file" == *"/SchneeGlassPersistenceAdapter/ApplicationProcessLock.swift"* ]] \
+     && [[ "$text" == *"O_CREAT"* ]]; then
+    continue
+  fi
+
   if [[ "$file" == *"/SchneeGlassPOSIXSupport/PhysicalStateStore.swift"* ]] \
      && { [[ "$text" == *"O_CREAT"* ]] \
           || [[ "$text" == *"mkdirat("* ]] \
