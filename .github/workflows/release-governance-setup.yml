@@ -40,6 +40,10 @@ jobs:
           bash -n Scripts/test-verify-local-release-source.sh
           bash -n Scripts/verify-release-canonical-ruleset.sh
           bash -n Scripts/test-setup-release-governance.sh
+          bash -n Scripts/test-release-governance-path-coverage.sh
+
+      - name: Release Governance path coverage fixture
+        run: bash Scripts/test-release-governance-path-coverage.sh
 
       - name: Local release source fixture
         run: bash Scripts/test-verify-local-release-source.sh
