@@ -109,6 +109,11 @@ expect_forbidden_source_line \
   'private let fileSafetyCopyItem = try? FileManager.default.copyItem(atPath: "/tmp/schneeglass-copy-source", toPath: "/tmp/schneeglass-copy-destination")' \
   '.copyItem('
 
+expect_forbidden_source_line \
+  'an unreviewed FileManager remove method reference' \
+  'private let fileSafetyRemoveItemReference: (URL) throws -> Void = FileManager.default.removeItem' \
+  '.removeItem'
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -162,4 +167,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, and raw-write fixtures passed'
