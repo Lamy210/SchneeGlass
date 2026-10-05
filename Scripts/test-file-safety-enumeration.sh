@@ -83,6 +83,11 @@ expect_forbidden_source_line \
   'private let fileSafetyRawWrite = Darwin.write(0, nil, 0)' \
   'Darwin.write('
 
+expect_forbidden_source_line \
+  'an unreviewed unqualified POSIX write' \
+  'private let fileSafetyUnqualifiedRawWrite = write(0, nil, 0)' \
+  'write('
+
 FAILURES=0
 for destructive_case in creat truncate ftruncate; do
   case "$destructive_case" in
