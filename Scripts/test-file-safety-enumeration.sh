@@ -104,6 +104,11 @@ expect_forbidden_source_line \
   'private let fileSafetyExtendedAttributeRemoval = fremovexattr(0, "proof", 0)' \
   'fremovexattr('
 
+expect_forbidden_source_line \
+  'an unreviewed FileManager copy' \
+  'private let fileSafetyCopyItem = try? FileManager.default.copyItem(atPath: "/tmp/schneeglass-copy-source", toPath: "/tmp/schneeglass-copy-destination")' \
+  '.copyItem('
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -157,4 +162,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, and raw-write fixtures passed'
