@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 SRC="$ROOT/Packages/SchneeGlassKit/Sources"
+APP="$ROOT/App"
 
 fail() {
   echo "File safety verification failed: $*" >&2
@@ -26,7 +27,7 @@ scan_pattern() {
 
   : > "$SCAN_FILE"
   set +e
-  grep -RInE "$pattern" "$SRC" --include='*.swift' > "$SCAN_FILE"
+  grep -RInE "$pattern" "$SRC" "$APP" --include='*.swift' > "$SCAN_FILE"
   status=$?
   set -e
 
