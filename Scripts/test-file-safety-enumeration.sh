@@ -114,6 +114,21 @@ expect_forbidden_source_line \
   'private let fileSafetyRemoveItemReference: (URL) throws -> Void = FileManager.default.removeItem' \
   '.removeItem'
 
+expect_forbidden_source_line \
+  'an unreviewed FileManager move method reference' \
+  'private let fileSafetyMoveItemReference: (URL, URL) throws -> Void = FileManager.default.moveItem' \
+  '.moveItem'
+
+expect_forbidden_source_line \
+  'an unreviewed FileManager copy method reference' \
+  'private let fileSafetyCopyItemReference: (URL, URL) throws -> Void = FileManager.default.copyItem' \
+  '.copyItem'
+
+expect_forbidden_source_line \
+  'an unreviewed FileManager replace method reference' \
+  'private let fileSafetyReplaceItemReference = FileManager.default.replaceItemAt' \
+  '.replaceItemAt'
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
