@@ -47,10 +47,10 @@ scan_pattern() {
 }
 
 : > "$MATCHES_FILE"
-scan_pattern 'FileManager removeItem' '\.removeItem\('
-scan_pattern 'FileManager moveItem' '\.moveItem\('
-scan_pattern 'FileManager copyItem' '\.copyItem\('
-scan_pattern 'FileManager replaceItem' '\.replaceItem\('
+scan_pattern 'FileManager removeItem' '\.removeItem([^[:alnum:]_]|$)'
+scan_pattern 'FileManager moveItem' '\.moveItem([^[:alnum:]_]|$)'
+scan_pattern 'FileManager copyItem' '\.copyItem([^[:alnum:]_]|$)'
+scan_pattern 'FileManager replaceItemAt' '\.replaceItemAt([^[:alnum:]_]|$)'
 scan_pattern 'unlink' '(^|[^[:alnum:]_])unlink\('
 scan_pattern 'unlinkat' '(^|[^[:alnum:]_])unlinkat\('
 scan_pattern 'renameat' '(^|[^[:alnum:]_])renameat\('
