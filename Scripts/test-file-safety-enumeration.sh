@@ -94,6 +94,16 @@ expect_forbidden_source_line \
   'private let fileSafetyUnqualifiedRawWrite = write(0, nil, 0)' \
   'write('
 
+expect_forbidden_source_line \
+  'an unreviewed extended-attribute write' \
+  'private let fileSafetyExtendedAttributeWrite = fsetxattr(0, "proof", nil, 0, 0, 0)' \
+  'fsetxattr('
+
+expect_forbidden_source_line \
+  'an unreviewed extended-attribute removal' \
+  'private let fileSafetyExtendedAttributeRemoval = fremovexattr(0, "proof", 0)' \
+  'fremovexattr('
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -147,4 +157,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, and raw-write fixtures passed'
