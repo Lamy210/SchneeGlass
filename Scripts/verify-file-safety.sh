@@ -59,6 +59,8 @@ scan_pattern 'fcopyfile' '(^|[^[:alnum:]_])fcopyfile\('
 scan_pattern 'creat' '(^|[^[:alnum:]_])creat\('
 scan_pattern 'truncate' '(^|[^[:alnum:]_])truncate\('
 scan_pattern 'ftruncate' '(^|[^[:alnum:]_])ftruncate\('
+scan_pattern 'fsetxattr' '(^|[^[:alnum:]_])fsetxattr\('
+scan_pattern 'fremovexattr' '(^|[^[:alnum:]_])fremovexattr\('
 scan_pattern 'Darwin.write' 'Darwin\.write\('
 scan_pattern 'write' '(^|[^[:alnum:]_.])write\('
 scan_pattern 'O_CREAT' 'O_CREAT'
@@ -101,6 +103,11 @@ while IFS= read -r match; do
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/SourceFileLeaseRegistry.swift"* ]] \
      && { [[ "$mutation" == 'fcopyfile' ]] || [[ "$mutation" == 'O_CREAT' ]]; }; then
+    continue
+  fi
+
+  if [[ "$file" == *"/SchneeGlassFileSystemAdapter/PendingCopyFileIdentity.swift"* ]] \
+     && { [[ "$mutation" == 'fsetxattr' ]] || [[ "$mutation" == 'fremovexattr' ]]; }; then
     continue
   fi
 
