@@ -49,6 +49,7 @@ scan_pattern() {
 : > "$MATCHES_FILE"
 scan_pattern 'FileManager removeItem' '\.removeItem\('
 scan_pattern 'FileManager moveItem' '\.moveItem\('
+scan_pattern 'FileManager copyItem' '\.copyItem\('
 scan_pattern 'FileManager replaceItem' '\.replaceItem\('
 scan_pattern 'unlink' '(^|[^[:alnum:]_])unlink\('
 scan_pattern 'unlinkat' '(^|[^[:alnum:]_])unlinkat\('
@@ -88,6 +89,11 @@ while IFS= read -r match; do
 
   if [[ "$file" == *"/SchneeGlassFileSystemAdapter/InternalStagingCommitter.swift"* ]] \
      && [[ "$mutation" == 'FileManager moveItem' ]]; then
+    continue
+  fi
+
+  if [[ "$file" == *"/SchneeGlassFileSystemAdapter/SafeFileCopyEngine.swift"* ]] \
+     && [[ "$mutation" == 'FileManager copyItem' ]]; then
     continue
   fi
 
