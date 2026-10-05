@@ -10,12 +10,17 @@ mkdir -p "$FIXTURE/bin"
 OUTPUT="$FIXTURE/output.log"
 LOCK_SOURCE="$ROOT/Packages/SchneeGlassKit/Sources/SchneeGlassPersistenceAdapter/ApplicationProcessLock.swift"
 LOCK_BACKUP="$FIXTURE/ApplicationProcessLock.swift.backup"
+APP_SOURCE="$ROOT/App/CompositionRoot.swift"
+APP_BACKUP="$FIXTURE/CompositionRoot.swift.backup"
 
 REAL_GREP="$(command -v grep)"
 
 cleanup() {
   if [[ -f "$LOCK_BACKUP" ]]; then
     cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+  fi
+  if [[ -f "$APP_BACKUP" ]]; then
+    cp "$APP_BACKUP" "$APP_SOURCE"
   fi
   rm -rf "$FIXTURE"
 }
@@ -45,6 +50,7 @@ fi
   "$OUTPUT"
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
+cp "$APP_SOURCE" "$APP_BACKUP"
 
 expect_forbidden_source_line() {
   local label="$1"
@@ -88,6 +94,25 @@ expect_forbidden_source_line \
   'private let fileSafetyUnqualifiedRawWrite = write(0, nil, 0)' \
   'write('
 
+cp "$APP_BACKUP" "$APP_SOURCE"
+printf '%s\n' \
+  'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
+  >> "$APP_SOURCE"
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+APP_STATUS=$?
+set -e
+
+if [[ "$APP_STATUS" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed an App-layer filesystem mutation.' >&2
+  exit 1
+fi
+
+"$REAL_GREP" -Fq 'CompositionRoot.swift' "$OUTPUT"
+"$REAL_GREP" -Fq '.removeItem(' "$OUTPUT"
+cp "$APP_BACKUP" "$APP_SOURCE"
+
 FAILURES=0
 for destructive_case in creat truncate ftruncate; do
   case "$destructive_case" in
@@ -114,11 +139,12 @@ for destructive_case in creat truncate ftruncate; do
 done
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-rm -f "$LOCK_BACKUP"
+cp "$APP_BACKUP" "$APP_SOURCE"
+rm -f "$LOCK_BACKUP" "$APP_BACKUP"
 
 if [[ "$FAILURES" -ne 0 ]]; then
   echo "$FAILURES destructive truncation primitive fixture(s) were not rejected." >&2
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, allowlist-boundary, destructive-truncation, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, and raw-write fixtures passed'
