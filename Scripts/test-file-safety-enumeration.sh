@@ -180,6 +180,16 @@ expect_forbidden_source_line \
   'linkat('
 
 expect_forbidden_source_line \
+  'an unreviewed POSIX symbolic-link creation' \
+  'private let fileSafetySymlink = symlink("/tmp/schneeglass-file-safety-target", "/tmp/schneeglass-file-safety-symbolic-link")' \
+  'symlink('
+
+expect_forbidden_source_line \
+  'an unreviewed descriptor-relative POSIX symbolic-link creation' \
+  'private let fileSafetySymlinkAt = symlinkat("/tmp/schneeglass-file-safety-target", AT_FDCWD, "/tmp/schneeglass-file-safety-symbolic-link")' \
+  'symlinkat('
+
+expect_forbidden_source_line \
   'an unreviewed POSIX directory creation' \
   'private let fileSafetyMkdir = mkdir("/tmp/schneeglass-file-safety-directory", mode_t(0o700))' \
   'mkdir('
