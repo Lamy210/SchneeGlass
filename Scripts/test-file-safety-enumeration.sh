@@ -95,6 +95,11 @@ expect_forbidden_source_line \
   'write('
 
 expect_forbidden_source_line \
+  'an unreviewed positioned POSIX write' \
+  'private let fileSafetyPositionedRawWrite = pwrite(0, nil, 0, 0)' \
+  'pwrite('
+
+expect_forbidden_source_line \
   'an unreviewed extended-attribute write' \
   'private let fileSafetyExtendedAttributeWrite = fsetxattr(0, "proof", nil, 0, 0, 0)' \
   'fsetxattr('
