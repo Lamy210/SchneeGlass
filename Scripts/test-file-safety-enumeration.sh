@@ -105,6 +105,16 @@ expect_forbidden_source_line \
   'fremovexattr('
 
 expect_forbidden_source_line \
+  'an unreviewed path-based extended-attribute write' \
+  'private let fileSafetyPathExtendedAttributeWrite = setxattr("/tmp/schneeglass-file-safety-fixture", "proof", nil, 0, 0, 0)' \
+  'setxattr('
+
+expect_forbidden_source_line \
+  'an unreviewed path-based extended-attribute removal' \
+  'private let fileSafetyPathExtendedAttributeRemoval = removexattr("/tmp/schneeglass-file-safety-fixture", "proof", 0)' \
+  'removexattr('
+
+expect_forbidden_source_line \
   'an unreviewed FileManager copy' \
   'private let fileSafetyCopyItem = try? FileManager.default.copyItem(atPath: "/tmp/schneeglass-copy-source", toPath: "/tmp/schneeglass-copy-destination")' \
   '.copyItem('
