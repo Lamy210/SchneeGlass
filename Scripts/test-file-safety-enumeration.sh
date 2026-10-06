@@ -100,6 +100,11 @@ expect_forbidden_source_line \
   'pwrite('
 
 expect_forbidden_source_line \
+  'an unreviewed vectored POSIX write' \
+  'private let fileSafetyVectoredRawWrite = writev(0, nil, 0)' \
+  'writev('
+
+expect_forbidden_source_line \
   'an unreviewed Foundation URL write' \
   'private let fileSafetyFoundationURLWrite = try? Data().write(to: URL(fileURLWithPath: "/tmp/schneeglass-file-safety-fixture"))' \
   '.write(to:'
