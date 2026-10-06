@@ -394,7 +394,7 @@ for ownership_case in chown fchown lchown fchownat; do
       ;;
     fchownat)
       source_line='private let fileSafetyFchownAt = fchownat(AT_FDCWD, "/tmp/schneeglass-file-safety-fixture", uid_t(501), gid_t(20), 0)'
-      expected_fragment='fchownat'
+      expected_fragment='fchownat('
       ;;
   esac
 
