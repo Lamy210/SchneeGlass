@@ -100,6 +100,11 @@ expect_forbidden_source_line \
   'pwrite('
 
 expect_forbidden_source_line \
+  'an unreviewed Foundation URL write' \
+  'private let fileSafetyFoundationURLWrite = try? Data().write(to: URL(fileURLWithPath: "/tmp/schneeglass-file-safety-fixture"))' \
+  '.write(to:'
+
+expect_forbidden_source_line \
   'an unreviewed extended-attribute write' \
   'private let fileSafetyExtendedAttributeWrite = fsetxattr(0, "proof", nil, 0, 0, 0)' \
   'fsetxattr('
