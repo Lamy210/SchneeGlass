@@ -170,6 +170,16 @@ expect_forbidden_source_line \
   '.linkItem'
 
 expect_forbidden_source_line \
+  'an unreviewed POSIX hard-link creation' \
+  'private let fileSafetyLink = link("/tmp/schneeglass-file-safety-link-source", "/tmp/schneeglass-file-safety-hard-link")' \
+  'link('
+
+expect_forbidden_source_line \
+  'an unreviewed descriptor-relative POSIX hard-link creation' \
+  'private let fileSafetyLinkAt = linkat(AT_FDCWD, "/tmp/schneeglass-file-safety-link-source", AT_FDCWD, "/tmp/schneeglass-file-safety-hard-link", 0)' \
+  'linkat('
+
+expect_forbidden_source_line \
   'an unreviewed POSIX directory creation' \
   'private let fileSafetyMkdir = mkdir("/tmp/schneeglass-file-safety-directory", mode_t(0o700))' \
   'mkdir('
