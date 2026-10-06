@@ -214,6 +214,40 @@ expect_forbidden_source_line \
   'private let fileSafetyRename = rename("/tmp/schneeglass-file-safety-source", "/tmp/schneeglass-file-safety-destination")' \
   'rename('
 
+LINK_REFERENCE_FAILURES=0
+for link_reference_case in link linkat symlink symlinkat; do
+  case "$link_reference_case" in
+    link)
+      source_line='private let fileSafetyLinkReference = link'
+      expected_fragment='link'
+      ;;
+    linkat)
+      source_line='private let fileSafetyLinkAtReference = linkat'
+      expected_fragment='linkat'
+      ;;
+    symlink)
+      source_line='private let fileSafetySymlinkReference = symlink'
+      expected_fragment='symlink'
+      ;;
+    symlinkat)
+      source_line='private let fileSafetySymlinkAtReference = symlinkat'
+      expected_fragment='symlinkat'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $link_reference_case link function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    LINK_REFERENCE_FAILURES=$((LINK_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$LINK_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$LINK_REFERENCE_FAILURES POSIX link function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 DELETION_REFERENCE_FAILURES=0
 for deletion_reference_case in unlink unlinkat rmdir; do
   case "$deletion_reference_case" in
@@ -361,4 +395,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-deletion-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, and raw-write fixtures passed'
