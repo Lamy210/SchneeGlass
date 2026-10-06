@@ -214,6 +214,36 @@ expect_forbidden_source_line \
   'private let fileSafetyRename = rename("/tmp/schneeglass-file-safety-source", "/tmp/schneeglass-file-safety-destination")' \
   'rename('
 
+DELETION_REFERENCE_FAILURES=0
+for deletion_reference_case in unlink unlinkat rmdir; do
+  case "$deletion_reference_case" in
+    unlink)
+      source_line='private let fileSafetyUnlinkReference = unlink'
+      expected_fragment='unlink'
+      ;;
+    unlinkat)
+      source_line='private let fileSafetyUnlinkAtReference = unlinkat'
+      expected_fragment='unlinkat'
+      ;;
+    rmdir)
+      source_line='private let fileSafetyRmdirReference = rmdir'
+      expected_fragment='rmdir'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $deletion_reference_case deletion function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    DELETION_REFERENCE_FAILURES=$((DELETION_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$DELETION_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$DELETION_REFERENCE_FAILURES POSIX deletion function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -331,4 +361,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-deletion-reference, and raw-write fixtures passed'
