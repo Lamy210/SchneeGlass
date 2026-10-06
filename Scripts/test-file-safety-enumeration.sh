@@ -278,6 +278,36 @@ if [[ "$DELETION_REFERENCE_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
+RENAME_REFERENCE_FAILURES=0
+for rename_reference_case in rename renameat renameatx_np; do
+  case "$rename_reference_case" in
+    rename)
+      source_line='private let fileSafetyRenameReference = rename'
+      expected_fragment='rename'
+      ;;
+    renameat)
+      source_line='private let fileSafetyRenameAtReference = renameat'
+      expected_fragment='renameat'
+      ;;
+    renameatx_np)
+      source_line='private let fileSafetyRenameAtXReference = renameatx_np'
+      expected_fragment='renameatx_np'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $rename_reference_case rename function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    RENAME_REFERENCE_FAILURES=$((RENAME_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$RENAME_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$RENAME_REFERENCE_FAILURES POSIX rename function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -364,7 +394,7 @@ for ownership_case in chown fchown lchown fchownat; do
       ;;
     fchownat)
       source_line='private let fileSafetyFchownAt = fchownat(AT_FDCWD, "/tmp/schneeglass-file-safety-fixture", uid_t(501), gid_t(20), 0)'
-      expected_fragment='fchownat('
+      expected_fragment='fchownat'
       ;;
   esac
 
@@ -395,4 +425,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, and raw-write fixtures passed'
