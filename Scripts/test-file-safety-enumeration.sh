@@ -135,6 +135,11 @@ expect_forbidden_source_line \
   '.copyItem('
 
 expect_forbidden_source_line \
+  'an unreviewed FileManager attribute mutation' \
+  'private let fileSafetySetAttributes = try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: "/tmp/schneeglass-file-safety-fixture")' \
+  '.setAttributes'
+
+expect_forbidden_source_line \
   'an unreviewed FileManager remove method reference' \
   'private let fileSafetyRemoveItemReference: (URL) throws -> Void = FileManager.default.removeItem' \
   '.removeItem'
