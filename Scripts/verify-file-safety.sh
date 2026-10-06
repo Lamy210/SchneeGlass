@@ -50,6 +50,7 @@ scan_pattern() {
 scan_pattern 'FileManager removeItem' '\.removeItem([^[:alnum:]_]|$)'
 scan_pattern 'FileManager moveItem' '\.moveItem([^[:alnum:]_]|$)'
 scan_pattern 'FileManager copyItem' '\.copyItem([^[:alnum:]_]|$)'
+scan_pattern 'FileManager setAttributes' '\.setAttributes([^[:alnum:]_]|$)'
 scan_pattern 'FileManager createDirectory' '\.createDirectory([^[:alnum:]_]|$)'
 scan_pattern 'FileManager createFile' '\.createFile([^[:alnum:]_]|$)'
 scan_pattern 'FileManager createSymbolicLink' '\.createSymbolicLink([^[:alnum:]_]|$)'
