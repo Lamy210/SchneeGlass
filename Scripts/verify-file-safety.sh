@@ -71,6 +71,7 @@ scan_pattern 'fsetxattr' '(^|[^[:alnum:]_])fsetxattr\('
 scan_pattern 'fremovexattr' '(^|[^[:alnum:]_])fremovexattr\('
 scan_pattern 'Darwin.write' 'Darwin\.write\('
 scan_pattern 'write' '(^|[^[:alnum:]_.])write\('
+scan_pattern 'pwrite' '(^|[^[:alnum:]_])pwrite\('
 scan_pattern 'O_CREAT' 'O_CREAT'
 scan_pattern 'O_TRUNC' 'O_TRUNC'
 
