@@ -165,6 +165,11 @@ expect_forbidden_source_line \
   '.createSymbolicLink'
 
 expect_forbidden_source_line \
+  'an unreviewed FileManager hard-link creation' \
+  'private let fileSafetyLinkItem = try? FileManager.default.linkItem(at: URL(fileURLWithPath: "/tmp/schneeglass-file-safety-link-source"), to: URL(fileURLWithPath: "/tmp/schneeglass-file-safety-hard-link"))' \
+  '.linkItem'
+
+expect_forbidden_source_line \
   'an unreviewed POSIX directory creation' \
   'private let fileSafetyMkdir = mkdir("/tmp/schneeglass-file-safety-directory", mode_t(0o700))' \
   'mkdir('
