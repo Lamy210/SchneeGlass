@@ -258,6 +258,31 @@ for destructive_case in creat truncate ftruncate; do
   fi
 done
 
+PERMISSION_FAILURES=0
+for permission_case in chmod fchmod fchmodat; do
+  case "$permission_case" in
+    chmod)
+      source_line='private let fileSafetyChmod = chmod("/tmp/schneeglass-file-safety-fixture", mode_t(0o600))'
+      expected_fragment='chmod('
+      ;;
+    fchmod)
+      source_line='private let fileSafetyFchmod = fchmod(0, mode_t(0o600))'
+      expected_fragment='fchmod('
+      ;;
+    fchmodat)
+      source_line='private let fileSafetyFchmodAt = fchmodat(AT_FDCWD, "/tmp/schneeglass-file-safety-fixture", mode_t(0o600), 0)'
+      expected_fragment='fchmodat('
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $permission_case permission mutation" \
+    "$source_line" \
+    "$expected_fragment"; then
+    PERMISSION_FAILURES=$((PERMISSION_FAILURES + 1))
+  fi
+done
+
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cp "$APP_BACKUP" "$APP_SOURCE"
 rm -f "$LOCK_BACKUP" "$APP_BACKUP"
@@ -267,4 +292,9 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, and raw-write fixtures passed'
+if [[ "$PERMISSION_FAILURES" -ne 0 ]]; then
+  echo "$PERMISSION_FAILURES POSIX permission mutation fixture(s) were not rejected." >&2
+  exit 1
+fi
+
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, and raw-write fixtures passed'
