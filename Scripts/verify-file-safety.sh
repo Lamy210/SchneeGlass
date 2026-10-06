@@ -72,6 +72,7 @@ scan_pattern 'fremovexattr' '(^|[^[:alnum:]_])fremovexattr\('
 scan_pattern 'Darwin.write' 'Darwin\.write\('
 scan_pattern 'write' '(^|[^[:alnum:]_.])write\('
 scan_pattern 'pwrite' '(^|[^[:alnum:]_])pwrite\('
+scan_pattern 'Foundation URL write' '\.write\(to:'
 scan_pattern 'O_CREAT' 'O_CREAT'
 scan_pattern 'O_TRUNC' 'O_TRUNC'
 
