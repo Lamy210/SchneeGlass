@@ -129,6 +129,16 @@ expect_forbidden_source_line \
   'private let fileSafetyReplaceItemReference = FileManager.default.replaceItemAt' \
   '.replaceItemAt'
 
+expect_forbidden_source_line \
+  'an unreviewed FileManager create-directory method reference' \
+  'private let fileSafetyCreateDirectoryReference: (String, Bool, [FileAttributeKey: Any]?) throws -> Void = FileManager.default.createDirectory' \
+  '.createDirectory'
+
+expect_forbidden_source_line \
+  'an unreviewed FileManager create-file method reference' \
+  'private let fileSafetyCreateFileReference: (String, Data?, [FileAttributeKey: Any]?) -> Bool = FileManager.default.createFile' \
+  '.createFile'
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -182,4 +192,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, and raw-write fixtures passed'
