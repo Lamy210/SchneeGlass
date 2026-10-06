@@ -283,6 +283,35 @@ for permission_case in chmod fchmod fchmodat; do
   fi
 done
 
+OWNERSHIP_FAILURES=0
+for ownership_case in chown fchown lchown fchownat; do
+  case "$ownership_case" in
+    chown)
+      source_line='private let fileSafetyChown = chown("/tmp/schneeglass-file-safety-fixture", uid_t(501), gid_t(20))'
+      expected_fragment='chown('
+      ;;
+    fchown)
+      source_line='private let fileSafetyFchown = fchown(0, uid_t(501), gid_t(20))'
+      expected_fragment='fchown('
+      ;;
+    lchown)
+      source_line='private let fileSafetyLchown = lchown("/tmp/schneeglass-file-safety-fixture", uid_t(501), gid_t(20))'
+      expected_fragment='lchown('
+      ;;
+    fchownat)
+      source_line='private let fileSafetyFchownAt = fchownat(AT_FDCWD, "/tmp/schneeglass-file-safety-fixture", uid_t(501), gid_t(20), 0)'
+      expected_fragment='fchownat('
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $ownership_case ownership mutation" \
+    "$source_line" \
+    "$expected_fragment"; then
+    OWNERSHIP_FAILURES=$((OWNERSHIP_FAILURES + 1))
+  fi
+done
+
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cp "$APP_BACKUP" "$APP_SOURCE"
 rm -f "$LOCK_BACKUP" "$APP_BACKUP"
@@ -297,4 +326,9 @@ if [[ "$PERMISSION_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, and raw-write fixtures passed'
+if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
+  echo "$OWNERSHIP_FAILURES POSIX ownership mutation fixture(s) were not rejected." >&2
+  exit 1
+fi
+
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, and raw-write fixtures passed'
