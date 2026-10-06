@@ -149,6 +149,11 @@ expect_forbidden_source_line \
   'private let fileSafetyRmdir = rmdir("/tmp/schneeglass-file-safety-directory")' \
   'rmdir('
 
+expect_forbidden_source_line \
+  'an unreviewed POSIX rename' \
+  'private let fileSafetyRename = rename("/tmp/schneeglass-file-safety-source", "/tmp/schneeglass-file-safety-destination")' \
+  'rename('
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -202,4 +207,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, and raw-write fixtures passed'
