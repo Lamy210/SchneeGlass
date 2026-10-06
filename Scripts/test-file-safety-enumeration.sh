@@ -139,6 +139,11 @@ expect_forbidden_source_line \
   'private let fileSafetyCreateFileReference: (String, Data?, [FileAttributeKey: Any]?) -> Bool = FileManager.default.createFile' \
   '.createFile'
 
+expect_forbidden_source_line \
+  'an unreviewed POSIX directory creation' \
+  'private let fileSafetyMkdir = mkdir("/tmp/schneeglass-file-safety-directory", mode_t(0o700))' \
+  'mkdir('
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -192,4 +197,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation, and raw-write fixtures passed'
