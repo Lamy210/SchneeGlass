@@ -308,6 +308,32 @@ if [[ "$RENAME_REFERENCE_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
+MKDIR_REFERENCE_FAILURES=0
+for mkdir_reference_case in mkdir mkdirat; do
+  case "$mkdir_reference_case" in
+    mkdir)
+      source_line='private let fileSafetyMkdirReference = mkdir'
+      expected_fragment='mkdir'
+      ;;
+    mkdirat)
+      source_line='private let fileSafetyMkdirAtReference = mkdirat'
+      expected_fragment='mkdirat'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $mkdir_reference_case directory-creation function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    MKDIR_REFERENCE_FAILURES=$((MKDIR_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$MKDIR_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$MKDIR_REFERENCE_FAILURES POSIX directory-creation function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -425,4 +451,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, POSIX-directory-creation-reference, and raw-write fixtures passed'
