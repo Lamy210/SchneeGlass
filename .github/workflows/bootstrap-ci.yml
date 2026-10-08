@@ -147,6 +147,9 @@ jobs:
       - name: File safety destructive-reference fixture
         run: bash Scripts/test-file-safety-destructive-references.sh
 
+      - name: File safety xattr-reference fixture
+        run: bash Scripts/test-file-safety-xattr-references.sh
+
       - name: Release metadata guard
         run: bash Scripts/verify-release-metadata.sh
 
