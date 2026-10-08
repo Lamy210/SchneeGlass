@@ -364,6 +364,40 @@ if [[ "$PERMISSION_REFERENCE_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
+OWNERSHIP_REFERENCE_FAILURES=0
+for ownership_reference_case in chown fchown lchown fchownat; do
+  case "$ownership_reference_case" in
+    chown)
+      source_line='private let fileSafetyChownReference = chown'
+      expected_fragment='chown'
+      ;;
+    fchown)
+      source_line='private let fileSafetyFchownReference = fchown'
+      expected_fragment='fchown'
+      ;;
+    lchown)
+      source_line='private let fileSafetyLchownReference = lchown'
+      expected_fragment='lchown'
+      ;;
+    fchownat)
+      source_line='private let fileSafetyFchownAtReference = fchownat'
+      expected_fragment='fchownat'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $ownership_reference_case ownership function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    OWNERSHIP_REFERENCE_FAILURES=$((OWNERSHIP_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$OWNERSHIP_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$OWNERSHIP_REFERENCE_FAILURES POSIX ownership function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -481,4 +515,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, POSIX-directory-creation-reference, POSIX-permission-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, POSIX-directory-creation-reference, POSIX-permission-reference, POSIX-ownership-reference, and raw-write fixtures passed'
