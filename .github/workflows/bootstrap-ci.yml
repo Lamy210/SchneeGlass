@@ -153,6 +153,9 @@ jobs:
       - name: File safety write-reference fixture
         run: bash Scripts/test-file-safety-write-references.sh
 
+      - name: File safety fcopyfile-reference fixture
+        run: bash Scripts/test-file-safety-fcopyfile-reference.sh
+
       - name: Release metadata guard
         run: bash Scripts/verify-release-metadata.sh
 
