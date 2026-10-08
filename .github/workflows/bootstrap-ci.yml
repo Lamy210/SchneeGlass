@@ -150,6 +150,9 @@ jobs:
       - name: File safety xattr-reference fixture
         run: bash Scripts/test-file-safety-xattr-references.sh
 
+      - name: File safety write-reference fixture
+        run: bash Scripts/test-file-safety-write-references.sh
+
       - name: Release metadata guard
         run: bash Scripts/verify-release-metadata.sh
 
