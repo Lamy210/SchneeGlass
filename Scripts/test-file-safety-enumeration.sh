@@ -334,6 +334,36 @@ if [[ "$MKDIR_REFERENCE_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
+PERMISSION_REFERENCE_FAILURES=0
+for permission_reference_case in chmod fchmod fchmodat; do
+  case "$permission_reference_case" in
+    chmod)
+      source_line='private let fileSafetyChmodReference = chmod'
+      expected_fragment='chmod'
+      ;;
+    fchmod)
+      source_line='private let fileSafetyFchmodReference = fchmod'
+      expected_fragment='fchmod'
+      ;;
+    fchmodat)
+      source_line='private let fileSafetyFchmodAtReference = fchmodat'
+      expected_fragment='fchmodat'
+      ;;
+  esac
+
+  if ! expect_forbidden_source_line \
+    "an unreviewed POSIX $permission_reference_case permission function reference" \
+    "$source_line" \
+    "$expected_fragment"; then
+    PERMISSION_REFERENCE_FAILURES=$((PERMISSION_REFERENCE_FAILURES + 1))
+  fi
+done
+
+if [[ "$PERMISSION_REFERENCE_FAILURES" -ne 0 ]]; then
+  echo "$PERMISSION_REFERENCE_FAILURES POSIX permission function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
 cp "$APP_BACKUP" "$APP_SOURCE"
 printf '%s\n' \
   'private let fileSafetyAppRemove = try? FileManager.default.removeItem(atPath: "/tmp/schneeglass-file-safety-app-fixture")' \
@@ -451,4 +481,4 @@ if [[ "$OWNERSHIP_FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, POSIX-directory-creation-reference, and raw-write fixtures passed'
+echo 'File Safety Guard enumeration, App-scope, allowlist-boundary, destructive-truncation, xattr, copy-item, FileManager-reference, FileManager-creation, POSIX-directory-creation/removal, POSIX-rename, POSIX-permission, POSIX-ownership, POSIX-link-reference, POSIX-deletion-reference, POSIX-rename-reference, POSIX-directory-creation-reference, POSIX-permission-reference, and raw-write fixtures passed'
