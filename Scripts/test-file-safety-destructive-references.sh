@@ -40,33 +40,38 @@ expect_forbidden_reference() {
     return 1
   fi
 
-  "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-  "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"
+  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
+     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
+    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
+    return 1
+  fi
 }
 
 FAILURES=0
 for destructive_reference_case in creat truncate ftruncate; do
-  case "$destructive_reference_case" in
-    creat)
-      source_line='private let fileSafetyCreatReference = creat'
-      expected_fragment='creat'
-      ;;
-    truncate)
-      source_line='private let fileSafetyTruncateReference = truncate'
-      expected_fragment='truncate'
-      ;;
-    ftruncate)
-      source_line='private let fileSafetyFtruncateReference = ftruncate'
-      expected_fragment='ftruncate'
-      ;;
-  esac
+  for reference_context in assignment argument array return; do
+    case "$reference_context" in
+      assignment)
+        source_line="private let fileSafetyDestructiveReference = $destructive_reference_case"
+        ;;
+      argument)
+        source_line="private let fileSafetyDestructiveReference = consume($destructive_reference_case)"
+        ;;
+      array)
+        source_line="private let fileSafetyDestructiveReference = [$destructive_reference_case]"
+        ;;
+      return)
+        source_line="private let fileSafetyDestructiveReference = { return $destructive_reference_case }"
+        ;;
+    esac
 
-  if ! expect_forbidden_reference \
-    "an unreviewed POSIX $destructive_reference_case destructive function reference" \
-    "$source_line" \
-    "$expected_fragment"; then
-    FAILURES=$((FAILURES + 1))
-  fi
+    if ! expect_forbidden_reference \
+      "an unreviewed POSIX $destructive_reference_case $reference_context destructive function reference" \
+      "$source_line" \
+      "$destructive_reference_case"; then
+      FAILURES=$((FAILURES + 1))
+    fi
+  done
 done
 
 if [[ "$FAILURES" -ne 0 ]]; then
