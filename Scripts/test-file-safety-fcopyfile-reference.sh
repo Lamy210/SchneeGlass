@@ -21,19 +21,47 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
-printf '%s\n' 'private let fileSafetyFcopyfileReference = fcopyfile' >> "$LOCK_SOURCE"
 
-set +e
-bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-status=$?
-set -e
+case_names=(
+  'argument'
+  'array'
+  'return'
+)
+case_lines=(
+  'private let fileSafetyFcopyfileArgumentReference = consume(fcopyfile)'
+  'private let fileSafetyFcopyfileArrayReference = [fcopyfile]'
+  'private let fileSafetyFcopyfileReturnReference = { return fcopyfile }'
+)
 
-if [[ "$status" -eq 0 ]]; then
-  echo 'File Safety Guard unexpectedly allowed: an unreviewed fcopyfile function reference' >&2
+failures=0
+for index in "${!case_names[@]}"; do
+  case_name="${case_names[$index]}"
+  case_line="${case_lines[$index]}"
+
+  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+  printf '%s\n' "$case_line" >> "$LOCK_SOURCE"
+
+  set +e
+  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    echo "File Safety Guard unexpectedly allowed: an unreviewed fcopyfile $case_name function reference" >&2
+    ((failures += 1))
+    continue
+  fi
+
+  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
+     || ! "$REAL_GREP" -Fq 'fcopyfile' "$OUTPUT"; then
+    echo "File Safety Guard rejected the fcopyfile $case_name fixture without the expected diagnostic" >&2
+    ((failures += 1))
+  fi
+done
+
+if (( failures != 0 )); then
+  echo "$failures fcopyfile first-class function-reference fixture(s) were not rejected." >&2
   exit 1
 fi
 
-"$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-"$REAL_GREP" -Fq 'fcopyfile' "$OUTPUT"
-
-echo 'fcopyfile function-reference fixture passed'
+echo 'fcopyfile first-class function-reference fixtures passed'
