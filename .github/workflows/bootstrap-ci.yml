@@ -144,6 +144,9 @@ jobs:
       - name: File safety enumeration failure fixture
         run: bash Scripts/test-file-safety-enumeration.sh
 
+      - name: File safety link-reference fixture
+        run: bash Scripts/test-file-safety-link-references.sh
+
       - name: File safety destructive-reference fixture
         run: bash Scripts/test-file-safety-destructive-references.sh
 
