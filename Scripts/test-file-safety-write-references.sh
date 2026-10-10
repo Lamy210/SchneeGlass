@@ -49,13 +49,16 @@ expect_forbidden_reference() {
 
 FAILURES=0
 for write_reference_case in Darwin.write write pwrite writev; do
-  for reference_context in assignment argument array return; do
+  for reference_context in assignment argument labeledArgument array return; do
     case "$reference_context" in
       assignment)
         source_line="private let fileSafetyWriteReference = $write_reference_case"
         ;;
       argument)
         source_line="private let fileSafetyWriteReference = consume($write_reference_case)"
+        ;;
+      labeledArgument)
+        source_line="private let fileSafetyWriteReference = consume(callback: $write_reference_case)"
         ;;
       array)
         source_line="private let fileSafetyWriteReference = [$write_reference_case]"
