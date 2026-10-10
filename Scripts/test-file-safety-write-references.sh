@@ -40,37 +40,41 @@ expect_forbidden_reference() {
     return 1
   fi
 
-  "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-  "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"
+  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
+     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
+    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
+    return 1
+  fi
 }
 
 FAILURES=0
 for write_reference_case in Darwin.write write pwrite writev; do
-  case "$write_reference_case" in
-    Darwin.write)
-      source_line='private let fileSafetyDarwinWriteReference = Darwin.write'
-      expected_fragment='Darwin.write'
-      ;;
-    write)
-      source_line='private let fileSafetyWriteReference = write'
-      expected_fragment='write'
-      ;;
-    pwrite)
-      source_line='private let fileSafetyPwriteReference = pwrite'
-      expected_fragment='pwrite'
-      ;;
-    writev)
-      source_line='private let fileSafetyWritevReference = writev'
-      expected_fragment='writev'
-      ;;
-  esac
+  for reference_context in assignment argument labeledArgument array return; do
+    case "$reference_context" in
+      assignment)
+        source_line="private let fileSafetyWriteReference = $write_reference_case"
+        ;;
+      argument)
+        source_line="private let fileSafetyWriteReference = consume($write_reference_case)"
+        ;;
+      labeledArgument)
+        source_line="private let fileSafetyWriteReference = consume(callback: $write_reference_case)"
+        ;;
+      array)
+        source_line="private let fileSafetyWriteReference = [$write_reference_case]"
+        ;;
+      return)
+        source_line="private let fileSafetyWriteReference = { return $write_reference_case }"
+        ;;
+    esac
 
-  if ! expect_forbidden_reference \
-    "an unreviewed POSIX $write_reference_case raw-write function reference" \
-    "$source_line" \
-    "$expected_fragment"; then
-    FAILURES=$((FAILURES + 1))
-  fi
+    if ! expect_forbidden_reference \
+      "an unreviewed POSIX $write_reference_case $reference_context raw-write function reference" \
+      "$source_line" \
+      "$write_reference_case"; then
+      FAILURES=$((FAILURES + 1))
+    fi
+  done
 done
 
 if [[ "$FAILURES" -ne 0 ]]; then
