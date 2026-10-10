@@ -40,37 +40,38 @@ expect_forbidden_reference() {
     return 1
   fi
 
-  "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"
-  "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"
+  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
+     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
+    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
+    return 1
+  fi
 }
 
 FAILURES=0
 for xattr_reference_case in setxattr removexattr fsetxattr fremovexattr; do
-  case "$xattr_reference_case" in
-    setxattr)
-      source_line='private let fileSafetySetXattrReference = setxattr'
-      expected_fragment='setxattr'
-      ;;
-    removexattr)
-      source_line='private let fileSafetyRemoveXattrReference = removexattr'
-      expected_fragment='removexattr'
-      ;;
-    fsetxattr)
-      source_line='private let fileSafetyFsetXattrReference = fsetxattr'
-      expected_fragment='fsetxattr'
-      ;;
-    fremovexattr)
-      source_line='private let fileSafetyFremoveXattrReference = fremovexattr'
-      expected_fragment='fremovexattr'
-      ;;
-  esac
+  for reference_context in assignment argument array return; do
+    case "$reference_context" in
+      assignment)
+        source_line="private let fileSafetyXattrReference = $xattr_reference_case"
+        ;;
+      argument)
+        source_line="private let fileSafetyXattrReference = consume($xattr_reference_case)"
+        ;;
+      array)
+        source_line="private let fileSafetyXattrReference = [$xattr_reference_case]"
+        ;;
+      return)
+        source_line="private let fileSafetyXattrReference = { return $xattr_reference_case }"
+        ;;
+    esac
 
-  if ! expect_forbidden_reference \
-    "an unreviewed POSIX $xattr_reference_case extended-attribute function reference" \
-    "$source_line" \
-    "$expected_fragment"; then
-    FAILURES=$((FAILURES + 1))
-  fi
+    if ! expect_forbidden_reference \
+      "an unreviewed POSIX $xattr_reference_case $reference_context extended-attribute function reference" \
+      "$source_line" \
+      "$xattr_reference_case"; then
+      FAILURES=$((FAILURES + 1))
+    fi
+  done
 done
 
 if [[ "$FAILURES" -ne 0 ]]; then
