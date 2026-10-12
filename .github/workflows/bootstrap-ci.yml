@@ -150,6 +150,9 @@ jobs:
       - name: File safety rename-reference fixture
         run: bash Scripts/test-file-safety-rename-references.sh
 
+      - name: File safety mkdir-reference fixture
+        run: bash Scripts/test-file-safety-mkdir-references.sh
+
       - name: File safety destructive-reference fixture
         run: bash Scripts/test-file-safety-destructive-references.sh
 
