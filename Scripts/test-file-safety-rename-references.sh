@@ -47,6 +47,25 @@ expect_forbidden_reference() {
   fi
 }
 
+expect_allowed_source_line() {
+  local label="$1"
+  local source_line="$2"
+
+  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
+
+  set +e
+  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+  local status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    cat "$OUTPUT" >&2
+    echo "File Safety Guard unexpectedly rejected: $label" >&2
+    return 1
+  fi
+}
+
 FAILURES=0
 for rename_reference_case in rename renameat renameatx_np; do
   for reference_context in assignment argument labeledArgument array return; do
@@ -77,8 +96,20 @@ for rename_reference_case in rename renameat renameatx_np; do
   done
 done
 
+if ! expect_allowed_source_line \
+  'quoted rename presentation text' \
+  'private let fileSafetyRenamePresentation = "move, rename, delete"'; then
+  FAILURES=$((FAILURES + 1))
+fi
+
+if ! expect_allowed_source_line \
+  'rename prose comment' \
+  '/// The fixture prevents same-path replacement, rename, or delete/recreate races.'; then
+  FAILURES=$((FAILURES + 1))
+fi
+
 if [[ "$FAILURES" -ne 0 ]]; then
-  echo "$FAILURES POSIX rename function-reference fixture(s) were not rejected." >&2
+  echo "$FAILURES POSIX rename function-reference fixture(s) failed." >&2
   exit 1
 fi
 
