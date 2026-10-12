@@ -47,6 +47,25 @@ expect_forbidden_reference() {
   fi
 }
 
+expect_allowed_source_line() {
+  local label="$1"
+  local source_line="$2"
+
+  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
+
+  set +e
+  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+  local status=$?
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    cat "$OUTPUT" >&2
+    echo "File Safety Guard unexpectedly rejected: $label" >&2
+    return 1
+  fi
+}
+
 FAILURES=0
 for permission_reference_case in chmod fchmod fchmodat; do
   for reference_context in assignment argument labeledArgument array return; do
@@ -76,6 +95,18 @@ for permission_reference_case in chmod fchmod fchmodat; do
     fi
   done
 done
+
+if ! expect_allowed_source_line \
+  'quoted permission API presentation text' \
+  'private let fileSafetyPermissionPresentation = "chmod, fchmod, fchmodat are POSIX permission APIs"'; then
+  FAILURES=$((FAILURES + 1))
+fi
+
+if ! expect_allowed_source_line \
+  'permission API prose comment' \
+  '/// Reviews permission mutations such as chmod, fchmod, and fchmodat without invoking them.'; then
+  FAILURES=$((FAILURES + 1))
+fi
 
 if [[ "$FAILURES" -ne 0 ]]; then
   echo "$FAILURES POSIX permission function-reference fixture(s) failed." >&2
