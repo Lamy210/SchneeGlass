@@ -159,6 +159,9 @@ jobs:
       - name: File safety ownership-reference fixture
         run: bash Scripts/test-file-safety-ownership-references.sh
 
+      - name: File safety file-flags-reference fixture
+        run: bash Scripts/test-file-safety-file-flags-references.sh
+
       - name: File safety destructive-reference fixture
         run: bash Scripts/test-file-safety-destructive-references.sh
 
