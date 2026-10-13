@@ -35,26 +35,26 @@ for file_flags_case in chflags fchflags lchflags; do
 
     case "$reference_context" in
       directCall)
-        source_line="private let fileSafetyFileFlagsReference = $file_flags_case(fileFlagsFixture)"
+        source_line="private let $marker = $file_flags_case(fileFlagsFixture)"
         ;;
       assignment)
-        source_line="private let fileSafetyFileFlagsReference = $file_flags_case"
+        source_line="private let $marker = $file_flags_case"
         ;;
       argument)
-        source_line="private let fileSafetyFileFlagsReference = consume($file_flags_case)"
+        source_line="private let $marker = consume($file_flags_case)"
         ;;
       labeledArgument)
-        source_line="private let fileSafetyFileFlagsReference = consume(callback: $file_flags_case)"
+        source_line="private let $marker = consume(callback: $file_flags_case)"
         ;;
       array)
-        source_line="private let fileSafetyFileFlagsReference = [$file_flags_case]"
+        source_line="private let $marker = [$file_flags_case]"
         ;;
       return)
-        source_line="private let fileSafetyFileFlagsReference = { return $file_flags_case }"
+        source_line="private let $marker = { return $file_flags_case }"
         ;;
     esac
 
-    printf '%s // %s\n' "$source_line" "$marker" >> "$LOCK_SOURCE"
+    printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
   done
 done
 
