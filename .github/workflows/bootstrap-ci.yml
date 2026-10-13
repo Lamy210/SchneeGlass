@@ -159,6 +159,9 @@ jobs:
       - name: File safety xattr-reference fixture
         run: bash Scripts/test-file-safety-xattr-references.sh
 
+      - name: File safety timestamp-reference fixture
+        run: bash Scripts/test-file-safety-timestamp-references.sh
+
       - name: File safety write-reference fixture
         run: bash Scripts/test-file-safety-write-references.sh
 
