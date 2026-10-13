@@ -22,53 +22,17 @@ trap cleanup EXIT
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
 
-expect_forbidden_reference() {
-  local label="$1"
-  local source_line="$2"
-  local expected_fragment="$3"
-
+restore_source() {
   cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
-
-  set +e
-  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-  local status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "File Safety Guard unexpectedly allowed: $label" >&2
-    return 1
-  fi
-
-  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
-     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
-    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
-    return 1
-  fi
 }
 
-expect_allowed_source_line() {
-  local label="$1"
-  local source_line="$2"
-
-  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
-
-  set +e
-  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-  local status=$?
-  set -e
-
-  if [[ "$status" -ne 0 ]]; then
-    cat "$OUTPUT" >&2
-    echo "File Safety Guard unexpectedly rejected: $label" >&2
-    return 1
-  fi
-}
-
-FAILURES=0
+FORBIDDEN_MARKERS=()
+restore_source
 for file_flags_case in chflags fchflags lchflags; do
   for reference_context in directCall assignment argument labeledArgument array return; do
+    marker="FILE_SAFETY_FILE_FLAGS_${file_flags_case}_${reference_context}"
+    FORBIDDEN_MARKERS+=("$marker")
+
     case "$reference_context" in
       directCall)
         source_line="private let fileSafetyFileFlagsReference = $file_flags_case(fileFlagsFixture)"
@@ -90,29 +54,54 @@ for file_flags_case in chflags fchflags lchflags; do
         ;;
     esac
 
-    if ! expect_forbidden_reference \
-      "an unreviewed POSIX $file_flags_case $reference_context file flag mutation reference" \
-      "$source_line" \
-      "$file_flags_case"; then
-      FAILURES=$((FAILURES + 1))
-    fi
+    printf '%s // %s\n' "$source_line" "$marker" >> "$LOCK_SOURCE"
   done
 done
 
-if ! expect_allowed_source_line \
-  'quoted file flag API presentation text' \
-  'private let fileSafetyFileFlagsPresentation = "chflags, fchflags, lchflags are POSIX file flag APIs"'; then
-  FAILURES=$((FAILURES + 1))
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+FORBIDDEN_STATUS=$?
+set -e
+
+if [[ "$FORBIDDEN_STATUS" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched POSIX file flag mutation/reference fixture.' >&2
+  exit 1
 fi
 
-if ! expect_allowed_source_line \
-  'file flag API prose comment' \
-  '/// Reviews file flag mutations such as chflags, fchflags, and lchflags without invoking them.'; then
+FAILURES=0
+for marker in "${FORBIDDEN_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected file flag fixture marker: $marker" >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+DIAGNOSTIC_COUNT="$("$REAL_GREP" -Fc 'FILE_SAFETY_FILE_FLAGS_' "$OUTPUT" || true)"
+if [[ "$DIAGNOSTIC_COUNT" -ne 18 ]]; then
+  echo "Expected exactly 18 file flag fixture diagnostics, found $DIAGNOSTIC_COUNT." >&2
   FAILURES=$((FAILURES + 1))
 fi
 
 if [[ "$FAILURES" -ne 0 ]]; then
-  echo "$FAILURES POSIX file flag mutation/reference fixture(s) failed." >&2
+  cat "$OUTPUT" >&2
+  echo "$FAILURES POSIX file flag mutation/reference diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+restore_source
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyFileFlagsPresentation = "chflags, fchflags, lchflags are POSIX file flag APIs"
+/// Reviews file flag mutations such as chflags, fchflags, and lchflags without invoking them.
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+ALLOWED_STATUS=$?
+set -e
+
+if [[ "$ALLOWED_STATUS" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected file flag presentation/prose fixtures.' >&2
   exit 1
 fi
 
