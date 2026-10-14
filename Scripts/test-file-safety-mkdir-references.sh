@@ -83,3 +83,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
 fi
 
 echo 'POSIX directory-creation function-reference fixtures passed'
+bash Scripts/test-file-safety-special-file-references.sh
