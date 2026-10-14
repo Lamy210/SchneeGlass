@@ -101,7 +101,9 @@ fi
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cat >> "$LOCK_SOURCE" <<'EOF'
-private let fileSafetyClonefilePresentation = "clonefile, clonefileat, and fclonefileat are APFS clone APIs"
+private let fileSafetyClonefilePresentation = "clonefile is an APFS clone API"
+private let fileSafetyClonefileatPresentation = "clonefileat is an APFS clone API"
+private let fileSafetyFclonefileatPresentation = "fclonefileat is an APFS clone API"
 private let fileSafetyClonefileWrapper = clonefileWrapper
 private let fileSafetyClonefileatWrapper = clonefileatWrapper
 private let fileSafetyFclonefileatWrapper = fclonefileatWrapper
