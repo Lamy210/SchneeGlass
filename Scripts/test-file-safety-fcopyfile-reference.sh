@@ -25,12 +25,14 @@ cp "$LOCK_SOURCE" "$LOCK_BACKUP"
 case_names=(
   'assignment'
   'argument'
+  'labeled argument'
   'array'
   'return'
 )
 case_lines=(
   'private let fileSafetyFcopyfileReference = fcopyfile'
   'private let fileSafetyFcopyfileArgumentReference = consume(fcopyfile)'
+  'private let fileSafetyFcopyfileLabeledArgumentReference = consume(callback: fcopyfile)'
   'private let fileSafetyFcopyfileArrayReference = [fcopyfile]'
   'private let fileSafetyFcopyfileReturnReference = { return fcopyfile }'
 )
