@@ -134,4 +134,7 @@ if [[ "$allowed_status" -ne 0 ]]; then
   exit 1
 fi
 
-echo 'copyfile/fcopyfile mutation and first-class function-reference fixtures passed'
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+bash Scripts/test-file-safety-clonefile-references.sh
+
+echo 'copyfile/fcopyfile/clonefile mutation and first-class function-reference fixtures passed'
