@@ -85,3 +85,4 @@ fi
 echo 'POSIX directory-creation function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-special-file-references.sh
+bash Scripts/test-file-safety-temp-creation-references.sh
