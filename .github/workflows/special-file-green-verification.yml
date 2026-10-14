@@ -1,0 +1,20 @@
+name: Special File GREEN Verification
+
+on:
+  push:
+    branches:
+      - bootstrap/special-file-green
+
+permissions:
+  contents: read
+
+jobs:
+  special-file-green:
+    name: Special File GREEN fixture
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run special-file File Safety fixture
+        run: bash Scripts/test-file-safety-special-file-references.sh
