@@ -1,0 +1,19 @@
+name: Removefile GREEN Verification
+
+on:
+  push:
+    branches:
+      - bootstrap/removefile-green
+
+permissions:
+  contents: read
+
+jobs:
+  removefile-green:
+    name: Removefile GREEN fixture
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Run destructive File Safety fixture
+        run: bash Scripts/test-file-safety-destructive-references.sh
