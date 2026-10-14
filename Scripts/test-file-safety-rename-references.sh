@@ -96,6 +96,47 @@ for rename_reference_case in rename renameat renameatx_np; do
   done
 done
 
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+RENAMEX_NP_MARKERS=(
+  'FILE_SAFETY_RENAMEX_NP_directCall'
+  'FILE_SAFETY_RENAMEX_NP_assignment'
+  'FILE_SAFETY_RENAMEX_NP_argument'
+  'FILE_SAFETY_RENAMEX_NP_labeledArgument'
+  'FILE_SAFETY_RENAMEX_NP_array'
+  'FILE_SAFETY_RENAMEX_NP_return'
+)
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_RENAMEX_NP_directCall = renamex_np(sourcePath, destinationPath, 0)
+private let FILE_SAFETY_RENAMEX_NP_assignment = renamex_np
+private let FILE_SAFETY_RENAMEX_NP_argument = consume(renamex_np)
+private let FILE_SAFETY_RENAMEX_NP_labeledArgument = consume(callback: renamex_np)
+private let FILE_SAFETY_RENAMEX_NP_array = [renamex_np]
+private let FILE_SAFETY_RENAMEX_NP_return = { return renamex_np }
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+renamex_np_status=$?
+set -e
+
+if [[ "$renamex_np_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched renamex_np mutation/reference fixture.' >&2
+  exit 1
+fi
+
+for marker in "${RENAMEX_NP_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected renamex_np fixture marker: $marker" >&2
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+renamex_np_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_RENAMEX_NP_' "$OUTPUT" || true)"
+if [[ "$renamex_np_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 renamex_np fixture diagnostics, found $renamex_np_diagnostic_count." >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
 if ! expect_allowed_source_line \
   'quoted rename presentation text' \
   'private let fileSafetyRenamePresentation = "move, rename, delete"'; then
@@ -105,6 +146,18 @@ fi
 if ! expect_allowed_source_line \
   'rename prose comment' \
   '/// The fixture prevents same-path replacement, rename, or delete/recreate races.'; then
+  FAILURES=$((FAILURES + 1))
+fi
+
+if ! expect_allowed_source_line \
+  'quoted renamex_np presentation text' \
+  'private let fileSafetyRenamexPresentation = "renamex_np is a safe-save API"'; then
+  FAILURES=$((FAILURES + 1))
+fi
+
+if ! expect_allowed_source_line \
+  'longer renamex_np identifier' \
+  'private let fileSafetyRenamexWrapper = renamex_npWrapper'; then
   FAILURES=$((FAILURES + 1))
 fi
 
