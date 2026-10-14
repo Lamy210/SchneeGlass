@@ -79,6 +79,7 @@ scan_pattern 'chflags' '(^|[^[:alnum:]_])chflags\(|=[[:space:]]*chflags[[:space:
 scan_pattern 'fchflags' '(^|[^[:alnum:]_])fchflags\(|=[[:space:]]*fchflags[[:space:]]*$|\([[:space:]]*fchflags[[:space:]]*\)|:[[:space:]]*fchflags[[:space:]]*\)|\[[[:space:]]*fchflags[[:space:]]*\]|return[[:space:]]+fchflags([^[:alnum:]_]|$)'
 scan_pattern 'lchflags' '(^|[^[:alnum:]_])lchflags\(|=[[:space:]]*lchflags[[:space:]]*$|\([[:space:]]*lchflags[[:space:]]*\)|:[[:space:]]*lchflags[[:space:]]*\)|\[[[:space:]]*lchflags[[:space:]]*\]|return[[:space:]]+lchflags([^[:alnum:]_]|$)'
 scan_pattern 'fcopyfile' '(^|[^[:alnum:]_])fcopyfile\(|=[[:space:]]*fcopyfile[[:space:]]*$|(\(|\[|,|:)[[:space:]]*fcopyfile[[:space:]]*(\)|\]|,)|return[[:space:]]+fcopyfile([^[:alnum:]_]|$)'
+scan_pattern 'copyfile' '(^|[^[:alnum:]_])copyfile\(|=[[:space:]]*copyfile[[:space:]]*$|\([[:space:]]*copyfile[[:space:]]*\)|:[[:space:]]*copyfile[[:space:]]*\)|\[[[:space:]]*copyfile[[:space:]]*\]|return[[:space:]]+copyfile([^[:alnum:]_]|$)'
 scan_pattern 'creat' '(^|[^[:alnum:]_])creat\(|=[[:space:]]*creat[[:space:]]*$|(\(|\[|,)[[:space:]]*creat[[:space:]]*(\)|\]|,)|return[[:space:]]+creat([^[:alnum:]_]|$)'
 scan_pattern 'truncate' '(^|[^[:alnum:]_])truncate\(|=[[:space:]]*truncate[[:space:]]*$|(\(|\[|,)[[:space:]]*truncate[[:space:]]*(\)|\]|,)|return[[:space:]]+truncate([^[:alnum:]_]|$)'
 scan_pattern 'ftruncate' '(^|[^[:alnum:]_])ftruncate\(|=[[:space:]]*ftruncate[[:space:]]*$|(\(|\[|,)[[:space:]]*ftruncate[[:space:]]*(\)|\]|,)|return[[:space:]]+ftruncate([^[:alnum:]_]|$)'
