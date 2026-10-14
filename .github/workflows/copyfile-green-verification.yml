@@ -1,0 +1,20 @@
+name: Copyfile GREEN Verification
+
+on:
+  push:
+    branches:
+      - 'bootstrap/copyfile-green'
+
+permissions:
+  contents: read
+
+jobs:
+  copyfile-green:
+    name: Copyfile GREEN fixture
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run copyfile-family File Safety fixture
+        run: bash Scripts/test-file-safety-fcopyfile-reference.sh
