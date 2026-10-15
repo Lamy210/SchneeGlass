@@ -73,6 +73,7 @@ scan_pattern 'mkdirat' '(^|[^[:alnum:]_])mkdirat\(|=[[:space:]]*mkdirat[[:space:
 scan_pattern 'mkdtemp' '(^|[^[:alnum:]_])mkdtemp\(|=[[:space:]]*mkdtemp[[:space:]]*$|(\(|\[|,|:)[[:space:]]*mkdtemp[[:space:]]*(\)|\]|,)|return[[:space:]]+mkdtemp([^[:alnum:]_]|$)'
 scan_pattern 'mkstemp' '(^|[^[:alnum:]_])mkstemp\(|=[[:space:]]*mkstemp[[:space:]]*$|(\(|\[|,|:)[[:space:]]*mkstemp[[:space:]]*(\)|\]|,)|return[[:space:]]+mkstemp([^[:alnum:]_]|$)'
 scan_pattern 'mkstemps' '(^|[^[:alnum:]_])mkstemps\(|=[[:space:]]*mkstemps[[:space:]]*$|(\(|\[|,|:)[[:space:]]*mkstemps[[:space:]]*(\)|\]|,)|return[[:space:]]+mkstemps([^[:alnum:]_]|$)'
+scan_pattern 'tmpfile' '(^|[^[:alnum:]_])tmpfile\(|=[[:space:]]*tmpfile[[:space:]]*$|(\(|\[|,|:)[[:space:]]*tmpfile[[:space:]]*(\)|\]|,)|return[[:space:]]+tmpfile([^[:alnum:]_]|$)'
 scan_pattern 'mkfifo' '(^|[^[:alnum:]_])mkfifo\(|=[[:space:]]*mkfifo[[:space:]]*$|\([[:space:]]*mkfifo[[:space:]]*\)|:[[:space:]]*mkfifo[[:space:]]*\)|\[[[:space:]]*mkfifo[[:space:]]*\]|return[[:space:]]+mkfifo([^[:alnum:]_]|$)'
 scan_pattern 'mknod' '(^|[^[:alnum:]_])mknod\(|=[[:space:]]*mknod[[:space:]]*$|\([[:space:]]*mknod[[:space:]]*\)|:[[:space:]]*mknod[[:space:]]*\)|\[[[:space:]]*mknod[[:space:]]*\]|return[[:space:]]+mknod([^[:alnum:]_]|$)'
 scan_pattern 'chmod' '(^|[^[:alnum:]_])chmod\(|=[[:space:]]*chmod[[:space:]]*$|\([[:space:]]*chmod[[:space:]]*\)|:[[:space:]]*chmod[[:space:]]*\)|\[[[:space:]]*chmod[[:space:]]*\]|return[[:space:]]+chmod([^[:alnum:]_]|$)'
