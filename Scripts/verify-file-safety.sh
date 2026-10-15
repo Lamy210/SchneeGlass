@@ -63,6 +63,7 @@ scan_pattern 'symlinkat' '(^|[^[:alnum:]_])symlinkat\(|=[[:space:]]*symlinkat[[:
 scan_pattern 'unlink' '(^|[^[:alnum:]_])unlink([^[:alnum:]_]|$)'
 scan_pattern 'unlinkat' '(^|[^[:alnum:]_])unlinkat([^[:alnum:]_]|$)'
 scan_pattern 'rmdir' '(^|[^[:alnum:]_])rmdir([^[:alnum:]_]|$)'
+scan_pattern 'removefile' '(^|[^[:alnum:]_])removefile\(|=[[:space:]]*removefile[[:space:]]*$|(\(|\[|,|:)[[:space:]]*removefile[[:space:]]*(\)|\]|,)|return[[:space:]]+removefile([^[:alnum:]_]|$)'
 scan_pattern 'rename' '(^|[^[:alnum:]_])rename\(|=[[:space:]]*rename[[:space:]]*$|\([[:space:]]*rename[[:space:]]*\)|:[[:space:]]*rename[[:space:]]*\)|\[[[:space:]]*rename[[:space:]]*\]|return[[:space:]]+rename([^[:alnum:]_]|$)'
 scan_pattern 'renameat' '(^|[^[:alnum:]_])renameat\(|=[[:space:]]*renameat[[:space:]]*$|\([[:space:]]*renameat[[:space:]]*\)|:[[:space:]]*renameat[[:space:]]*\)|\[[[:space:]]*renameat[[:space:]]*\]|return[[:space:]]+renameat([^[:alnum:]_]|$)'
 scan_pattern 'renameatx_np' '(^|[^[:alnum:]_])renameatx_np\(|=[[:space:]]*renameatx_np[[:space:]]*$|\([[:space:]]*renameatx_np[[:space:]]*\)|:[[:space:]]*renameatx_np[[:space:]]*\)|\[[[:space:]]*renameatx_np[[:space:]]*\]|return[[:space:]]+renameatx_np([^[:alnum:]_]|$)'

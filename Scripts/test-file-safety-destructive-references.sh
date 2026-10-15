@@ -80,3 +80,72 @@ if [[ "$FAILURES" -ne 0 ]]; then
 fi
 
 echo 'POSIX destructive function-reference fixtures passed'
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+REMOVEFILE_MARKERS=(
+  'FILE_SAFETY_REMOVEFILE_directCall'
+  'FILE_SAFETY_REMOVEFILE_assignment'
+  'FILE_SAFETY_REMOVEFILE_argument'
+  'FILE_SAFETY_REMOVEFILE_labeledArgument'
+  'FILE_SAFETY_REMOVEFILE_array'
+  'FILE_SAFETY_REMOVEFILE_return'
+)
+
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_REMOVEFILE_directCall = removefile(targetPath, nil, 0)
+private let FILE_SAFETY_REMOVEFILE_assignment = removefile
+private let FILE_SAFETY_REMOVEFILE_argument = consume(removefile)
+private let FILE_SAFETY_REMOVEFILE_labeledArgument = consume(callback: removefile)
+private let FILE_SAFETY_REMOVEFILE_array = [removefile]
+private let FILE_SAFETY_REMOVEFILE_return = { return removefile }
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+removefile_status=$?
+set -e
+
+if [[ "$removefile_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched removefile mutation/reference fixture.' >&2
+  exit 1
+fi
+
+removefile_failures=0
+for marker in "${REMOVEFILE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected removefile fixture marker: $marker" >&2
+    ((removefile_failures += 1))
+  fi
+done
+
+removefile_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_REMOVEFILE_' "$OUTPUT" || true)"
+if [[ "$removefile_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 removefile fixture diagnostics, found $removefile_diagnostic_count." >&2
+  ((removefile_failures += 1))
+fi
+
+if (( removefile_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$removefile_failures removefile diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyRemovefilePresentation = "removefile deletes filesystem entries"
+private let fileSafetyRemovefileWrapper = removefileWrapper
+/// Documents removefile policy without invoking a filesystem mutation API.
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+removefile_allowed_status=$?
+set -e
+
+if [[ "$removefile_allowed_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected removefile presentation/boundary fixtures.' >&2
+  exit 1
+fi
+
+echo 'removefile mutation and first-class function-reference fixtures passed'
