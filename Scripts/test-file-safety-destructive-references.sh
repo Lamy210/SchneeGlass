@@ -149,3 +149,85 @@ if [[ "$removefile_allowed_status" -ne 0 ]]; then
 fi
 
 echo 'removefile mutation and first-class function-reference fixtures passed'
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+TEMP_FILE_MARKERS=(
+  'FILE_SAFETY_TEMPFILE_mkstemp_directCall'
+  'FILE_SAFETY_TEMPFILE_mkstemp_assignment'
+  'FILE_SAFETY_TEMPFILE_mkstemp_argument'
+  'FILE_SAFETY_TEMPFILE_mkstemp_labeledArgument'
+  'FILE_SAFETY_TEMPFILE_mkstemp_array'
+  'FILE_SAFETY_TEMPFILE_mkstemp_return'
+  'FILE_SAFETY_TEMPFILE_mkstemps_directCall'
+  'FILE_SAFETY_TEMPFILE_mkstemps_assignment'
+  'FILE_SAFETY_TEMPFILE_mkstemps_argument'
+  'FILE_SAFETY_TEMPFILE_mkstemps_labeledArgument'
+  'FILE_SAFETY_TEMPFILE_mkstemps_array'
+  'FILE_SAFETY_TEMPFILE_mkstemps_return'
+)
+
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_TEMPFILE_mkstemp_directCall = mkstemp(template)
+private let FILE_SAFETY_TEMPFILE_mkstemp_assignment = mkstemp
+private let FILE_SAFETY_TEMPFILE_mkstemp_argument = consume(mkstemp)
+private let FILE_SAFETY_TEMPFILE_mkstemp_labeledArgument = consume(callback: mkstemp)
+private let FILE_SAFETY_TEMPFILE_mkstemp_array = [mkstemp]
+private let FILE_SAFETY_TEMPFILE_mkstemp_return = { return mkstemp }
+private let FILE_SAFETY_TEMPFILE_mkstemps_directCall = mkstemps(template, 4)
+private let FILE_SAFETY_TEMPFILE_mkstemps_assignment = mkstemps
+private let FILE_SAFETY_TEMPFILE_mkstemps_argument = consume(mkstemps)
+private let FILE_SAFETY_TEMPFILE_mkstemps_labeledArgument = consume(callback: mkstemps)
+private let FILE_SAFETY_TEMPFILE_mkstemps_array = [mkstemps]
+private let FILE_SAFETY_TEMPFILE_mkstemps_return = { return mkstemps }
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+temp_file_status=$?
+set -e
+
+if [[ "$temp_file_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched mkstemp/mkstemps file-creation/reference fixture.' >&2
+  exit 1
+fi
+
+temp_file_failures=0
+for marker in "${TEMP_FILE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected temporary-file fixture marker: $marker" >&2
+    ((temp_file_failures += 1))
+  fi
+done
+
+temp_file_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_TEMPFILE_' "$OUTPUT" || true)"
+if [[ "$temp_file_diagnostic_count" -ne 12 ]]; then
+  echo "Expected exactly 12 mkstemp/mkstemps fixture diagnostics, found $temp_file_diagnostic_count." >&2
+  ((temp_file_failures += 1))
+fi
+
+if (( temp_file_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$temp_file_failures temporary-file diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyMkstempPresentation = "mkstemp and mkstemps create unique temporary files"
+private let fileSafetyMkstempWrapper = mkstempWrapper
+private let fileSafetyMkstempsWrapper = mkstempsWrapper
+/// Documents mkstemp and mkstemps policy without invoking filesystem mutation APIs.
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+temp_file_allowed_status=$?
+set -e
+
+if [[ "$temp_file_allowed_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected mkstemp/mkstemps presentation/boundary fixtures.' >&2
+  exit 1
+fi
+
+echo 'mkstemp/mkstemps file-creation and first-class function-reference fixtures passed'
