@@ -1,0 +1,19 @@
+name: Mkdtemp RED Verification
+
+on:
+  push:
+    branches:
+      - bootstrap/mkdtemp-red
+
+permissions:
+  contents: read
+
+jobs:
+  mkdtemp-red:
+    name: Mkdtemp RED fixture
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Run mkdir File Safety fixture
+        run: bash Scripts/test-file-safety-mkdir-references.sh
