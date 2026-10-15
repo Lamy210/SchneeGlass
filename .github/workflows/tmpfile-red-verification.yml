@@ -1,0 +1,18 @@
+name: Tmpfile RED Verification
+
+on:
+  push:
+    branches:
+      - bootstrap/tmpfile-red
+
+permissions:
+  contents: read
+
+jobs:
+  tmpfile-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Verify tmpfile RED fixture
+        run: bash Scripts/test-file-safety-temporary-file-references.sh
