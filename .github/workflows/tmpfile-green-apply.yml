@@ -1,0 +1,56 @@
+name: Tmpfile GREEN Apply
+
+on:
+  push:
+    branches:
+      - bootstrap/tmpfile-green-apply
+
+permissions:
+  contents: write
+
+jobs:
+  tmpfile-green-apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/classify-tmpfile-creation
+          fetch-depth: 0
+
+      - name: Add tmpfile classifier
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('Scripts/verify-file-safety.sh')
+          text = path.read_text()
+          needle = "scan_pattern 'mkstemps' '(^|[^[:alnum:]_])mkstemps\\(|=[[:space:]]*mkstemps[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*mkstemps[[:space:]]*(\\)|\\]|,)|return[[:space:]]+mkstemps([^[:alnum:]_]|$)'\n"
+          addition = "scan_pattern 'tmpfile' '(^|[^[:alnum:]_])tmpfile\\(|=[[:space:]]*tmpfile[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*tmpfile[[:space:]]*(\\)|\\]|,)|return[[:space:]]+tmpfile([^[:alnum:]_]|$)'\n"
+          if text.count(needle) != 1:
+              raise SystemExit(f'expected exactly one mkstemps classifier anchor, found {text.count(needle)}')
+          if "scan_pattern 'tmpfile'" in text:
+              raise SystemExit('tmpfile classifier already present')
+          path.write_text(text.replace(needle, needle + addition, 1))
+          PY
+
+      - name: Verify minimal diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git diff --numstat -- Scripts/verify-file-safety.sh)" = $'1\t0\tScripts/verify-file-safety.sh'
+          git diff -- Scripts/verify-file-safety.sh
+
+      - name: Verify tmpfile GREEN fixture
+        shell: bash
+        run: bash Scripts/test-file-safety-temporary-file-references.sh
+
+      - name: Commit verified classifier
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Scripts/verify-file-safety.sh
+          git commit -m 'safety: classify tmpfile creation'
+          git push origin HEAD:fix/classify-tmpfile-creation
