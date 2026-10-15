@@ -1,0 +1,54 @@
+name: Apply mkostemp Classifiers
+
+on:
+  push:
+    branches:
+      - verify/apply-mkostemp-classifiers
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/classify-mkostemp-mkostemps
+          fetch-depth: 0
+      - name: Add minimal classifiers
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('Scripts/verify-file-safety.sh')
+          text = path.read_text()
+          if "scan_pattern 'mkostemp' " in text or "scan_pattern 'mkostemps' " in text:
+              raise SystemExit('mkostemp classifier already exists')
+
+          lines = text.splitlines(keepends=True)
+          indexes = [i for i, line in enumerate(lines) if line.startswith("scan_pattern 'mkstemps' ")]
+          if len(indexes) != 1:
+              raise SystemExit(f'expected one mkstemps classifier anchor, found {len(indexes)}')
+
+          insertion = [
+              "scan_pattern 'mkostemp' '(^|[^[:alnum:]_])mkostemp\\(|=[[:space:]]*mkostemp[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*mkostemp[[:space:]]*(\\)|\\]|,)|return[[:space:]]+mkostemp([^[:alnum:]_]|$)'\n",
+              "scan_pattern 'mkostemps' '(^|[^[:alnum:]_])mkostemps\\(|=[[:space:]]*mkostemps[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*mkostemps[[:space:]]*(\\)|\\]|,)|return[[:space:]]+mkostemps([^[:alnum:]_]|$)'\n",
+          ]
+          index = indexes[0] + 1
+          lines[index:index] = insertion
+          path.write_text(''.join(lines))
+          PY
+          git diff --check
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = "1"
+          test "$(git diff --name-only)" = "Scripts/verify-file-safety.sh"
+          test "$(git diff --numstat | awk '{print $1 ":" $2}')" = "2:0"
+      - name: Commit and push feature change
+        run: |
+          git config user.name 'Lamy210'
+          git config user.email '90091196+Lamy210@users.noreply.github.com'
+          git add Scripts/verify-file-safety.sh
+          git commit -m 'safety: classify mkostemp temporary-file creation'
+          git push origin HEAD:fix/classify-mkostemp-mkostemps
