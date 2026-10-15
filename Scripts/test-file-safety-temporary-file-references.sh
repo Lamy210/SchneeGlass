@@ -35,6 +35,18 @@ TEMPORARY_FILE_MARKERS=(
   'FILE_SAFETY_MKSTEMPS_labeledArgument'
   'FILE_SAFETY_MKSTEMPS_array'
   'FILE_SAFETY_MKSTEMPS_return'
+  'FILE_SAFETY_MKOSTEMP_directCall'
+  'FILE_SAFETY_MKOSTEMP_assignment'
+  'FILE_SAFETY_MKOSTEMP_argument'
+  'FILE_SAFETY_MKOSTEMP_labeledArgument'
+  'FILE_SAFETY_MKOSTEMP_array'
+  'FILE_SAFETY_MKOSTEMP_return'
+  'FILE_SAFETY_MKOSTEMPS_directCall'
+  'FILE_SAFETY_MKOSTEMPS_assignment'
+  'FILE_SAFETY_MKOSTEMPS_argument'
+  'FILE_SAFETY_MKOSTEMPS_labeledArgument'
+  'FILE_SAFETY_MKOSTEMPS_array'
+  'FILE_SAFETY_MKOSTEMPS_return'
   'FILE_SAFETY_TMPFILE_directCall'
   'FILE_SAFETY_TMPFILE_assignment'
   'FILE_SAFETY_TMPFILE_argument'
@@ -56,6 +68,18 @@ private let FILE_SAFETY_MKSTEMPS_argument = consume(mkstemps)
 private let FILE_SAFETY_MKSTEMPS_labeledArgument = consume(callback: mkstemps)
 private let FILE_SAFETY_MKSTEMPS_array = [mkstemps]
 private let FILE_SAFETY_MKSTEMPS_return = { return mkstemps }
+private let FILE_SAFETY_MKOSTEMP_directCall = mkostemp(template, 0)
+private let FILE_SAFETY_MKOSTEMP_assignment = mkostemp
+private let FILE_SAFETY_MKOSTEMP_argument = consume(mkostemp)
+private let FILE_SAFETY_MKOSTEMP_labeledArgument = consume(callback: mkostemp)
+private let FILE_SAFETY_MKOSTEMP_array = [mkostemp]
+private let FILE_SAFETY_MKOSTEMP_return = { return mkostemp }
+private let FILE_SAFETY_MKOSTEMPS_directCall = mkostemps(template, 4, 0)
+private let FILE_SAFETY_MKOSTEMPS_assignment = mkostemps
+private let FILE_SAFETY_MKOSTEMPS_argument = consume(mkostemps)
+private let FILE_SAFETY_MKOSTEMPS_labeledArgument = consume(callback: mkostemps)
+private let FILE_SAFETY_MKOSTEMPS_array = [mkostemps]
+private let FILE_SAFETY_MKOSTEMPS_return = { return mkostemps }
 private let FILE_SAFETY_TMPFILE_directCall = tmpfile()
 private let FILE_SAFETY_TMPFILE_assignment = tmpfile
 private let FILE_SAFETY_TMPFILE_argument = consume(tmpfile)
@@ -84,6 +108,8 @@ done
 
 mkstemp_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKSTEMP_' "$OUTPUT" || true)"
 mkstemps_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKSTEMPS_' "$OUTPUT" || true)"
+mkostemp_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKOSTEMP_' "$OUTPUT" || true)"
+mkostemps_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKOSTEMPS_' "$OUTPUT" || true)"
 tmpfile_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_TMPFILE_' "$OUTPUT" || true)"
 if [[ "$mkstemp_diagnostic_count" -ne 6 ]]; then
   echo "Expected exactly 6 mkstemp fixture diagnostics, found $mkstemp_diagnostic_count." >&2
@@ -91,6 +117,14 @@ if [[ "$mkstemp_diagnostic_count" -ne 6 ]]; then
 fi
 if [[ "$mkstemps_diagnostic_count" -ne 6 ]]; then
   echo "Expected exactly 6 mkstemps fixture diagnostics, found $mkstemps_diagnostic_count." >&2
+  ((failures += 1))
+fi
+if [[ "$mkostemp_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 mkostemp fixture diagnostics, found $mkostemp_diagnostic_count." >&2
+  ((failures += 1))
+fi
+if [[ "$mkostemps_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 mkostemps fixture diagnostics, found $mkostemps_diagnostic_count." >&2
   ((failures += 1))
 fi
 if [[ "$tmpfile_diagnostic_count" -ne 6 ]]; then
@@ -108,9 +142,13 @@ cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cat >> "$LOCK_SOURCE" <<'EOF'
 private let fileSafetyMkstempPresentation = "mkstemp creates a unique temporary file"
 private let fileSafetyMkstempsPresentation = "mkstemps creates a unique temporary file with a suffix"
+private let fileSafetyMkostempPresentation = "mkostemp creates a unique temporary file with open flags"
+private let fileSafetyMkostempsPresentation = "mkostemps creates a unique temporary file with a suffix and open flags"
 private let fileSafetyTmpfilePresentation = "tmpfile creates and unlinks a temporary file"
 private let fileSafetyMkstempWrapper = mkstempWrapper
 private let fileSafetyMkstempsWrapper = mkstempsWrapper
+private let fileSafetyMkostempWrapper = mkostempWrapper
+private let fileSafetyMkostempsWrapper = mkostempsWrapper
 private let fileSafetyTmpfileWrapper = tmpfileWrapper
 /// Documents temporary-file creation without invoking a filesystem mutation API.
 EOF
