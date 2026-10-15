@@ -29,12 +29,24 @@ SPECIAL_FILE_MARKERS=(
   'FILE_SAFETY_MKFIFO_labeledArgument'
   'FILE_SAFETY_MKFIFO_array'
   'FILE_SAFETY_MKFIFO_return'
+  'FILE_SAFETY_MKFIFOAT_directCall'
+  'FILE_SAFETY_MKFIFOAT_assignment'
+  'FILE_SAFETY_MKFIFOAT_argument'
+  'FILE_SAFETY_MKFIFOAT_labeledArgument'
+  'FILE_SAFETY_MKFIFOAT_array'
+  'FILE_SAFETY_MKFIFOAT_return'
   'FILE_SAFETY_MKNOD_directCall'
   'FILE_SAFETY_MKNOD_assignment'
   'FILE_SAFETY_MKNOD_argument'
   'FILE_SAFETY_MKNOD_labeledArgument'
   'FILE_SAFETY_MKNOD_array'
   'FILE_SAFETY_MKNOD_return'
+  'FILE_SAFETY_MKNODAT_directCall'
+  'FILE_SAFETY_MKNODAT_assignment'
+  'FILE_SAFETY_MKNODAT_argument'
+  'FILE_SAFETY_MKNODAT_labeledArgument'
+  'FILE_SAFETY_MKNODAT_array'
+  'FILE_SAFETY_MKNODAT_return'
 )
 
 cat >> "$LOCK_SOURCE" <<'EOF'
@@ -44,12 +56,24 @@ private let FILE_SAFETY_MKFIFO_argument = consume(mkfifo)
 private let FILE_SAFETY_MKFIFO_labeledArgument = consume(callback: mkfifo)
 private let FILE_SAFETY_MKFIFO_array = [mkfifo]
 private let FILE_SAFETY_MKFIFO_return = { return mkfifo }
+private let FILE_SAFETY_MKFIFOAT_directCall = mkfifoat(AT_FDCWD, fifoPath, 0o600)
+private let FILE_SAFETY_MKFIFOAT_assignment = mkfifoat
+private let FILE_SAFETY_MKFIFOAT_argument = consume(mkfifoat)
+private let FILE_SAFETY_MKFIFOAT_labeledArgument = consume(callback: mkfifoat)
+private let FILE_SAFETY_MKFIFOAT_array = [mkfifoat]
+private let FILE_SAFETY_MKFIFOAT_return = { return mkfifoat }
 private let FILE_SAFETY_MKNOD_directCall = mknod(nodePath, 0o600, 0)
 private let FILE_SAFETY_MKNOD_assignment = mknod
 private let FILE_SAFETY_MKNOD_argument = consume(mknod)
 private let FILE_SAFETY_MKNOD_labeledArgument = consume(callback: mknod)
 private let FILE_SAFETY_MKNOD_array = [mknod]
 private let FILE_SAFETY_MKNOD_return = { return mknod }
+private let FILE_SAFETY_MKNODAT_directCall = mknodat(AT_FDCWD, nodePath, 0o600, 0)
+private let FILE_SAFETY_MKNODAT_assignment = mknodat
+private let FILE_SAFETY_MKNODAT_argument = consume(mknodat)
+private let FILE_SAFETY_MKNODAT_labeledArgument = consume(callback: mknodat)
+private let FILE_SAFETY_MKNODAT_array = [mknodat]
+private let FILE_SAFETY_MKNODAT_return = { return mknodat }
 EOF
 
 set +e
@@ -71,13 +95,23 @@ for marker in "${SPECIAL_FILE_MARKERS[@]}"; do
 done
 
 mkfifo_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKFIFO_' "$OUTPUT" || true)"
+mkfifoat_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKFIFOAT_' "$OUTPUT" || true)"
 mknod_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKNOD_' "$OUTPUT" || true)"
+mknodat_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_MKNODAT_' "$OUTPUT" || true)"
 if [[ "$mkfifo_diagnostic_count" -ne 6 ]]; then
   echo "Expected exactly 6 mkfifo fixture diagnostics, found $mkfifo_diagnostic_count." >&2
   ((failures += 1))
 fi
+if [[ "$mkfifoat_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 mkfifoat fixture diagnostics, found $mkfifoat_diagnostic_count." >&2
+  ((failures += 1))
+fi
 if [[ "$mknod_diagnostic_count" -ne 6 ]]; then
   echo "Expected exactly 6 mknod fixture diagnostics, found $mknod_diagnostic_count." >&2
+  ((failures += 1))
+fi
+if [[ "$mknodat_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 mknodat fixture diagnostics, found $mknodat_diagnostic_count." >&2
   ((failures += 1))
 fi
 
@@ -90,9 +124,13 @@ fi
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cat >> "$LOCK_SOURCE" <<'EOF'
 private let fileSafetyMkfifoPresentation = "mkfifo creates a named FIFO"
+private let fileSafetyMkfifoatPresentation = "mkfifoat creates a named FIFO relative to a directory descriptor"
 private let fileSafetyMknodPresentation = "mknod creates a special file node"
+private let fileSafetyMknodatPresentation = "mknodat creates a special file node relative to a directory descriptor"
 private let fileSafetyMkfifoWrapper = mkfifoWrapper
+private let fileSafetyMkfifoatWrapper = mkfifoatWrapper
 private let fileSafetyMknodWrapper = mknodWrapper
+private let fileSafetyMknodatWrapper = mknodatWrapper
 /// Documents special-file creation without invoking a filesystem mutation API.
 EOF
 
