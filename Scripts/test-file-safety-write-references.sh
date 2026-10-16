@@ -82,6 +82,73 @@ if [[ "$FAILURES" -ne 0 ]]; then
   exit 1
 fi
 
+PWRITEV_MARKERS=(
+  'FILE_SAFETY_PWRITEV_directCall'
+  'FILE_SAFETY_PWRITEV_assignment'
+  'FILE_SAFETY_PWRITEV_argument'
+  'FILE_SAFETY_PWRITEV_labeledArgument'
+  'FILE_SAFETY_PWRITEV_array'
+  'FILE_SAFETY_PWRITEV_return'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_PWRITEV_directCall = pwritev(0, nil, 0, 0)
+private let FILE_SAFETY_PWRITEV_assignment = pwritev
+private let FILE_SAFETY_PWRITEV_argument = consume(pwritev)
+private let FILE_SAFETY_PWRITEV_labeledArgument = consume(callback: pwritev)
+private let FILE_SAFETY_PWRITEV_array = [pwritev]
+private let FILE_SAFETY_PWRITEV_return = { return pwritev }
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+pwritev_status=$?
+set -e
+
+if [[ "$pwritev_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched pwritev raw-write/reference fixture.' >&2
+  exit 1
+fi
+
+pwritev_failures=0
+for marker in "${PWRITEV_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected pwritev fixture marker: $marker" >&2
+    ((pwritev_failures += 1))
+  fi
+done
+
+pwritev_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_PWRITEV_' "$OUTPUT" || true)"
+if [[ "$pwritev_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 pwritev fixture diagnostics, found $pwritev_diagnostic_count." >&2
+  ((pwritev_failures += 1))
+fi
+
+if (( pwritev_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$pwritev_failures pwritev raw-write diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyPwritevPresentation = "pwritev performs a positioned vectored write"
+private let fileSafetyPwritevWrapper = pwritevWrapper
+/// Documents positioned vectored writes without invoking a filesystem mutation API.
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+pwritev_allowed_status=$?
+set -e
+
+if [[ "$pwritev_allowed_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected pwritev presentation/boundary fixtures.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
