@@ -1,0 +1,20 @@
+name: Pwritev File Safety Verification
+
+on:
+  push:
+    branches:
+      - 'bootstrap/pwritev-*'
+
+permissions:
+  contents: read
+
+jobs:
+  lexical:
+    name: pwritev File Safety lexical fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run pwritev write-reference fixture
+        run: bash Scripts/test-file-safety-write-references.sh
