@@ -89,6 +89,12 @@ PWRITEV_MARKERS=(
   'FILE_SAFETY_PWRITEV_labeledArgument'
   'FILE_SAFETY_PWRITEV_array'
   'FILE_SAFETY_PWRITEV_return'
+  'FILE_SAFETY_DARWIN_PWRITEV_directCall'
+  'FILE_SAFETY_DARWIN_PWRITEV_assignment'
+  'FILE_SAFETY_DARWIN_PWRITEV_argument'
+  'FILE_SAFETY_DARWIN_PWRITEV_labeledArgument'
+  'FILE_SAFETY_DARWIN_PWRITEV_array'
+  'FILE_SAFETY_DARWIN_PWRITEV_return'
 )
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
@@ -99,6 +105,12 @@ private let FILE_SAFETY_PWRITEV_argument = consume(pwritev)
 private let FILE_SAFETY_PWRITEV_labeledArgument = consume(callback: pwritev)
 private let FILE_SAFETY_PWRITEV_array = [pwritev]
 private let FILE_SAFETY_PWRITEV_return = { return pwritev }
+private let FILE_SAFETY_DARWIN_PWRITEV_directCall = Darwin.pwritev(0, nil, 0, 0)
+private let FILE_SAFETY_DARWIN_PWRITEV_assignment = Darwin.pwritev
+private let FILE_SAFETY_DARWIN_PWRITEV_argument = consume(Darwin.pwritev)
+private let FILE_SAFETY_DARWIN_PWRITEV_labeledArgument = consume(callback: Darwin.pwritev)
+private let FILE_SAFETY_DARWIN_PWRITEV_array = [Darwin.pwritev]
+private let FILE_SAFETY_DARWIN_PWRITEV_return = { return Darwin.pwritev }
 EOF
 
 set +e
@@ -120,8 +132,13 @@ for marker in "${PWRITEV_MARKERS[@]}"; do
 done
 
 pwritev_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_PWRITEV_' "$OUTPUT" || true)"
+darwin_pwritev_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_DARWIN_PWRITEV_' "$OUTPUT" || true)"
 if [[ "$pwritev_diagnostic_count" -ne 6 ]]; then
-  echo "Expected exactly 6 pwritev fixture diagnostics, found $pwritev_diagnostic_count." >&2
+  echo "Expected exactly 6 unqualified pwritev fixture diagnostics, found $pwritev_diagnostic_count." >&2
+  ((pwritev_failures += 1))
+fi
+if [[ "$darwin_pwritev_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 Darwin.pwritev fixture diagnostics, found $darwin_pwritev_diagnostic_count." >&2
   ((pwritev_failures += 1))
 fi
 
@@ -135,6 +152,8 @@ cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 cat >> "$LOCK_SOURCE" <<'EOF'
 private let fileSafetyPwritevPresentation = "pwritev performs a positioned vectored write"
 private let fileSafetyPwritevWrapper = pwritevWrapper
+private let fileSafetyDarwinPwritevPresentation = "Darwin.pwritev names a positioned vectored write"
+private let fileSafetyDarwinPwritevWrapper = Darwin.pwritevWrapper
 /// Documents positioned vectored writes without invoking a filesystem mutation API.
 EOF
 
