@@ -154,6 +154,7 @@ private let fileSafetyPwritevPresentation = "pwritev performs a positioned vecto
 private let fileSafetyPwritevWrapper = pwritevWrapper
 private let fileSafetyDarwinPwritevPresentation = "Darwin.pwritev names a positioned vectored write"
 private let fileSafetyDarwinPwritevWrapper = Darwin.pwritevWrapper
+private let fileSafetyOtherDarwinPwritevCall = SomeDarwin.pwritev(0, nil, 0, 0)
 /// Documents positioned vectored writes without invoking a filesystem mutation API.
 EOF
 
