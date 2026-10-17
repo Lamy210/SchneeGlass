@@ -48,7 +48,7 @@ expect_forbidden_reference() {
 }
 
 FAILURES=0
-for write_reference_case in Darwin.write write pwrite writev; do
+for write_reference_case in Darwin.write write pwrite Darwin.pwrite writev Darwin.writev; do
   for reference_context in assignment argument labeledArgument array return; do
     case "$reference_context" in
       assignment)
@@ -79,6 +79,93 @@ done
 
 if [[ "$FAILURES" -ne 0 ]]; then
   echo "$FAILURES POSIX raw-write function-reference fixture(s) were not rejected." >&2
+  exit 1
+fi
+
+QUALIFIED_RAW_WRITE_MARKERS=(
+  'FILE_SAFETY_DARWIN_PWRITE_directCall'
+  'FILE_SAFETY_DARWIN_PWRITE_assignment'
+  'FILE_SAFETY_DARWIN_PWRITE_argument'
+  'FILE_SAFETY_DARWIN_PWRITE_labeledArgument'
+  'FILE_SAFETY_DARWIN_PWRITE_array'
+  'FILE_SAFETY_DARWIN_PWRITE_return'
+  'FILE_SAFETY_DARWIN_WRITEV_directCall'
+  'FILE_SAFETY_DARWIN_WRITEV_assignment'
+  'FILE_SAFETY_DARWIN_WRITEV_argument'
+  'FILE_SAFETY_DARWIN_WRITEV_labeledArgument'
+  'FILE_SAFETY_DARWIN_WRITEV_array'
+  'FILE_SAFETY_DARWIN_WRITEV_return'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_DARWIN_PWRITE_directCall = Darwin.pwrite(0, nil, 0, 0)
+private let FILE_SAFETY_DARWIN_PWRITE_assignment = Darwin.pwrite
+private let FILE_SAFETY_DARWIN_PWRITE_argument = consume(Darwin.pwrite)
+private let FILE_SAFETY_DARWIN_PWRITE_labeledArgument = consume(callback: Darwin.pwrite)
+private let FILE_SAFETY_DARWIN_PWRITE_array = [Darwin.pwrite]
+private let FILE_SAFETY_DARWIN_PWRITE_return = { return Darwin.pwrite }
+private let FILE_SAFETY_DARWIN_WRITEV_directCall = Darwin.writev(0, nil, 0)
+private let FILE_SAFETY_DARWIN_WRITEV_assignment = Darwin.writev
+private let FILE_SAFETY_DARWIN_WRITEV_argument = consume(Darwin.writev)
+private let FILE_SAFETY_DARWIN_WRITEV_labeledArgument = consume(callback: Darwin.writev)
+private let FILE_SAFETY_DARWIN_WRITEV_array = [Darwin.writev]
+private let FILE_SAFETY_DARWIN_WRITEV_return = { return Darwin.writev }
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+qualified_raw_write_status=$?
+set -e
+
+if [[ "$qualified_raw_write_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the batched Darwin.pwrite/Darwin.writev fixture.' >&2
+  exit 1
+fi
+
+qualified_raw_write_failures=0
+for marker in "${QUALIFIED_RAW_WRITE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose expected qualified raw-write fixture marker: $marker" >&2
+    ((qualified_raw_write_failures += 1))
+  fi
+done
+
+darwin_pwrite_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_DARWIN_PWRITE_' "$OUTPUT" || true)"
+darwin_writev_diagnostic_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_DARWIN_WRITEV_' "$OUTPUT" || true)"
+if [[ "$darwin_pwrite_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 Darwin.pwrite fixture diagnostics, found $darwin_pwrite_diagnostic_count." >&2
+  ((qualified_raw_write_failures += 1))
+fi
+if [[ "$darwin_writev_diagnostic_count" -ne 6 ]]; then
+  echo "Expected exactly 6 Darwin.writev fixture diagnostics, found $darwin_writev_diagnostic_count." >&2
+  ((qualified_raw_write_failures += 1))
+fi
+
+if (( qualified_raw_write_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$qualified_raw_write_failures qualified raw-write diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyDarwinPwritePresentation = "Darwin.pwrite names a positioned write"
+private let fileSafetyDarwinPwriteWrapper = Darwin.pwriteWrapper
+private let fileSafetyOtherDarwinPwriteCall = SomeDarwin.pwrite(0, nil, 0, 0)
+private let fileSafetyDarwinWritevPresentation = "Darwin.writev names a vectored write"
+private let fileSafetyDarwinWritevWrapper = Darwin.writevWrapper
+private let fileSafetyOtherDarwinWritevCall = SomeDarwin.writev(0, nil, 0)
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+qualified_raw_write_allowed_status=$?
+set -e
+
+if [[ "$qualified_raw_write_allowed_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected Darwin.pwrite/Darwin.writev boundary fixtures.' >&2
   exit 1
 fi
 
