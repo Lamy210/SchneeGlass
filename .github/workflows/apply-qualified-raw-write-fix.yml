@@ -1,0 +1,45 @@
+name: Apply Qualified Raw Write Fix
+
+on:
+  push:
+    branches:
+      - 'bootstrap/darwin-pwrite-writev-red'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/classify-darwin-pwrite-writev-references
+          fetch-depth: 0
+      - name: Apply exact classifier patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('Scripts/verify-file-safety.sh')
+          text = path.read_text()
+          old = """scan_pattern 'pwrite' '(^|[^[:alnum:]_])pwrite\\(|=[[:space:]]*pwrite[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*pwrite[[:space:]]*(\\)|\\]|,)|return[[:space:]]+pwrite([^[:alnum:]_]|$)'
+          scan_pattern 'writev' '(^|[^[:alnum:]_])writev\\(|=[[:space:]]*writev[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*writev[[:space:]]*(\\)|\\]|,)|return[[:space:]]+writev([^[:alnum:]_]|$)'"""
+          new = """scan_pattern 'Darwin.pwrite' '(^|[^[:alnum:]_])Darwin\\.pwrite\\(|=[[:space:]]*Darwin\\.pwrite[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*Darwin\\.pwrite[[:space:]]*(\\)|\\]|,)|return[[:space:]]+Darwin\\.pwrite([^[:alnum:]_]|$)'
+          scan_pattern 'pwrite' '(^|[^[:alnum:]_.])pwrite\\(|=[[:space:]]*pwrite[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*pwrite[[:space:]]*(\\)|\\]|,)|return[[:space:]]+pwrite([^[:alnum:]_]|$)'
+          scan_pattern 'Darwin.writev' '(^|[^[:alnum:]_])Darwin\\.writev\\(|=[[:space:]]*Darwin\\.writev[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*Darwin\\.writev[[:space:]]*(\\)|\\]|,)|return[[:space:]]+Darwin\\.writev([^[:alnum:]_]|$)'
+          scan_pattern 'writev' '(^|[^[:alnum:]_.])writev\\(|=[[:space:]]*writev[[:space:]]*$|(\\(|\\[|,|:)[[:space:]]*writev[[:space:]]*(\\)|\\]|,)|return[[:space:]]+writev([^[:alnum:]_]|$)'"""
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exact classifier block once, found {count}')
+          path.write_text(text.replace(old, new))
+      - name: Commit and push
+        run: |
+          git config user.name 'Lamy210'
+          git config user.email '90091196+Lamy210@users.noreply.github.com'
+          git add Scripts/verify-file-safety.sh
+          git diff --cached --check
+          git commit -m 'safety: classify Darwin pwrite and writev references'
+          git push origin HEAD:fix/classify-darwin-pwrite-writev-references
