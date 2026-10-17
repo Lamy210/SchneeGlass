@@ -1,0 +1,41 @@
+name: Apply Darwin Write Boundary RED
+
+on:
+  push:
+    branches:
+      - bootstrap/darwin-write-boundary-red
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/bound-darwin-write-direct-call
+          fetch-depth: 0
+
+      - name: Add boundary regression fixture
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('Scripts/test-file-safety-write-references.sh')
+          text = path.read_text()
+          old = """echo 'POSIX raw-write function-reference fixtures passed'\ncp \"$LOCK_BACKUP\" \"$LOCK_SOURCE\"\nbash Scripts/test-file-safety-temporary-file-references.sh\n"""
+          new = """DARWIN_WRITE_DIRECT_MARKER='FILE_SAFETY_DARWIN_WRITE_directCall'\n\ncp \"$LOCK_BACKUP\" \"$LOCK_SOURCE\"\ncat >> \"$LOCK_SOURCE\" <<'EOF'\nprivate let FILE_SAFETY_DARWIN_WRITE_directCall = Darwin.write(0, nil, 0)\nEOF\n\nset +e\nbash Scripts/verify-file-safety.sh >\"$OUTPUT\" 2>&1\ndarwin_write_direct_status=$?\nset -e\n\nif [[ \"$darwin_write_direct_status\" -eq 0 ]]; then\n  echo 'File Safety Guard unexpectedly allowed the Darwin.write direct-call fixture.' >&2\n  exit 1\nfi\n\nif ! \"$REAL_GREP\" -Fq \"$DARWIN_WRITE_DIRECT_MARKER\" \"$OUTPUT\"; then\n  cat \"$OUTPUT\" >&2\n  echo 'File Safety Guard did not diagnose the Darwin.write direct-call fixture.' >&2\n  exit 1\nfi\n\ndarwin_write_direct_count=\"$(\"$REAL_GREP\" -Fc \"$DARWIN_WRITE_DIRECT_MARKER\" \"$OUTPUT\" || true)\"\nif [[ \"$darwin_write_direct_count\" -ne 1 ]]; then\n  cat \"$OUTPUT\" >&2\n  echo \"Expected exactly 1 Darwin.write direct-call diagnostic, found $darwin_write_direct_count.\" >&2\n  exit 1\nfi\n\ncp \"$LOCK_BACKUP\" \"$LOCK_SOURCE\"\ncat >> \"$LOCK_SOURCE\" <<'EOF'\nprivate let fileSafetyDarwinWritePresentation = \"Darwin.write names a raw write\"\nprivate let fileSafetyDarwinWriteWrapper = Darwin.writeWrapper\nprivate let fileSafetyOtherDarwinWriteCall = SomeDarwin.write(0, nil, 0)\nEOF\n\nset +e\nbash Scripts/verify-file-safety.sh >\"$OUTPUT\" 2>&1\ndarwin_write_boundary_status=$?\nset -e\n\nif [[ \"$darwin_write_boundary_status\" -ne 0 ]]; then\n  cat \"$OUTPUT\" >&2\n  echo 'File Safety Guard unexpectedly rejected Darwin.write boundary fixtures.' >&2\n  exit 1\nfi\n\necho 'POSIX raw-write function-reference fixtures passed'\ncp \"$LOCK_BACKUP\" \"$LOCK_SOURCE\"\nbash Scripts/test-file-safety-temporary-file-references.sh\n"""
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected write-reference tail once, found {count}')
+          path.write_text(text.replace(old, new))
+
+      - name: Commit and push test-only change
+        run: |
+          git config user.name 'Lamy210'
+          git config user.email '90091196+Lamy210@users.noreply.github.com'
+          git add Scripts/test-file-safety-write-references.sh
+          git commit -m 'test: reproduce Darwin.write direct-call boundary'
+          git push origin HEAD:fix/bound-darwin-write-direct-call
