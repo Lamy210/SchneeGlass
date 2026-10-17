@@ -3,7 +3,7 @@ name: Apply Qualified Raw Write Fix
 on:
   push:
     branches:
-      - 'bootstrap/darwin-pwrite-writev-red'
+      - 'bootstrap/darwin-pwrite-writev-patch'
 
 permissions:
   contents: write
