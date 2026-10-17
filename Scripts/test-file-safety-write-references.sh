@@ -256,6 +256,54 @@ if [[ "$pwritev_allowed_status" -ne 0 ]]; then
   exit 1
 fi
 
+DARWIN_WRITE_DIRECT_MARKER='FILE_SAFETY_DARWIN_WRITE_directCall'
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_DARWIN_WRITE_directCall = Darwin.write(0, nil, 0)
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+darwin_write_direct_status=$?
+set -e
+
+if [[ "$darwin_write_direct_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed the Darwin.write direct-call fixture.' >&2
+  exit 1
+fi
+
+if ! "$REAL_GREP" -Fq "$DARWIN_WRITE_DIRECT_MARKER" "$OUTPUT"; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard did not diagnose the Darwin.write direct-call fixture.' >&2
+  exit 1
+fi
+
+darwin_write_direct_count="$("$REAL_GREP" -Fc "$DARWIN_WRITE_DIRECT_MARKER" "$OUTPUT" || true)"
+if [[ "$darwin_write_direct_count" -ne 1 ]]; then
+  cat "$OUTPUT" >&2
+  echo "Expected exactly 1 Darwin.write direct-call diagnostic, found $darwin_write_direct_count." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyDarwinWritePresentation = "Darwin.write names a raw write"
+private let fileSafetyDarwinWriteWrapper = Darwin.writeWrapper
+private let fileSafetyOtherDarwinWriteCall = SomeDarwin.write(0, nil, 0)
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+darwin_write_boundary_status=$?
+set -e
+
+if [[ "$darwin_write_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard unexpectedly rejected Darwin.write boundary fixtures.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
