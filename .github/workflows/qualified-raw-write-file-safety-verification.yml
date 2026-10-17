@@ -1,0 +1,20 @@
+name: Qualified Raw Write File Safety Verification
+
+on:
+  push:
+    branches:
+      - 'bootstrap/darwin-pwrite-writev-*'
+
+permissions:
+  contents: read
+
+jobs:
+  lexical:
+    name: qualified raw-write File Safety lexical fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run raw-write reference fixture
+        run: bash Scripts/test-file-safety-write-references.sh
