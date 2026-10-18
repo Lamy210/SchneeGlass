@@ -1,0 +1,18 @@
+name: Qualified Write Comment Fixture
+on:
+  push:
+    branches:
+      - bootstrap/qualified-commented-write-fixture
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/classify-commented-darwin-vectored-writes
+      - name: Verify write reference fixture
+        run: bash Scripts/test-file-safety-write-references.sh
