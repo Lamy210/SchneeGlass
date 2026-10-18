@@ -351,6 +351,70 @@ if [[ "$commented_darwin_write_boundary_status" -ne 0 ]]; then
   exit 1
 fi
 
+# Preserve raw-write authority classification when Swift comments follow a qualified callback assignment.
+COMMENTED_QUALIFIED_MARKERS=(
+  'FILE_SAFETY_COMMENTED_DARWIN_PWRITE'
+  'FILE_SAFETY_COMMENTED_DARWIN_WRITEV'
+  'FILE_SAFETY_COMMENTED_DARWIN_PWRITEV'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_COMMENTED_DARWIN_PWRITE = Darwin.pwrite // positioned callback
+private let FILE_SAFETY_COMMENTED_DARWIN_WRITEV = Darwin.writev    // vectored callback
+private let FILE_SAFETY_COMMENTED_DARWIN_PWRITEV = Darwin.pwritev// positioned vectored callback
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_qualified_status=$?
+set -e
+
+if [[ "$commented_qualified_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed Darwin.pwrite/writev/pwritev assignments with trailing comments.' >&2
+  exit 1
+fi
+
+commented_qualified_failures=0
+for marker in "${COMMENTED_QUALIFIED_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose commented qualified raw-write reference: $marker" >&2
+    ((commented_qualified_failures += 1))
+  fi
+done
+
+commented_qualified_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_COMMENTED_DARWIN_' "$OUTPUT" || true)"
+if [[ "$commented_qualified_count" -ne 3 ]]; then
+  echo "Expected exactly 3 commented qualified raw-write diagnostics, found $commented_qualified_count." >&2
+  ((commented_qualified_failures += 1))
+fi
+
+if (( commented_qualified_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyOtherDarwinPwriteCommented = SomeDarwin.pwrite // unrelated namespace
+private let fileSafetyOtherDarwinWritevCommented = SomeDarwin.writev // unrelated namespace
+private let fileSafetyOtherDarwinPwritevCommented = SomeDarwin.pwritev // unrelated namespace
+private let fileSafetyDarwinPwriteWrapperCommented = Darwin.pwriteWrapper // unrelated symbol
+private let fileSafetyDarwinWritevWrapperCommented = Darwin.writevWrapper // unrelated symbol
+private let fileSafetyDarwinPwritevWrapperCommented = Darwin.pwritevWrapper // unrelated symbol
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_qualified_boundary_status=$?
+set -e
+
+if [[ "$commented_qualified_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard rejected unrelated qualified raw-write symbols with trailing comments.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
