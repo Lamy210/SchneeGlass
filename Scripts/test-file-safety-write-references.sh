@@ -304,6 +304,53 @@ if [[ "$darwin_write_boundary_status" -ne 0 ]]; then
   exit 1
 fi
 
+COMMENTED_DARWIN_WRITE_MARKER='FILE_SAFETY_DARWIN_WRITE_commentedAssignment'
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_DARWIN_WRITE_commentedAssignment = Darwin.write // reviewed as a callback
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_darwin_write_status=$?
+set -e
+
+if [[ "$commented_darwin_write_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed Darwin.write assignment with a trailing comment.' >&2
+  exit 1
+fi
+
+if ! "$REAL_GREP" -Fq "$COMMENTED_DARWIN_WRITE_MARKER" "$OUTPUT"; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard did not diagnose commented Darwin.write assignment.' >&2
+  exit 1
+fi
+
+commented_darwin_write_count="$("$REAL_GREP" -Fc "$COMMENTED_DARWIN_WRITE_MARKER" "$OUTPUT" || true)"
+if [[ "$commented_darwin_write_count" -ne 1 ]]; then
+  cat "$OUTPUT" >&2
+  echo "Expected exactly 1 commented Darwin.write assignment diagnostic, found $commented_darwin_write_count." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyCommentedOtherDarwinWrite = SomeDarwin.write // unrelated namespace
+private let fileSafetyCommentedWriteWrapper = Darwin.writeWrapper // unrelated symbol
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_darwin_write_boundary_status=$?
+set -e
+
+if [[ "$commented_darwin_write_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard rejected non-Darwin write symbols with trailing comments.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
