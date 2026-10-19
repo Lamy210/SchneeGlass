@@ -1,0 +1,18 @@
+name: Semicolon Raw Write Verification
+on:
+  push:
+    branches:
+      - bootstrap/semicolon-raw-write-verification
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout test feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/classify-semicolon-raw-write-references
+      - name: Verify raw-write references
+        run: bash Scripts/test-file-safety-write-references.sh
