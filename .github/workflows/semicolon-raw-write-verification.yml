@@ -1,4 +1,5 @@
 name: Semicolon Raw Write Verification
+# GREEN test on 9e64f77052e8f3e3c7b5470662208c1806309cc7
 on:
   push:
     branches:
