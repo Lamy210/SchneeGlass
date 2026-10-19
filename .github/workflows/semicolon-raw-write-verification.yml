@@ -1,4 +1,5 @@
 name: Semicolon Raw Write Verification
+# Batched fixture GREEN on 0a19cde8edca1f7b3523b41a15e3d50a0e2d5c78
 # GREEN test on 9e64f77052e8f3e3c7b5470662208c1806309cc7
 on:
   push:
