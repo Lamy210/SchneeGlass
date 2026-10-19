@@ -563,6 +563,86 @@ if [[ "$block_comment_boundary_status" -ne 0 ]]; then
   exit 1
 fi
 
+# A Swift statement terminator must not hide raw-write function-reference authority.
+SEMICOLON_RAW_WRITE_MARKERS=(
+  'FILE_SAFETY_SEMICOLON_BARE_WRITE'
+  'FILE_SAFETY_SEMICOLON_BARE_PWRITE'
+  'FILE_SAFETY_SEMICOLON_BARE_WRITEV'
+  'FILE_SAFETY_SEMICOLON_BARE_PWRITEV'
+  'FILE_SAFETY_SEMICOLON_DARWIN_WRITE'
+  'FILE_SAFETY_SEMICOLON_DARWIN_PWRITE'
+  'FILE_SAFETY_SEMICOLON_DARWIN_WRITEV'
+  'FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_SEMICOLON_BARE_WRITE = write;
+private let FILE_SAFETY_SEMICOLON_BARE_PWRITE = pwrite ; // callback
+private let FILE_SAFETY_SEMICOLON_BARE_WRITEV = writev; private let fileSafetySafeAfterBareWritev = 1
+private let FILE_SAFETY_SEMICOLON_BARE_PWRITEV = pwritev /* callback */ ; // trailing comment
+private let FILE_SAFETY_SEMICOLON_DARWIN_WRITE = Darwin.write;
+private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITE = Darwin.pwrite ; // callback
+private let FILE_SAFETY_SEMICOLON_DARWIN_WRITEV = Darwin.writev; private let fileSafetySafeAfterDarwinWritev = 1
+private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV = Darwin.pwritev /* callback */ ; // trailing comment
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+semicolon_raw_write_status=$?
+set -e
+
+if [[ "$semicolon_raw_write_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed semicolon-terminated raw-write function references.' >&2
+  exit 1
+fi
+
+semicolon_raw_write_failures=0
+for marker in "${SEMICOLON_RAW_WRITE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose semicolon-terminated raw-write reference: $marker" >&2
+    ((semicolon_raw_write_failures += 1))
+  fi
+done
+
+semicolon_raw_write_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_SEMICOLON_' "$OUTPUT" || true)"
+if [[ "$semicolon_raw_write_count" -ne 8 ]]; then
+  echo "Expected exactly 8 semicolon raw-write reference diagnostics, found $semicolon_raw_write_count." >&2
+  ((semicolon_raw_write_failures += 1))
+fi
+
+if (( semicolon_raw_write_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$semicolon_raw_write_failures semicolon diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetySemicolonOtherWrite = OtherAPI.write;
+private let fileSafetySemicolonOtherPwrite = OtherAPI.pwrite;
+private let fileSafetySemicolonOtherWritev = OtherAPI.writev;
+private let fileSafetySemicolonOtherPwritev = OtherAPI.pwritev;
+private let fileSafetySemicolonSomeDarwinWrite = SomeDarwin.write;
+private let fileSafetySemicolonSomeDarwinPwrite = SomeDarwin.pwrite;
+private let fileSafetySemicolonSomeDarwinWritev = SomeDarwin.writev;
+private let fileSafetySemicolonSomeDarwinPwritev = SomeDarwin.pwritev;
+private let fileSafetySemicolonWriteWrapper = writeWrapper;
+private let fileSafetySemicolonDarwinWrapper = Darwin.writeWrapper;
+private let fileSafetySemicolonPresentation = "write; is a statement terminator";
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+semicolon_raw_write_boundary_status=$?
+set -e
+
+if [[ "$semicolon_raw_write_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard rejected unrelated semicolon-terminated identifier/member fixtures.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
