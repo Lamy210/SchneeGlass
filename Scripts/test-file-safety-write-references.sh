@@ -483,6 +483,86 @@ if [[ "$commented_bare_write_boundary_status" -ne 0 ]]; then
   exit 1
 fi
 
+# A single-line Swift block comment must not hide raw-write callback authority.
+BLOCK_COMMENT_RAW_WRITE_MARKERS=(
+  'FILE_SAFETY_BLOCK_COMMENT_BARE_WRITE'
+  'FILE_SAFETY_BLOCK_COMMENT_BARE_PWRITE'
+  'FILE_SAFETY_BLOCK_COMMENT_BARE_WRITEV'
+  'FILE_SAFETY_BLOCK_COMMENT_BARE_PWRITEV'
+  'FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITE'
+  'FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITE'
+  'FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITEV'
+  'FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITEV'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_BLOCK_COMMENT_BARE_WRITE = write /* callback */
+private let FILE_SAFETY_BLOCK_COMMENT_BARE_PWRITE = pwrite/* positioned callback */
+private let FILE_SAFETY_BLOCK_COMMENT_BARE_WRITEV = writev /* vectored * callback */
+private let FILE_SAFETY_BLOCK_COMMENT_BARE_PWRITEV = pwritev /* positioned callback */ // retained
+private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITE = Darwin.write /* callback */
+private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITE = Darwin.pwrite/* positioned callback */
+private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITEV = Darwin.writev /* vectored * callback */
+private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITEV = Darwin.pwritev /* positioned callback */ // retained
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+block_comment_status=$?
+set -e
+
+if [[ "$block_comment_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed block-commented raw-write callback references.' >&2
+  exit 1
+fi
+
+block_comment_failures=0
+for marker in "${BLOCK_COMMENT_RAW_WRITE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not diagnose block-commented raw-write reference: $marker" >&2
+    ((block_comment_failures += 1))
+  fi
+done
+
+block_comment_diagnostics="$("$REAL_GREP" -Fc 'FILE_SAFETY_BLOCK_COMMENT_' "$OUTPUT" || true)"
+if [[ "$block_comment_diagnostics" -ne 8 ]]; then
+  echo "Expected exactly 8 block-commented raw-write diagnostics, found $block_comment_diagnostics." >&2
+  ((block_comment_failures += 1))
+fi
+
+if (( block_comment_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  echo "$block_comment_failures block-comment raw-write diagnostic assertion(s) failed." >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyBlockCommentOtherWrite = OtherAPI.write /* unrelated member */
+private let fileSafetyBlockCommentOtherPwrite = OtherAPI.pwrite /* unrelated member */
+private let fileSafetyBlockCommentOtherWritev = OtherAPI.writev /* unrelated member */
+private let fileSafetyBlockCommentOtherPwritev = OtherAPI.pwritev /* unrelated member */
+private let fileSafetyBlockCommentSomeDarwinWrite = SomeDarwin.write /* unrelated namespace */
+private let fileSafetyBlockCommentSomeDarwinPwrite = SomeDarwin.pwrite /* unrelated namespace */
+private let fileSafetyBlockCommentSomeDarwinWritev = SomeDarwin.writev /* unrelated namespace */
+private let fileSafetyBlockCommentSomeDarwinPwritev = SomeDarwin.pwritev /* unrelated namespace */
+private let fileSafetyBlockCommentWriteWrapper = writeWrapper /* unrelated identifier */
+private let fileSafetyBlockCommentDarwinWrapper = Darwin.writeWrapper /* unrelated identifier */
+private let fileSafetyBlockCommentPresentation = "write /* documentation */"
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+block_comment_boundary_status=$?
+set -e
+
+if [[ "$block_comment_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard rejected unrelated block-commented identifier/member fixtures.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
