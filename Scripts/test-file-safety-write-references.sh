@@ -415,6 +415,74 @@ if [[ "$commented_qualified_boundary_status" -ne 0 ]]; then
   exit 1
 fi
 
+# A trailing Swift line comment must not conceal a bare POSIX write callback.
+COMMENTED_BARE_WRITE_MARKERS=(
+  'FILE_SAFETY_COMMENTED_BARE_WRITE'
+  'FILE_SAFETY_COMMENTED_BARE_PWRITE'
+  'FILE_SAFETY_COMMENTED_BARE_WRITEV'
+  'FILE_SAFETY_COMMENTED_BARE_PWRITEV'
+)
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let FILE_SAFETY_COMMENTED_BARE_WRITE = write // raw write callback
+private let FILE_SAFETY_COMMENTED_BARE_PWRITE = pwrite    // positioned callback
+private let FILE_SAFETY_COMMENTED_BARE_WRITEV = writev// vectored callback
+private let FILE_SAFETY_COMMENTED_BARE_PWRITEV = pwritev // positioned vectored callback
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_bare_write_status=$?
+set -e
+
+if [[ "$commented_bare_write_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed commented bare write/pwrite/writev/pwritev callbacks.' >&2
+  exit 1
+fi
+
+commented_bare_write_failures=0
+for marker in "${COMMENTED_BARE_WRITE_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not detect expected commented bare raw-write reference: $marker" >&2
+    ((commented_bare_write_failures += 1))
+  fi
+done
+
+commented_bare_write_count="$("$REAL_GREP" -Fc 'FILE_SAFETY_COMMENTED_BARE_' "$OUTPUT" || true)"
+if [[ "$commented_bare_write_count" -ne 4 ]]; then
+  echo "Expected exactly 4 commented bare raw-write diagnostics, found $commented_bare_write_count." >&2
+  ((commented_bare_write_failures += 1))
+fi
+
+if (( commented_bare_write_failures != 0 )); then
+  cat "$OUTPUT" >&2
+  exit 1
+fi
+
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cat >> "$LOCK_SOURCE" <<'EOF'
+private let fileSafetyBareWriteWrapperWithComment = writeWrapper // not a raw-write callback
+private let fileSafetyBarePwriteWrapperWithComment = pwriteWrapper // not a raw-write callback
+private let fileSafetyBareWritevWrapperWithComment = writevWrapper // not a raw-write callback
+private let fileSafetyBarePwritevWrapperWithComment = pwritevWrapper // not a raw-write callback
+private let fileSafetyMemberWriteWithComment = OtherAPI.write // unrelated member
+private let fileSafetyMemberPwriteWithComment = OtherAPI.pwrite // unrelated member
+private let fileSafetyMemberWritevWithComment = OtherAPI.writev // unrelated member
+private let fileSafetyMemberPwritevWithComment = OtherAPI.pwritev // unrelated member
+EOF
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+commented_bare_write_boundary_status=$?
+set -e
+
+if [[ "$commented_bare_write_boundary_status" -ne 0 ]]; then
+  cat "$OUTPUT" >&2
+  echo 'File Safety Guard rejected unrelated bare-write names or members with comments.' >&2
+  exit 1
+fi
+
 echo 'POSIX raw-write function-reference fixtures passed'
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
 bash Scripts/test-file-safety-temporary-file-references.sh
