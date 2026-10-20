@@ -1,0 +1,18 @@
+name: Closure Raw Write Verification
+on:
+  push:
+    branches:
+      - bootstrap/closure-raw-write-verification
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout feature head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/classify-closure-returned-raw-write-references
+      - name: Verify raw-write references
+        run: bash Scripts/test-file-safety-write-references.sh
