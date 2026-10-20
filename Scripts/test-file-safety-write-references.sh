@@ -509,6 +509,14 @@ BLOCK_COMMENT_RAW_WRITE_MARKERS=(
   'FILE_SAFETY_CLOSURE_DARWIN_PWRITE'
   'FILE_SAFETY_CLOSURE_DARWIN_WRITEV'
   'FILE_SAFETY_CLOSURE_DARWIN_PWRITEV'
+  'FILE_SAFETY_CLOSURE_COMMENT_BARE_WRITE'
+  'FILE_SAFETY_CLOSURE_COMMENT_BARE_PWRITE'
+  'FILE_SAFETY_CLOSURE_COMMENT_BARE_WRITEV'
+  'FILE_SAFETY_CLOSURE_COMMENT_BARE_PWRITEV'
+  'FILE_SAFETY_CLOSURE_COMMENT_DARWIN_WRITE'
+  'FILE_SAFETY_CLOSURE_COMMENT_DARWIN_PWRITE'
+  'FILE_SAFETY_CLOSURE_COMMENT_DARWIN_WRITEV'
+  'FILE_SAFETY_CLOSURE_COMMENT_DARWIN_PWRITEV'
 )
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
@@ -537,6 +545,14 @@ private let FILE_SAFETY_CLOSURE_DARWIN_WRITE = { Darwin.write }
 private let FILE_SAFETY_CLOSURE_DARWIN_PWRITE = { Darwin.pwrite }
 private let FILE_SAFETY_CLOSURE_DARWIN_WRITEV = { Darwin.writev }
 private let FILE_SAFETY_CLOSURE_DARWIN_PWRITEV = { Darwin.pwritev }
+private let FILE_SAFETY_CLOSURE_COMMENT_BARE_WRITE = { write /* callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_BARE_PWRITE = { pwrite /* positioned callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_BARE_WRITEV = { writev /* vectored callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_BARE_PWRITEV = { pwritev /* callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_DARWIN_WRITE = { Darwin.write /* callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_DARWIN_PWRITE = { Darwin.pwrite /* positioned callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_DARWIN_WRITEV = { Darwin.writev /* vectored callback */ }
+private let FILE_SAFETY_CLOSURE_COMMENT_DARWIN_PWRITEV = { Darwin.pwritev /* callback */ }
 EOF
 
 set +e
@@ -558,8 +574,8 @@ for marker in "${BLOCK_COMMENT_RAW_WRITE_MARKERS[@]}"; do
 done
 
 block_comment_diagnostics="$("$REAL_GREP" -Ec 'FILE_SAFETY_(BLOCK_COMMENT|SEMICOLON|CLOSURE)_' "$OUTPUT" || true)"
-if [[ "$block_comment_diagnostics" -ne 24 ]]; then
-  echo "Expected exactly 24 batched raw-write diagnostics, found $block_comment_diagnostics." >&2
+if [[ "$block_comment_diagnostics" -ne 32 ]]; then
+  echo "Expected exactly 32 batched raw-write diagnostics, found $block_comment_diagnostics." >&2
   ((block_comment_failures += 1))
 fi
 
@@ -604,6 +620,17 @@ private let fileSafetyClosureSomeDarwin_pwritev = { SomeDarwin.pwritev }
 private let fileSafetyClosureWriteWrapper = { writeWrapper }
 private let fileSafetyClosureDarwinWriteWrapper = { Darwin.writeWrapper }
 private let fileSafetyClosurePresentation = "example { write } is documentation"
+private let fileSafetyClosureCommentOtherWrite = { OtherAPI.write /* unrelated */ }
+private let fileSafetyClosureCommentOtherPwrite = { OtherAPI.pwrite /* unrelated */ }
+private let fileSafetyClosureCommentOtherWritev = { OtherAPI.writev /* unrelated */ }
+private let fileSafetyClosureCommentOtherPwritev = { OtherAPI.pwritev /* unrelated */ }
+private let fileSafetyClosureCommentSomeDarwinWrite = { SomeDarwin.write /* unrelated */ }
+private let fileSafetyClosureCommentSomeDarwinPwrite = { SomeDarwin.pwrite /* unrelated */ }
+private let fileSafetyClosureCommentSomeDarwinWritev = { SomeDarwin.writev /* unrelated */ }
+private let fileSafetyClosureCommentSomeDarwinPwritev = { SomeDarwin.pwritev /* unrelated */ }
+private let fileSafetyClosureCommentWrapper = { writeWrapper /* unrelated */ }
+private let fileSafetyClosureCommentDarwinWrapper = { Darwin.writeWrapper /* unrelated */ }
+private let fileSafetyClosureCommentPresentation = "example { write /* text */ } is documentation"
 EOF
 
 set +e
