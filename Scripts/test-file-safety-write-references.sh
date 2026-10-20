@@ -501,6 +501,14 @@ BLOCK_COMMENT_RAW_WRITE_MARKERS=(
   'FILE_SAFETY_SEMICOLON_DARWIN_PWRITE'
   'FILE_SAFETY_SEMICOLON_DARWIN_WRITEV'
   'FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV'
+  'FILE_SAFETY_CLOSURE_BARE_WRITE'
+  'FILE_SAFETY_CLOSURE_BARE_PWRITE'
+  'FILE_SAFETY_CLOSURE_BARE_WRITEV'
+  'FILE_SAFETY_CLOSURE_BARE_PWRITEV'
+  'FILE_SAFETY_CLOSURE_DARWIN_WRITE'
+  'FILE_SAFETY_CLOSURE_DARWIN_PWRITE'
+  'FILE_SAFETY_CLOSURE_DARWIN_WRITEV'
+  'FILE_SAFETY_CLOSURE_DARWIN_PWRITEV'
 )
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
@@ -521,6 +529,14 @@ private let FILE_SAFETY_SEMICOLON_DARWIN_WRITE = Darwin.write;
 private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITE = Darwin.pwrite ; // callback
 private let FILE_SAFETY_SEMICOLON_DARWIN_WRITEV = Darwin.writev; private let fileSafetySafeAfterDarwinWritev = 1
 private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV = Darwin.pwritev /* callback */ ; // trailing comment
+private let FILE_SAFETY_CLOSURE_BARE_WRITE = { write }
+private let FILE_SAFETY_CLOSURE_BARE_PWRITE = { pwrite }
+private let FILE_SAFETY_CLOSURE_BARE_WRITEV = { writev }
+private let FILE_SAFETY_CLOSURE_BARE_PWRITEV = { pwritev }
+private let FILE_SAFETY_CLOSURE_DARWIN_WRITE = { Darwin.write }
+private let FILE_SAFETY_CLOSURE_DARWIN_PWRITE = { Darwin.pwrite }
+private let FILE_SAFETY_CLOSURE_DARWIN_WRITEV = { Darwin.writev }
+private let FILE_SAFETY_CLOSURE_DARWIN_PWRITEV = { Darwin.pwritev }
 EOF
 
 set +e
@@ -541,9 +557,9 @@ for marker in "${BLOCK_COMMENT_RAW_WRITE_MARKERS[@]}"; do
   fi
 done
 
-block_comment_diagnostics="$("$REAL_GREP" -Ec 'FILE_SAFETY_(BLOCK_COMMENT|SEMICOLON)_' "$OUTPUT" || true)"
-if [[ "$block_comment_diagnostics" -ne 16 ]]; then
-  echo "Expected exactly 16 block-commented and semicolon raw-write diagnostics, found $block_comment_diagnostics." >&2
+block_comment_diagnostics="$("$REAL_GREP" -Ec 'FILE_SAFETY_(BLOCK_COMMENT|SEMICOLON|CLOSURE)_' "$OUTPUT" || true)"
+if [[ "$block_comment_diagnostics" -ne 24 ]]; then
+  echo "Expected exactly 24 batched raw-write diagnostics, found $block_comment_diagnostics." >&2
   ((block_comment_failures += 1))
 fi
 
@@ -577,6 +593,17 @@ private let fileSafetySemicolonSomeDarwinPwritev = SomeDarwin.pwritev;
 private let fileSafetySemicolonWriteWrapper = writeWrapper;
 private let fileSafetySemicolonDarwinWrapper = Darwin.writeWrapper;
 private let fileSafetySemicolonPresentation = "write; is a statement terminator";
+private let fileSafetyClosureOther_write = { OtherAPI.write }
+private let fileSafetyClosureOther_pwrite = { OtherAPI.pwrite }
+private let fileSafetyClosureOther_writev = { OtherAPI.writev }
+private let fileSafetyClosureOther_pwritev = { OtherAPI.pwritev }
+private let fileSafetyClosureSomeDarwin_write = { SomeDarwin.write }
+private let fileSafetyClosureSomeDarwin_pwrite = { SomeDarwin.pwrite }
+private let fileSafetyClosureSomeDarwin_writev = { SomeDarwin.writev }
+private let fileSafetyClosureSomeDarwin_pwritev = { SomeDarwin.pwritev }
+private let fileSafetyClosureWriteWrapper = { writeWrapper }
+private let fileSafetyClosureDarwinWriteWrapper = { Darwin.writeWrapper }
+private let fileSafetyClosurePresentation = "example { write } is documentation"
 EOF
 
 set +e
