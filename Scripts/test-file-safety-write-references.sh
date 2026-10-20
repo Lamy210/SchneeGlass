@@ -493,6 +493,14 @@ BLOCK_COMMENT_RAW_WRITE_MARKERS=(
   'FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITE'
   'FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITEV'
   'FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITEV'
+  'FILE_SAFETY_SEMICOLON_BARE_WRITE'
+  'FILE_SAFETY_SEMICOLON_BARE_PWRITE'
+  'FILE_SAFETY_SEMICOLON_BARE_WRITEV'
+  'FILE_SAFETY_SEMICOLON_BARE_PWRITEV'
+  'FILE_SAFETY_SEMICOLON_DARWIN_WRITE'
+  'FILE_SAFETY_SEMICOLON_DARWIN_PWRITE'
+  'FILE_SAFETY_SEMICOLON_DARWIN_WRITEV'
+  'FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV'
 )
 
 cp "$LOCK_BACKUP" "$LOCK_SOURCE"
@@ -505,6 +513,14 @@ private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITE = Darwin.write /* callback */
 private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITE = Darwin.pwrite/* positioned callback */
 private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_WRITEV = Darwin.writev /* vectored * callback */
 private let FILE_SAFETY_BLOCK_COMMENT_DARWIN_PWRITEV = Darwin.pwritev /* positioned callback */ // retained
+private let FILE_SAFETY_SEMICOLON_BARE_WRITE = write;
+private let FILE_SAFETY_SEMICOLON_BARE_PWRITE = pwrite ; // callback
+private let FILE_SAFETY_SEMICOLON_BARE_WRITEV = writev; private let fileSafetySafeAfterBareWritev = 1
+private let FILE_SAFETY_SEMICOLON_BARE_PWRITEV = pwritev /* callback */ ; // trailing comment
+private let FILE_SAFETY_SEMICOLON_DARWIN_WRITE = Darwin.write;
+private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITE = Darwin.pwrite ; // callback
+private let FILE_SAFETY_SEMICOLON_DARWIN_WRITEV = Darwin.writev; private let fileSafetySafeAfterDarwinWritev = 1
+private let FILE_SAFETY_SEMICOLON_DARWIN_PWRITEV = Darwin.pwritev /* callback */ ; // trailing comment
 EOF
 
 set +e
@@ -520,14 +536,14 @@ fi
 block_comment_failures=0
 for marker in "${BLOCK_COMMENT_RAW_WRITE_MARKERS[@]}"; do
   if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
-    echo "File Safety Guard did not diagnose block-commented raw-write reference: $marker" >&2
+    echo "File Safety Guard did not diagnose batched raw-write reference: $marker" >&2
     ((block_comment_failures += 1))
   fi
 done
 
-block_comment_diagnostics="$("$REAL_GREP" -Fc 'FILE_SAFETY_BLOCK_COMMENT_' "$OUTPUT" || true)"
-if [[ "$block_comment_diagnostics" -ne 8 ]]; then
-  echo "Expected exactly 8 block-commented raw-write diagnostics, found $block_comment_diagnostics." >&2
+block_comment_diagnostics="$("$REAL_GREP" -Ec 'FILE_SAFETY_(BLOCK_COMMENT|SEMICOLON)_' "$OUTPUT" || true)"
+if [[ "$block_comment_diagnostics" -ne 16 ]]; then
+  echo "Expected exactly 16 block-commented and semicolon raw-write diagnostics, found $block_comment_diagnostics." >&2
   ((block_comment_failures += 1))
 fi
 
@@ -550,6 +566,17 @@ private let fileSafetyBlockCommentSomeDarwinPwritev = SomeDarwin.pwritev /* unre
 private let fileSafetyBlockCommentWriteWrapper = writeWrapper /* unrelated identifier */
 private let fileSafetyBlockCommentDarwinWrapper = Darwin.writeWrapper /* unrelated identifier */
 private let fileSafetyBlockCommentPresentation = "write /* documentation */"
+private let fileSafetySemicolonOtherWrite = OtherAPI.write;
+private let fileSafetySemicolonOtherPwrite = OtherAPI.pwrite;
+private let fileSafetySemicolonOtherWritev = OtherAPI.writev;
+private let fileSafetySemicolonOtherPwritev = OtherAPI.pwritev;
+private let fileSafetySemicolonSomeDarwinWrite = SomeDarwin.write;
+private let fileSafetySemicolonSomeDarwinPwrite = SomeDarwin.pwrite;
+private let fileSafetySemicolonSomeDarwinWritev = SomeDarwin.writev;
+private let fileSafetySemicolonSomeDarwinPwritev = SomeDarwin.pwritev;
+private let fileSafetySemicolonWriteWrapper = writeWrapper;
+private let fileSafetySemicolonDarwinWrapper = Darwin.writeWrapper;
+private let fileSafetySemicolonPresentation = "write; is a statement terminator";
 EOF
 
 set +e
