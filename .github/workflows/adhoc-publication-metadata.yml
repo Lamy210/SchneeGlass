@@ -1,0 +1,29 @@
+name: Ad-Hoc Publication Metadata Verification
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-publication-metadata.yml'
+      - '.github/workflows/adhoc-release-candidate.yml'
+      - 'Scripts/verify-adhoc-publication-candidate.sh'
+      - 'Scripts/test-verify-adhoc-publication-candidate.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Publication Metadata / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-adhoc-publication-candidate.sh
+          bash -n Scripts/test-verify-adhoc-publication-candidate.sh
+
+      - name: Provenance and exact-main failure fixtures
+        run: bash Scripts/test-verify-adhoc-publication-candidate.sh
