@@ -82,7 +82,7 @@ jobs:
           bash Scripts/verify-release-metadata.sh "v$VERSION"
 
           RELEASE_SETTINGS="$(xcodebuild -project SchneeGlass.xcodeproj -scheme SchneeGlass -configuration Release -showBuildSettings)"
-          BUILD_NUMBER="$(printf '%s\n' "$RELEASE_SETTINGS" | sed -n 's/^[[:space:]]*CURRENT_PROJECT_VERSION = //p' | head -n 1)"
+          BUILD_NUMBER="$(printf '%s\n' "$RELEASE_SETTINGS" | awk '/^[[:space:]]*CURRENT_PROJECT_VERSION = / && !seen++ { print $3 }')"
           [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
             echo "Invalid Release build number: $BUILD_NUMBER" >&2
             exit 1
