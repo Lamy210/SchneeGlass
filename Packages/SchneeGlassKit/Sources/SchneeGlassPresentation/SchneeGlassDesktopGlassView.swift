@@ -227,8 +227,8 @@ struct DesktopGlassSurface: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .ready(let snapshot):
-      VStack(spacing: SchneeGlassSpacing.controlGroup) {
-        if showsFileFilter {
+      if showsFileFilter {
+        VStack(spacing: SchneeGlassSpacing.controlGroup) {
           HStack(spacing: SchneeGlassSpacing.controlGroup) {
             TextField("Filter files by name", text: $fileFilterQuery)
               .textFieldStyle(.roundedBorder)
@@ -243,19 +243,11 @@ struct DesktopGlassSurface: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("Clear and close file filter")
           }
-        }
 
-        ScrollView {
-          DesktopFileGrid(
-            snapshot: snapshot,
-            density: fileGridDensity,
-            sortOrder: fileSortOrder,
-            foldersFirst: foldersFirst,
-            filterQuery: fileFilterQuery,
-            onOpen: onOpen,
-            onReveal: onReveal
-          )
+          fileGridScrollView(snapshot: snapshot)
         }
+      } else {
+        fileGridScrollView(snapshot: snapshot)
       }
 
     case .empty:
@@ -298,6 +290,20 @@ struct DesktopGlassSurface: View {
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+  }
+
+  private func fileGridScrollView(snapshot: FolderSnapshot) -> some View {
+    ScrollView {
+      DesktopFileGrid(
+        snapshot: snapshot,
+        density: fileGridDensity,
+        sortOrder: fileSortOrder,
+        foldersFirst: foldersFirst,
+        filterQuery: showsFileFilter ? fileFilterQuery : "",
+        onOpen: onOpen,
+        onReveal: onReveal
+      )
     }
   }
 
