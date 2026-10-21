@@ -25,6 +25,7 @@ CURRENT_MAIN_SHA="$9"
 [[ "$RUN_CONCLUSION" == 'success' ]] || fail 'candidate run did not succeed'
 [[ "$HEAD_BRANCH" == 'main' ]] || fail 'candidate run must target main'
 [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'candidate head SHA is malformed'
+[[ "$HEAD_SHA" != '0000000000000000000000000000000000000000' ]] || fail 'candidate head SHA must not be zero'
 [[ "$RUN_ATTEMPT" == '1' ]] || fail 'candidate must be a first-attempt workflow run'
 [[ "$CURRENT_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'current main SHA is malformed'
 [[ "$HEAD_SHA" == "$CURRENT_MAIN_SHA" ]] || fail 'candidate is stale relative to current main'
