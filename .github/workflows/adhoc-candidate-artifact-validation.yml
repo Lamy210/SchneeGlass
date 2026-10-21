@@ -1,0 +1,31 @@
+name: Ad-Hoc Candidate Artifact Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-candidate-artifact-validation.yml'
+      - '.github/workflows/adhoc-release-candidate.yml'
+      - 'Scripts/build-adhoc-release-candidate.sh'
+      - 'Scripts/verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/test-verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/verify-release-checksum-manifest.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Candidate Artifact / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-adhoc-candidate-artifact.sh
+          bash -n Scripts/test-verify-adhoc-candidate-artifact.sh
+
+      - name: Candidate metadata and checksum failure fixtures
+        run: bash Scripts/test-verify-adhoc-candidate-artifact.sh
