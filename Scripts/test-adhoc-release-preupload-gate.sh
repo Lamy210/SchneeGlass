@@ -65,7 +65,7 @@ expect_rejection() {
 grep -Fv '      - name: Verify candidate artifact integrity before upload' "$WORKFLOW" > "$FIXTURE/no-gate.yml"
 expect_rejection 'deleted gate' "$FIXTURE/no-gate.yml"
 
-sed 's/^          RELEASE_BUILD: ${{ steps.release.outputs.build }}$/          RELEASE_BUILD: 0/' "$WORKFLOW" > "$FIXTURE/hardcoded-build.yml"
+sed 's/RELEASE_BUILD: \${{ steps.release.outputs.build }}/RELEASE_BUILD: 0/' "$WORKFLOW" > "$FIXTURE/hardcoded-build.yml"
 expect_rejection 'hardcoded build' "$FIXTURE/hardcoded-build.yml"
 
 sed 's/^            "\$GITHUB_SHA"$/            "\$GITHUB_REF"$/' "$WORKFLOW" > "$FIXTURE/wrong-commit.yml"
