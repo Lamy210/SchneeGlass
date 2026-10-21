@@ -68,7 +68,7 @@ expect_rejection 'deleted gate' "$FIXTURE/no-gate.yml"
 sed 's/RELEASE_BUILD: \${{ steps.release.outputs.build }}/RELEASE_BUILD: 0/' "$WORKFLOW" > "$FIXTURE/hardcoded-build.yml"
 expect_rejection 'hardcoded build' "$FIXTURE/hardcoded-build.yml"
 
-sed 's/^            "\$GITHUB_SHA"$/            "\$GITHUB_REF"$/' "$WORKFLOW" > "$FIXTURE/wrong-commit.yml"
+sed 's/GITHUB_SHA/GITHUB_REF/g' "$WORKFLOW" > "$FIXTURE/wrong-commit.yml"
 expect_rejection 'wrong source identity' "$FIXTURE/wrong-commit.yml"
 
 sed '/^      - name: Verify candidate artifact integrity before upload$/,/^      - name: Upload ad-hoc candidate$/{
