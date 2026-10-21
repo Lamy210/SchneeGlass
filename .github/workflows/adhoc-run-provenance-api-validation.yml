@@ -1,0 +1,30 @@
+name: Ad-Hoc Run Provenance API Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-run-provenance-api-validation.yml'
+      - 'Scripts/verify-adhoc-run-from-github.sh'
+      - 'Scripts/test-verify-adhoc-run-from-github.sh'
+      - 'Scripts/verify-adhoc-publication-candidate.sh'
+      - '.github/workflows/adhoc-release-candidate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Run Provenance API / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-adhoc-run-from-github.sh
+          bash -n Scripts/test-verify-adhoc-run-from-github.sh
+
+      - name: Synthetic authenticated run and latest main failure fixtures
+        run: bash Scripts/test-verify-adhoc-run-from-github.sh
