@@ -31,7 +31,7 @@ bash "$ROOT/Scripts/verify-adhoc-candidate-artifact.sh" \
 # of public Releases. This adapter does not attest to history completeness.
 # Reject all symlinks in supplied history, even symlinks ignored by find -type f.
 LINKS=''
-if ! LINKS="$(find "$HISTORY_DIR" -type l -print -quit)"; then
+if ! LINKS="$(find "$HISTORY_DIR" -type l -print)"; then
   fail 'unable to inspect trusted history links'
 fi
 [[ -z "$LINKS" ]] || fail 'trusted history contains a symlink'
