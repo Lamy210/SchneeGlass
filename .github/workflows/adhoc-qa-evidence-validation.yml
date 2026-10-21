@@ -1,0 +1,30 @@
+name: Ad-Hoc QA Evidence Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-qa-evidence-validation.yml'
+      - 'Scripts/verify-adhoc-qa-evidence.sh'
+      - 'Scripts/test-verify-adhoc-qa-evidence.sh'
+      - 'Scripts/verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/verify-release-checksum-manifest.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc QA Evidence / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-adhoc-qa-evidence.sh
+          bash -n Scripts/test-verify-adhoc-qa-evidence.sh
+
+      - name: QA digest, run and identity failure fixtures
+        run: bash Scripts/test-verify-adhoc-qa-evidence.sh
