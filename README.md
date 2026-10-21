@@ -57,6 +57,7 @@ v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVE
 - per-Glass Compact File Tiles
 - Sort Displayed Files（Name / Modified / Size）
 - per-Glass Folders First
+- per-Glass File Name Filter（Glass optionsから開閉、表示済みsnapshotのみ検索、閉じるとクリア）
 - per-Glass display-name Rename
 - unavailable Glass source Reconnect
 - connected root folderのread-only Finder表示

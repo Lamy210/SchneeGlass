@@ -89,6 +89,8 @@ struct DesktopGlassSurface: View {
   let onPerformDrop: @MainActor ([URL]) async -> Void
 
   @State private var showsRemoveConfirmation = false
+  @State private var showsFileFilter = false
+  @State private var fileFilterQuery = ""
 
   init(
     entry: GlassWorkspaceEntry,
@@ -174,6 +176,15 @@ struct DesktopGlassSurface: View {
       statusLabel
 
       Menu {
+        Button(showsFileFilter ? "Hide File Filter" : "Filter Files…") {
+          if showsFileFilter {
+            fileFilterQuery = ""
+          }
+          showsFileFilter.toggle()
+        }
+
+        Divider()
+
         Button("Remove Glass…", role: .destructive) {
           showsRemoveConfirmation = true
         }
@@ -216,15 +227,27 @@ struct DesktopGlassSurface: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .ready(let snapshot):
-      ScrollView {
-        DesktopFileGrid(
-          snapshot: snapshot,
-          density: fileGridDensity,
-          sortOrder: fileSortOrder,
-          foldersFirst: foldersFirst,
-          onOpen: onOpen,
-          onReveal: onReveal
-        )
+      if showsFileFilter {
+        VStack(spacing: SchneeGlassSpacing.controlGroup) {
+          HStack(spacing: SchneeGlassSpacing.controlGroup) {
+            TextField("Filter files by name", text: $fileFilterQuery)
+              .textFieldStyle(.roundedBorder)
+              .accessibilityLabel("Filter files by name")
+
+            Button {
+              fileFilterQuery = ""
+              showsFileFilter = false
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Clear and close file filter")
+          }
+
+          fileGridScrollView(snapshot: snapshot)
+        }
+      } else {
+        fileGridScrollView(snapshot: snapshot)
       }
 
     case .empty:
@@ -267,6 +290,20 @@ struct DesktopGlassSurface: View {
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+  }
+
+  private func fileGridScrollView(snapshot: FolderSnapshot) -> some View {
+    ScrollView {
+      DesktopFileGrid(
+        snapshot: snapshot,
+        density: fileGridDensity,
+        sortOrder: fileSortOrder,
+        foldersFirst: foldersFirst,
+        filterQuery: showsFileFilter ? fileFilterQuery : "",
+        onOpen: onOpen,
+        onReveal: onReveal
+      )
     }
   }
 
@@ -410,19 +447,22 @@ private struct DesktopFileGrid: View {
   let density: DesktopGlassFileGridDensity
   let sortOrder: DesktopGlassFileSortOrder?
   let foldersFirst: Bool
+  let filterQuery: String
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
 
   private var displayedItems: [GlassItem] {
+    let orderedItems: [GlassItem]
     if let sortOrder {
-      return sortOrder.sortedItems(snapshot.items, foldersFirst: foldersFirst)
+      orderedItems = sortOrder.sortedItems(snapshot.items, foldersFirst: foldersFirst)
+    } else if foldersFirst {
+      let directories = snapshot.items.filter { $0.kind == .directory }
+      let remaining = snapshot.items.filter { $0.kind != .directory }
+      orderedItems = directories + remaining
+    } else {
+      orderedItems = snapshot.items
     }
-    guard foldersFirst else {
-      return snapshot.items
-    }
-    let directories = snapshot.items.filter { $0.kind == .directory }
-    let remaining = snapshot.items.filter { $0.kind != .directory }
-    return directories + remaining
+    return DesktopGlassFileNameFilter.matchingItems(orderedItems, query: filterQuery)
   }
 
   private var columns: [GridItem] {
@@ -461,6 +501,12 @@ private struct DesktopFileGrid: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilityLabel)
         .accessibilityHint("Double-click to open")
+      }
+
+      if displayedItems.isEmpty && filterQuery.contains(where: { !$0.isWhitespace }) {
+        Label("No matching files", systemImage: "magnifyingglass")
+          .font(SchneeGlassTypography.supporting)
+          .foregroundStyle(.secondary)
       }
 
       if snapshot.isTruncated {
