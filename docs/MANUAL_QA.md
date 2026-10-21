@@ -18,7 +18,23 @@
 
 QAは使い捨てのtest folderで行い、実業務folderや唯一の原本を使用しないこと。
 
-## 0. Candidate identification
+## Ad-Hoc candidate QA (active path; no Developer ID)
+
+This section applies to the currently supported **ad-hoc-signed, not Apple-notarized** candidate workflow. It does **not** certify an ad-hoc artifact as an Apple-trusted production Release. The Developer ID production checklist below is retained for historical reference and is **not a release prerequisite** under [ADR-0011](adr/0011-adhoc-distribution-without-developer-id.md).
+
+- [ ] Candidate was generated via `Ad-Hoc Release Candidate` **workflow_dispatch** on exact current `main`; record run ID and `GITHUB_SHA`.
+- [ ] Candidate version/build and ZIP filename match the exact project source; record `BUILD_INFO.txt` including `source_commit`.
+- [ ] `BUILD_INFO.txt` declares `code_signature=adhoc`, `apple_developer_id_signed=false`, `apple_notarized=false`.
+- [ ] `SHA256SUMS` verifies the candidate ZIP, and files are from the same Actions artifact/source.
+- [ ] `codesign --verify --deep --strict` succeeds on the extracted app.
+- [ ] Hardened Runtime, App Sandbox, user-selected read/write entitlement and absence of unexpected network entitlement are confirmed.
+- [ ] Gatekeeper first-launch behavior is checked on supported macOS, including any app-specific user approval; never disable Gatekeeper globally or strip quarantine as a workaround.
+- [ ] Menu Bar, folder selection, direct-child listing, Glass positioning, restart recovery, Open / Reveal, copy-only Drop, cancellation and Pending Copy Recovery are exercised with disposable sample files.
+- [ ] No user-owned source files are moved, renamed, deleted, overwritten or silently discarded.
+- [ ] Any candidate requiring correction is rebuilt from a fresh exact `main` source. A passing candidate **must not** be automatically published as a GitHub Release.
+- [ ] Future public ad-hoc release follows a separately reviewed publication process under [Issue #520](https://github.com/Lamy210/SchneeGlass/issues/520).
+
+## 0. Candidate identification (historical Developer ID production path)
 
 - [ ] 対象Production Release Candidate run IDを記録した
 - [ ] workflow nameが`Production Release Candidate`である

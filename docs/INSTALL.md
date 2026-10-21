@@ -1,120 +1,73 @@
 # Installing SchneeGlass
 
-SchneeGlass production releases are designed for **Developer ID direct distribution outside the Mac App Store**.
+SchneeGlass is a native macOS 15+ desktop app. **The project does not use Apple Developer ID signing or Apple notarization for future distribution** ([ADR-0011](adr/0011-adhoc-distribution-without-developer-id.md)). An ad-hoc signature is **not** an Apple-verified developer identity; macOS Gatekeeper may block first launch.
 
-This document applies to a signed, notarized, stapled production Release published through the repository's production release workflow. An unsigned CI artifact is not an end-user production release.
+## Available downloads
 
-## Supported baseline
-
-- macOS 15 or later
-- Apple notarization / Gatekeeper validation must succeed for the production artifact
-- App Sandbox remains enabled
-
-## 1. Download the production Release
-
-From the GitHub Release for the desired version, download:
+The currently published ad-hoc GitHub Release is [v0.1.1](https://github.com/Lamy210/SchneeGlass/releases/tag/v0.1.1). Its assets are:
 
 ```text
-SchneeGlass-X.Y.Z.zip
+SchneeGlass-0.1.1-adhoc.zip
 SHA256SUMS
-RELEASE_EVIDENCE.txt
+BUILD_INFO.txt
 ```
 
-Do not use an artifact named `unsigned` as a trusted production build.
+v0.2.0 / build 3 is currently a development/candidate line, **not a published v0.2.0 Release**. The manually dispatched `Ad-Hoc Release Candidate` workflow can produce a short-lived Actions artifact for testing only; it does not automatically publish a Release.
 
-## 2. Verify SHA-256
+Never treat an `unsigned` artifact or `adhoc-candidate` artifact as a notarized production release.
 
-Place the ZIP and `SHA256SUMS` in the same directory, then run:
+## 1. Verify a downloaded release
+
+Download the ZIP, `SHA256SUMS`, and `BUILD_INFO.txt` from the **same** trusted GitHub Release page. Check the source tag, release notes, `source_commit`, version, and distribution metadata.
+
+From the directory containing the downloaded assets:
 
 ```bash
 shasum -a 256 -c SHA256SUMS
 ```
 
-Expected result:
+For v0.1.1 the expected ZIP entry is:
 
 ```text
-SchneeGlass-X.Y.Z.zip: OK
+SchneeGlass-0.1.1-adhoc.zip: OK
 ```
 
-If verification fails, do not open or install that archive. Download the Release assets again and confirm that all files came from the same immutable Release.
+If validation fails, **do not launch** the archive. Re-download from the intended release and investigate. A checksum does not by itself establish the authenticity of an untrusted download source.
 
-## 3. Install
+## 2. Install and launch
 
-1. Open `SchneeGlass-X.Y.Z.zip`.
-2. Move `SchneeGlass.app` to `/Applications` or another normal application location you control.
-3. Launch SchneeGlass normally from Finder, Spotlight, or Launchpad.
+1. Unzip the verified archive and locate `SchneeGlass.app`.
+2. Move the app to `/Applications` or another normal application location you control.
+3. Open it from Finder.
+4. If macOS blocks it because it is not notarized, **do not globally disable Gatekeeper or remove quarantine attributes**. Only if you have independently verified and trust the source, use macOS **System Settings → Privacy & Security → Open Anyway** for this specific app, following the confirmation UI. macOS behavior varies by version and policy; some managed Macs may prohibit bypass.
+5. Once started, confirm the Menu Bar item appears and open Settings to add a Glass through the macOS folder picker.
 
-The production Release is expected to be Developer ID signed, notarized, stapled, and accepted by Gatekeeper. SchneeGlass does not require Accessibility permission for its global shortcut feature.
+Never grant Full Disk Access or Accessibility permissions simply to bypass an installation failure. Folder access should remain limited to the locations you choose.
 
-## 4. First launch
+## 3. File safety
 
-On first launch:
-
-1. Confirm the Menu Bar item appears.
-2. Open Settings if needed.
-3. Add a Glass by choosing a folder through the system folder picker.
-4. Grant only the folder access you intend to use.
-
-Folder access uses macOS security-scoped user selection. SchneeGlass should not ask for broad filesystem or Accessibility access merely to operate the v0.1 feature set.
-
-## 5. File-safety expectations
-
-SchneeGlass v0.1 is intentionally non-destructive toward user-owned source files.
+SchneeGlass must preserve its non-destructive contract:
 
 ```text
-Source Move      = not permitted
-Source Rename    = not permitted
-Source Delete    = not permitted
-Silent overwrite = not permitted
+User-owned source Move      = 0
+User-owned source Rename    = 0
+User-owned source Delete    = 0
+Silent overwrite            = 0
+Unknown partial auto-delete = 0
 ```
 
-Regular-file Drag & Drop into a Glass is a **copy** operation. Recovery may operate on app-owned staging files only when ownership evidence is sufficient.
+Drag & Drop copies supported regular files using the existing safe staging and recovery flow. If this contract appears violated, stop using that build and report its version, source commit, macOS version, and reproduction details.
 
-If behavior appears to violate these rules, stop using that build and report the candidate/release version, commit SHA if known, and reproduction steps.
+## 4. Updates and uninstall
 
-## 6. Gatekeeper or launch failure
+For an update, download a **new** version/build from the trusted source and verify its SHA-256 manifest. Quit the previous instance before replacing `SchneeGlass.app`; on relaunch confirm the connected Glass configuration recovers.
 
-A normal production Release should launch without bypassing macOS security controls.
+Never overwrite an existing published tag/asset silently to replace a broken release. Publish a corrected version/build instead.
 
-If macOS reports that the app cannot be verified, is damaged, or is blocked:
+To uninstall, quit the app and delete its application bundle. SchneeGlass does not own your connected folders. Avoid deleting configuration or pending-copy recovery metadata until any incomplete copy has been understood.
 
-- do not disable Gatekeeper globally
-- do not remove quarantine attributes as a workaround
-- verify `SHA256SUMS` again
-- confirm you downloaded the asset from the intended immutable GitHub Release
-- confirm the Release evidence identifies notarization as accepted
-- report the failing macOS version and Release version
+## 5. Developer ID notes (historical only)
 
-Production QA treats Gatekeeper failure as a Release blocker.
+The repository retains documentation and CI for a former Developer ID/notarization-based production design. Those **are not the current project's distribution requirements** and should not be invoked to publish an ad-hoc build. See [ADR-0011](adr/0011-adhoc-distribution-without-developer-id.md), [RELEASE.md](../RELEASE.md), and [Manual QA](MANUAL_QA.md).
 
-## 7. Updating
-
-v0.1 does not rely on replacing an existing immutable Release artifact in place.
-
-For a newer version:
-
-1. download the newer immutable Release
-2. verify its SHA-256 manifest
-3. quit the currently running SchneeGlass instance
-4. replace the application bundle with the newer version
-5. launch and confirm existing Glass configuration restores correctly
-
-A bad published Release is corrected by a new version/build, not by silently replacing assets under the same tag.
-
-## 8. Uninstalling
-
-To remove the application, quit SchneeGlass and remove `SchneeGlass.app` from your application location.
-
-SchneeGlass does not own the folders you connected. Removing the app must not delete, move, or rename the user-owned files contained in those folders.
-
-Configuration/recovery metadata is app state rather than user file content. Do not manually delete recovery metadata while investigating an incomplete copy unless the recovery state is understood.
-
-## Release verification reference
-
-Production Release requirements are defined in:
-
-- [`../RELEASE.md`](../RELEASE.md)
-- [`MANUAL_QA.md`](MANUAL_QA.md)
-- [`RELEASE_CREDENTIALS.md`](RELEASE_CREDENTIALS.md)
-
-The first public v0.1 Release remains blocked until the production credential/governance validation tracked in Issue #33 is complete.
+Before any future v0.2 ad-hoc GitHub Release is published, the project still needs a separately reviewed release-provenance/QA process. The existing ad-hoc candidate workflow alone is not that public release process.

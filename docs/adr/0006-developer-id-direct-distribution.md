@@ -1,9 +1,12 @@
 # ADR-0006: v0.1 は Developer ID による直接配布とする
 
-- Status: Accepted
+- Status: Superseded for future distribution by ADR-0011 (historical record retained)
 - Scope: v0.1
 
 ## Context
+
+> 2026-10-21: 今後のSchneeGlass配布はDeveloper ID署名を行わない方針へ変更された。最新判断は [ADR-0011](0011-adhoc-distribution-without-developer-id.md) を参照。本ADR以下は当時の設計判断を記録した履歴であり、現在実施する手順ではない。
+
 
 SchneeGlass は macOS 専用のネイティブユーティリティであり、v0.1 では GitHub 上の公開RepositoryとRelease Pipelineを配布基盤として整備している。
 
