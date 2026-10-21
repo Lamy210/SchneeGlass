@@ -6,11 +6,11 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 ## Status
 
-**v0.1.1 Ad-Hoc Release Published — v0.2.0 / build 3 Release-Candidate Preparation**
+**v0.1.1 Ad-Hoc Release Published — v0.2.0 / build 3 Development**
 
 `v0.1.1`は、v0.1.0の完全未署名packageをad-hoc署名版へ置き換える互換リリースとしてGitHub Releasesへ公開済みです。ad-hoc署名はApple Developer ID署名・notarizationではないため、初回起動時のGatekeeper UXには制約が残ります。
 
-Developer ID signing / notarization / immutable production publicationのコードは実装済みで、実credential・repository governance・signed candidate Manual QAなどの運用検証はIssue #33で継続します。v0.2.0 / build 3ではWindow UX / Glass management / file presentationの主要機能がmainへ入り、非productionのAd-Hoc Release Candidate workflowも実装・PR検証済みです。
+**Developer ID署名・Apple notarizationは今後行わない方針です。** 既存のDeveloper ID用workflowは過去の設計・検証のため残しますが、現行の配布経路として使用しません。非公証のad-hoc配布ではGatekeeperが初回起動を拒否する場合があります。v0.2.0 / build 3ではWindow UX / Glass管理機能が実装済みで、Ad-Hoc Release Candidate workflowで検証できます。配布方針の決定は [ADR-0011](docs/adr/0011-adhoc-distribution-without-developer-id.md) を参照してください。
 
 v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Draft Release Notesは [`docs/V0.2_RELEASE_NOTES.md`](docs/V0.2_RELEASE_NOTES.md) を参照してください。
 
@@ -94,7 +94,7 @@ v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVE
 - public Release build-number monotonicity gate
 - Manual QA後のimmutable GitHub Release promotion workflow
 
-Developer ID production pathで残っているRelease blocker:
+旧Developer ID production pathの運用条件（**現在は実施しない・今後の必須ブロッカーではない**）:
 
 - `production-release` environmentへ実Developer ID / App Store Connect credentialを設定
 - Repository release immutabilityを有効化
@@ -103,7 +103,7 @@ Developer ID production pathで残っているRelease blocker:
 - `docs/MANUAL_QA.md`をsigned candidateで完走する
 - 最初のDeveloper ID signed / notarized immutable production Releaseをpublishする
 
-ad-hoc公開済みのv0.1.1とDeveloper ID production pathを混同しないこと。詳細は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)、[`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Issue #33 を参照してください。
+ad-hoc公開済みのv0.1.1と現在の検証用ad-hoc候補、旧Developer ID production pathを混同しないこと。詳細は [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)、[`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Issue #33 を参照してください。
 
 ## Product Promise
 
