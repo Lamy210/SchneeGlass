@@ -5,6 +5,9 @@ on:
     paths:
       - '.github/workflows/adhoc-release-candidate.yml'
       - 'Scripts/build-adhoc-release-candidate.sh'
+      - 'Scripts/verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/test-verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/test-adhoc-release-preupload-gate.sh'
       - 'Scripts/verify-adhoc-signature-details.sh'
       - 'Scripts/test-adhoc-signature-details.sh'
       - 'Scripts/verify-adhoc-candidate-source.sh'
@@ -77,7 +80,16 @@ jobs:
           fi
 
           bash Scripts/verify-release-metadata.sh "v$VERSION"
+
+          RELEASE_SETTINGS="$(xcodebuild -project SchneeGlass.xcodeproj -scheme SchneeGlass -configuration Release -showBuildSettings)"
+          BUILD_NUMBER="$(printf '%s\n' "$RELEASE_SETTINGS" | awk '/^[[:space:]]*CURRENT_PROJECT_VERSION = / && !seen++ { print $3 }')"
+          [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo "Invalid Release build number: $BUILD_NUMBER" >&2
+            exit 1
+          }
+
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Shell syntax
         run: |
@@ -89,6 +101,9 @@ jobs:
           bash -n Scripts/test-adhoc-release-single-instance-bundle-policy.sh
           bash -n Scripts/test-adhoc-release-path-coverage.sh
           bash -n Scripts/test-adhoc-release-path-coverage-scope.sh
+          bash -n Scripts/verify-adhoc-candidate-artifact.sh
+          bash -n Scripts/test-verify-adhoc-candidate-artifact.sh
+          bash -n Scripts/test-adhoc-release-preupload-gate.sh
 
       - name: Ad-hoc signature-details fixture
         run: bash Scripts/test-adhoc-signature-details.sh
@@ -104,6 +119,12 @@ jobs:
 
       - name: Ad-hoc release path coverage scope fixture
         run: bash Scripts/test-adhoc-release-path-coverage-scope.sh
+
+      - name: Ad-hoc artifact integrity fixtures
+        run: bash Scripts/test-verify-adhoc-candidate-artifact.sh
+
+      - name: Ad-hoc pre-upload gate wiring fixture
+        run: bash Scripts/test-adhoc-release-preupload-gate.sh
 
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
@@ -131,6 +152,19 @@ jobs:
           grep -Fx 'apple_developer_id_signed=false' adhoc-release-output/BUILD_INFO.txt >/dev/null
           grep -Fx 'apple_notarized=false' adhoc-release-output/BUILD_INFO.txt >/dev/null
           grep -Fx 'distribution=github-adhoc-candidate' adhoc-release-output/BUILD_INFO.txt >/dev/null
+
+      - name: Verify candidate artifact integrity before upload
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD: ${{ steps.release.outputs.build }}
+        run: |
+          set -euo pipefail
+          bash Scripts/verify-adhoc-candidate-artifact.sh \
+            adhoc-release-output \
+            "$RELEASE_VERSION" \
+            "$RELEASE_BUILD" \
+            "$GITHUB_SHA"
 
       - name: Upload ad-hoc candidate
         if: github.event_name == 'workflow_dispatch'

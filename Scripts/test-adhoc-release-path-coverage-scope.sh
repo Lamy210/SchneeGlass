@@ -25,6 +25,9 @@ on:
     paths:
       - '.github/workflows/adhoc-release-candidate.yml'
       - 'Scripts/build-adhoc-release-candidate.sh'
+      - 'Scripts/verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/test-verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/test-adhoc-release-preupload-gate.sh'
       - 'Scripts/verify-adhoc-signature-details.sh'
       - 'Scripts/test-adhoc-signature-details.sh'
       - 'Scripts/verify-adhoc-candidate-source.sh'
