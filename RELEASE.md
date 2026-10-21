@@ -1,5 +1,9 @@
 # SchneeGlass Release Policy
 
+> **現行配布方針（2026-10-21）:** Developer ID署名とApple notarizationは実施しない。旧Production Release Candidate / Publish Production Release経路は過去の仕様として残し、**現在の公開手順では実行しない**。ad-hoc候補は未公証の検証用artifactであり、GitHub Releaseへの自動公開はしない。将来のad-hoc公開手順には別の設計・実装・QAが必要。判断と制約は [ADR-0011](docs/adr/0011-adhoc-distribution-without-developer-id.md) に従う。
+
+以下のDeveloper ID production要件は**旧経路の技術的な仕様書**として維持する。現在の開発・配布をこれらのcredentialの準備待ちにしない。
+
 This document defines the SchneeGlass release baseline. Unsigned or ad-hoc test artifacts are never public production releases.
 
 ## Current state
