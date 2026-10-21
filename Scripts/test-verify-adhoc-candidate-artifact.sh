@@ -54,6 +54,11 @@ expect_failure() {
 }
 verify >/dev/null
 
+# Metadata is a strict key/value set, not a positional record.
+LC_ALL=C sort "$FIXTURE/original" > "$ARTIFACT/BUILD_INFO.txt"
+verify >/dev/null
+cp "$FIXTURE/original" "$ARTIFACT/BUILD_INFO.txt"
+
 while IFS='|' read -r before after diagnostic; do
   sed "s/$before/$after/" "$FIXTURE/original" > "$ARTIFACT/BUILD_INFO.txt"
   expect_failure "$after" "$diagnostic" verify
