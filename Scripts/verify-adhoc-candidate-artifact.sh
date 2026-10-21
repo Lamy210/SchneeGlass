@@ -24,7 +24,8 @@ for item in "$ARCHIVE_NAME" BUILD_INFO.txt SHA256SUMS README.txt CODESIGN_DETAIL
     || fail "missing, empty, or symbolic-link artifact: $item"
 done
 
-declare -A values=()
+# Avoid Bash 4+ associative arrays: this verifier also runs on macOS (Bash 3.2).
+seen_keys='|'
 count=0
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ "$line" == *=* ]] || fail 'malformed BUILD_INFO line'
@@ -34,22 +35,26 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     version|build|source_commit|source_branch|code_signature|apple_developer_id_signed|apple_notarized|minimum_macos|executable_info|distribution) ;;
     *) fail "unknown BUILD_INFO field: $key" ;;
   esac
-  [[ ! -v "values[$key]" ]] || fail "duplicate BUILD_INFO field: $key"
+  [[ "$seen_keys" != *"|$key|"* ]] || fail "duplicate BUILD_INFO field: $key"
   [[ -n "$value" ]] || fail "empty BUILD_INFO field: $key"
-  values["$key"]="$value"
+  seen_keys+="$key|"
+
+  case "$key" in
+    version) [[ "$value" == "$EXPECTED_VERSION" ]] || fail 'version mismatch' ;;
+    build) [[ "$value" == "$EXPECTED_BUILD" ]] || fail 'build mismatch' ;;
+    source_commit) [[ "$value" == "$EXPECTED_SHA" ]] || fail 'source commit mismatch' ;;
+    source_branch) [[ "$value" == 'main' ]] || fail 'source branch must be main' ;;
+    code_signature) [[ "$value" == 'adhoc' ]] || fail 'candidate must be ad-hoc signed' ;;
+    apple_developer_id_signed) [[ "$value" == 'false' ]] || fail 'Developer ID signing is not allowed' ;;
+    apple_notarized) [[ "$value" == 'false' ]] || fail 'Apple notarization is not allowed' ;;
+    minimum_macos) [[ "$value" == '15.0' ]] || fail 'minimum macOS baseline mismatch' ;;
+    distribution) [[ "$value" == 'github-adhoc-candidate' ]] || fail 'unexpected distribution metadata' ;;
+    executable_info) : ;;
+  esac
   ((count += 1))
 done < "$ARTIFACT_DIR/BUILD_INFO.txt"
 
 [[ "$count" -eq 10 ]] || fail "BUILD_INFO must have exactly 10 fields (found $count)"
-[[ "${values[version]}" == "$EXPECTED_VERSION" ]] || fail 'version mismatch'
-[[ "${values[build]}" == "$EXPECTED_BUILD" ]] || fail 'build mismatch'
-[[ "${values[source_commit]}" == "$EXPECTED_SHA" ]] || fail 'source commit mismatch'
-[[ "${values[source_branch]}" == 'main' ]] || fail 'source branch must be main'
-[[ "${values[code_signature]}" == 'adhoc' ]] || fail 'candidate must be ad-hoc signed'
-[[ "${values[apple_developer_id_signed]}" == 'false' ]] || fail 'Developer ID signing is not allowed'
-[[ "${values[apple_notarized]}" == 'false' ]] || fail 'Apple notarization is not allowed'
-[[ "${values[minimum_macos]}" == '15.0' ]] || fail 'minimum macOS baseline mismatch'
-[[ "${values[distribution]}" == 'github-adhoc-candidate' ]] || fail 'unexpected distribution metadata'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 bash "$SCRIPT_DIR/verify-release-checksum-manifest.sh" "$ARTIFACT_DIR" "$ARCHIVE_NAME" >/dev/null \
