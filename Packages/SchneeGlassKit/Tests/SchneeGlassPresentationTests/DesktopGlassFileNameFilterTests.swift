@@ -79,6 +79,19 @@ func filenameFilterPreservesSelectedSortAndItemIdentities() {
 }
 
 @Test
+func filenameFilterSupportsJapaneseDisplayNames() {
+  let files = [
+    filterItem("開発仕様書.md"),
+    filterItem("設計ノート.txt"),
+    filterItem("ReleaseNotes.txt"),
+  ]
+
+  let result = DesktopGlassFileNameFilter.matchingItems(files, query: "仕様")
+
+  #expect(result.map(\.displayName) == ["開発仕様書.md"])
+}
+
+@Test
 func filenameFilterReturnsNoMatchesWithoutReadingOutsideTheSnapshot() {
   let firstPage = [filterItem("first.txt"), filterItem("second.txt")]
 
