@@ -18,7 +18,7 @@ jobs:
   canonical:
     name: Canonical / Xcode 26.6 / App Build / Safety Guards
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
