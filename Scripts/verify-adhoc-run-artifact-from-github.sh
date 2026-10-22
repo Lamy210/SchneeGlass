@@ -87,5 +87,5 @@ REPOSITORY_ID="$("$JQ_BIN" -er '.repository.id' "$TMP/run.json")"
 # This is GitHub's digest for the outer Actions artifact ZIP, not the inner
 # SchneeGlass app ZIP digest. The inner archive is verified separately.
 "$JQ_BIN" -r --arg name "$ARTIFACT_NAME" '
-  .[][] | select(.name == $name) | "artifact_id=\(.id)\nartifact_digest=\(.digest)"
+  .[] | .artifacts[] | select(.name == $name) | "artifact_id=\(.id)\nartifact_digest=\(.digest)"
 ' "$TMP/artifacts.json"
