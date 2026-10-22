@@ -6,6 +6,8 @@ on:
       - '.github/workflows/adhoc-extracted-app-validation.yml'
       - 'Scripts/verify-extracted-adhoc-app.sh'
       - 'Scripts/test-verify-extracted-adhoc-app.py'
+      - 'Scripts/test-adhoc-extracted-app-workflow-gate.sh'
+      - '.github/workflows/adhoc-release-candidate.yml'
       - 'Scripts/verify-required-plist-value.sh'
       - 'Scripts/verify-adhoc-signature-details.sh'
       - 'Scripts/verify-optional-release-entitlements.sh'
@@ -26,6 +28,10 @@ jobs:
         run: |
           bash -n Scripts/verify-extracted-adhoc-app.sh
           python3 -m py_compile Scripts/test-verify-extracted-adhoc-app.py
+          bash -n Scripts/test-adhoc-extracted-app-workflow-gate.sh
 
       - name: App identity and code signature negative fixtures
         run: python3 Scripts/test-verify-extracted-adhoc-app.py
+
+      - name: Real candidate workflow wiring mutation fixtures
+        run: bash Scripts/test-adhoc-extracted-app-workflow-gate.sh
