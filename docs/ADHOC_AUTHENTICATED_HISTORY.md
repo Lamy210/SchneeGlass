@@ -21,7 +21,7 @@ The output contains:
 - `published-tags.txt` — all distinct non-draft public Release tags, including prereleases, sorted deterministically.
 - `history/{index}/RELEASE_EVIDENCE.txt` — evidence materialized for each public Release by the pre-existing legacy/evidence-aware verifier, plus its supporting metadata.
 
-The wrapper refuses malformed pages, repeated Release IDs or public tag names, unsupported public tag syntax, incomplete materialization, and GitHub API failures. Private/draft releases are not public build history; their tag collisions must still be rejected separately by the Release slot preflight.
+The wrapper refuses malformed pages, repeated Release IDs or public tag names, unsupported public tag syntax, incomplete materialization, and GitHub API failures. It also **requires every tag recorded in the checked-in legacy-public-releases.tsv baseline** (currently v0.1.0 and v0.1.1) to appear in the authenticated non-draft GitHub inventory; a supposedly empty inventory is rejected for SchneeGlass. Private/draft releases are not public build history; their tag collisions must still be rejected separately by the Release slot preflight.
 
 To verify a candidate against this snapshot, use the existing ad-hoc monotonic build adapter:
 
@@ -41,6 +41,6 @@ The example version, SHA and output directory are placeholders. Pass independent
 - A successfully materialized snapshot only reflects GitHub's state at the time of collection. Immediately before future tag creation and publication, requery Releases and tags, verify the candidate source against live main, and recheck build history. Otherwise concurrent releases may invalidate the earlier snapshot.
 - The snapshot does not reserve a tag, prove a QA reviewer's identity, authorize a Release, or prove real macOS code-signature state. These are independent requirements in [Issue #520](https://github.com/Lamy210/SchneeGlass/issues/520).
 - Creating or altering GitHub Releases, modifying existing tags, signing with Developer ID, notarizing via Apple, and disabling Gatekeeper are all outside this script's behavior.
-- Releases v0.1.0 and v0.1.1 already exist for this repository. An unexpectedly empty public-history snapshot would require manual investigation and **must not** be used to authorize publication, even though an empty but genuinely complete repository is valid for an initial release.
+- Releases v0.1.0 and v0.1.1 already exist for this repository. **The script fails closed if either is absent**, including an empty response. A genuinely empty repository is not a supported case for this hardcoded SchneeGlass workflow.
 
 This is a separate, minimal safety primitive to connect to a future human-QA-gated ad-hoc publisher. No published artifact is produced here.
