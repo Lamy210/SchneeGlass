@@ -8,6 +8,9 @@ on:
       - 'Scripts/verify-adhoc-candidate-artifact.sh'
       - 'Scripts/test-verify-adhoc-candidate-artifact.sh'
       - 'Scripts/test-adhoc-release-preupload-gate.sh'
+      - 'Scripts/verify-extracted-adhoc-app.sh'
+      - 'Scripts/test-verify-extracted-adhoc-app.py'
+      - 'Scripts/test-adhoc-extracted-app-workflow-gate.sh'
       - 'Scripts/verify-adhoc-signature-details.sh'
       - 'Scripts/test-adhoc-signature-details.sh'
       - 'Scripts/verify-adhoc-candidate-source.sh'
@@ -94,6 +97,8 @@ jobs:
       - name: Shell syntax
         run: |
           bash -n Scripts/build-adhoc-release-candidate.sh
+          bash -n Scripts/verify-extracted-adhoc-app.sh
+          bash -n Scripts/test-adhoc-extracted-app-workflow-gate.sh
           bash -n Scripts/verify-adhoc-signature-details.sh
           bash -n Scripts/test-adhoc-signature-details.sh
           bash -n Scripts/verify-adhoc-candidate-source.sh
@@ -134,6 +139,18 @@ jobs:
           bash Scripts/build-adhoc-release-candidate.sh \
             '${{ steps.release.outputs.version }}' \
             adhoc-release-output
+
+      - name: Verify real extracted ad-hoc app
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_BUILD: ${{ steps.release.outputs.build }}
+        run: |
+          set -euo pipefail
+          QA_DIR="$(mktemp -d "$RUNNER_TEMP/schneeglass-real-app-XXXXXX")"
+          trap 'rm -rf "$QA_DIR"' EXIT
+          ditto -x -k "adhoc-release-output/SchneeGlass-$RELEASE_VERSION-adhoc-candidate.zip" "$QA_DIR"
+          bash Scripts/verify-extracted-adhoc-app.sh \
+            "$QA_DIR/SchneeGlass.app" "$RELEASE_VERSION" "$RELEASE_BUILD"
 
       - name: Verify candidate artifact set
         run: |
