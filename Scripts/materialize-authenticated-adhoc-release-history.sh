@@ -12,6 +12,8 @@ DEST="$1"
 [[ ! -e "$DEST" && ! -L "$DEST" ]] || fail 'output directory already exists (no overwrite)'
 PARENT="$(dirname -- "$DEST")"
 [[ -d "$PARENT" && ! -L "$PARENT" ]] || fail 'output parent must be an existing real directory'
+PARENT="$(cd -- "$PARENT" && pwd)"
+DEST="$PARENT/$(basename -- "$DEST")"
 
 command -v gh >/dev/null 2>&1 || fail 'gh CLI is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
