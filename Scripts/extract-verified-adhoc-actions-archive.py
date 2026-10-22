@@ -102,6 +102,15 @@ def verify_and_extract(
                             shutil.copyfileobj(reader, writer, CHUNK)
                     if (destination / info.filename).stat().st_size != info.file_size:
                         raise VerificationError(f"extracted size mismatch: {info.filename}")
+
+                # Detect a wrapper file modified after the initial verification.
+                # A failed recheck cleans the freshly created directory.
+                handle.seek(0)
+                digest_after = hashlib.sha256()
+                while chunk := handle.read(CHUNK):
+                    digest_after.update(chunk)
+                if digest_after.hexdigest() != expected_digest.removeprefix("sha256:"):
+                    raise VerificationError("outer ZIP changed during extraction")
             except BaseException:
                 shutil.rmtree(destination)
                 raise
