@@ -148,6 +148,14 @@ class ArtifactArchiveTests(unittest.TestCase):
         digest = self.make_archive(entries)
         self.assert_rejected(digest, "excessive ZIP compression ratio")
 
+    def test_inner_member_crc_failure_removes_partial_output(self) -> None:
+        self.make_archive(compression=0)  # ZIP_STORED for deterministic bytes
+        data = self.outer.read_bytes()
+        self.assertIn(b"synthetic inner ZIP", data)
+        self.outer.write_bytes(data.replace(b"synthetic", b"malicious", 1))
+        digest = "sha256:" + hashlib.sha256(self.outer.read_bytes()).hexdigest()
+        self.assert_rejected(digest, "Bad CRC-32")
+
     def test_corrupted_zip_rejected(self) -> None:
         self.outer.write_bytes(b"not a ZIP at all")
         digest = "sha256:" + hashlib.sha256(self.outer.read_bytes()).hexdigest()
