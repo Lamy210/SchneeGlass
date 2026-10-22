@@ -1,0 +1,30 @@
+name: Ad-Hoc Run Artifact Binding Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-run-artifact-binding-validation.yml'
+      - 'Scripts/verify-adhoc-run-artifact-from-github.sh'
+      - 'Scripts/test-verify-adhoc-run-artifact-from-github.sh'
+      - 'Scripts/verify-adhoc-run-from-github.sh'
+      - 'Scripts/verify-adhoc-publication-candidate.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Run Artifact / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/verify-adhoc-run-artifact-from-github.sh
+          bash -n Scripts/test-verify-adhoc-run-artifact-from-github.sh
+
+      - name: Authenticated Actions candidate binding and negative fixtures
+        run: bash Scripts/test-verify-adhoc-run-artifact-from-github.sh
