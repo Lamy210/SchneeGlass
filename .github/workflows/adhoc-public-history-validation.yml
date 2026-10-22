@@ -1,0 +1,31 @@
+name: Ad-Hoc Public History Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-public-history-validation.yml'
+      - 'Scripts/materialize-authenticated-adhoc-release-history.sh'
+      - 'Scripts/test-materialize-authenticated-adhoc-release-history.sh'
+      - 'Scripts/materialize-public-release-build-history.sh'
+      - 'Scripts/verify-legacy-release-build-info.sh'
+      - 'docs/release-history/legacy-public-releases.tsv'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Public History / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Shell syntax
+        run: |
+          bash -n Scripts/materialize-authenticated-adhoc-release-history.sh
+          bash -n Scripts/test-materialize-authenticated-adhoc-release-history.sh
+
+      - name: GitHub pagination, full history and negative fixtures
+        run: bash Scripts/test-materialize-authenticated-adhoc-release-history.sh
