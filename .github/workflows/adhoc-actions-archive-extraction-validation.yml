@@ -1,0 +1,28 @@
+name: Ad-Hoc Actions Archive Extraction Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-actions-archive-extraction-validation.yml'
+      - 'Scripts/extract-verified-adhoc-actions-archive.py'
+      - 'Scripts/test-extract-verified-adhoc-actions-archive.py'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Actions Archive Extraction / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Python syntax
+        run: |
+          python3 -m py_compile Scripts/extract-verified-adhoc-actions-archive.py
+          python3 -m py_compile Scripts/test-extract-verified-adhoc-actions-archive.py
+
+      - name: Archive digest, entry allowlist, symlink and tamper fixtures
+        run: python3 Scripts/test-extract-verified-adhoc-actions-archive.py
