@@ -38,7 +38,7 @@ expect_rejected() {
 grep -Fv '      - name: Verify real extracted ad-hoc app' "$WORKFLOW" > "$FIXTURE/missing.yml"
 expect_rejected 'missing gate' "$FIXTURE/missing.yml"
 
-sed 's/RELEASE_BUILD: \\${{ steps.release.outputs.build }}/RELEASE_BUILD: 0/' "$WORKFLOW" > "$FIXTURE/wrong-build.yml"
+sed 's/RELEASE_BUILD: \${{ steps.release.outputs.build }}/RELEASE_BUILD: 0/' "$WORKFLOW" > "$FIXTURE/wrong-build.yml"
 expect_rejected 'incorrect build source' "$FIXTURE/wrong-build.yml"
 
 sed 's/ditto -x -k /ditto -c -k /' "$WORKFLOW" > "$FIXTURE/not-extracted.yml"
