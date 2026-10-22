@@ -24,7 +24,7 @@ case "${1:-}:${2:-}" in
     [[ "$#" -eq 7 && "$4" == '--repo' && "$5" == 'Lamy210/SchneeGlass' && "$6" == '--json' && "$7" == 'targetCommitish,assets' ]] || exit 63
     [[ ! -f "$MOCK_DIR/fail-view" ]] || exit 64
     case "$3" in
-      v0.2.0|v0.3.0)
+      v0.1.0|v0.1.1|v0.2.0|v0.3.0)
         if [[ -f "$MOCK_DIR/duplicate-asset" ]]; then
           printf '%s\n' '{"targetCommitish":"0123456789abcdef0123456789abcdef01234567","assets":[{"name":"RELEASE_EVIDENCE.txt"},{"name":"RELEASE_EVIDENCE.txt"}]}'
         else
@@ -38,6 +38,8 @@ case "${1:-}:${2:-}" in
     [[ "$#" -eq 9 && "$4" == '--repo' && "$5" == 'Lamy210/SchneeGlass' && "$6" == '--pattern' && "$7" == 'RELEASE_EVIDENCE.txt' && "$8" == '--dir' ]] || exit 66
     [[ ! -f "$MOCK_DIR/fail-download" ]] || exit 67
     case "$3" in
+      v0.1.0) build=1 ;;
+      v0.1.1) build=2 ;;
       v0.2.0) build=3 ;;
       v0.3.0) build=4 ;;
       *) exit 68 ;;
@@ -53,7 +55,9 @@ cat > "$TMP/base-releases.json" <<'JSON'
 [
   [
     {"id": 10, "tag_name": "v0.3.0", "draft": false},
-    {"id": 11, "tag_name": "v0.5.0", "draft": true}
+    {"id": 11, "tag_name": "v0.5.0", "draft": true},
+    {"id": 8, "tag_name": "v0.1.0", "draft": false},
+    {"id": 9, "tag_name": "v0.1.1", "draft": false}
   ],
   [
     {"id": 12, "tag_name": "v0.2.0", "draft": false}
@@ -81,10 +85,16 @@ reject() {
 }
 
 run "$TMP/complete" >/dev/null
-[[ "$(cat "$TMP/complete/published-tags.txt")" == $'v0.2.0\nv0.3.0' ]]
-grep -Fxq 'bundle_build=3' "$TMP/complete/history/1/RELEASE_EVIDENCE.txt"
-grep -Fxq 'bundle_build=4' "$TMP/complete/history/2/RELEASE_EVIDENCE.txt"
-[[ ! -d "$TMP/complete/history/3" ]]
+[[ "$(wc -l < "$TMP/complete/published-tags.txt")" -eq 4 ]]
+grep -Fxq 'v0.1.0' "$TMP/complete/published-tags.txt"
+grep -Fxq 'v0.1.1' "$TMP/complete/published-tags.txt"
+grep -Fxq 'v0.2.0' "$TMP/complete/published-tags.txt"
+grep -Fxq 'v0.3.0' "$TMP/complete/published-tags.txt"
+grep -Fxq 'bundle_build=1' "$TMP/complete/history/1/RELEASE_EVIDENCE.txt"
+grep -Fxq 'bundle_build=2' "$TMP/complete/history/2/RELEASE_EVIDENCE.txt"
+grep -Fxq 'bundle_build=3' "$TMP/complete/history/3/RELEASE_EVIDENCE.txt"
+grep -Fxq 'bundle_build=4' "$TMP/complete/history/4/RELEASE_EVIDENCE.txt"
+[[ ! -d "$TMP/complete/history/5" ]]
 [[ -f "$TMP/complete/release-inventory.json" ]]
 
 mkdir "$TMP/existing"
@@ -100,6 +110,7 @@ mutate() {
   cp "$TMP/base-releases.json" "$TMP/releases.json"
 }
 
+mutate 'missing known v0.1.1 public Release' '.[0] |= map(select(.tag_name != "v0.1.1"))' 'known public Release missing from GitHub inventory' 'missing-legacy'
 mutate 'duplicate id' '.[1][0].id=10' 'duplicate IDs/tags' 'dup-id'
 mutate 'duplicate published tag' '.[1][0].tag_name="v0.3.0"' 'duplicate IDs/tags' 'dup-tag'
 mutate 'unsupported public tag' '.[1][0].tag_name="nightly"' 'duplicate IDs/tags' 'bad-tag'
@@ -110,9 +121,8 @@ mutate 'missing pages' '[]' 'page inventory is malformed' 'no-pages'
 mutate 'invalid outer envelope' '{data: .}' 'page inventory is malformed' 'bad-envelope'
 
 printf '[[]]\n' > "$TMP/releases.json"
-run "$TMP/empty" >/dev/null
-[[ ! -s "$TMP/empty/published-tags.txt" ]]
-[[ -d "$TMP/empty/history" && ! -e "$TMP/empty/history/1" ]]
+reject 'empty inventory missing legacy Releases' 'known public Release missing from GitHub inventory' run "$TMP/empty"
+[[ ! -e "$TMP/empty" ]]
 cp "$TMP/base-releases.json" "$TMP/releases.json"
 
 for case_name in fail-api fail-view fail-download duplicate-asset; do
@@ -130,5 +140,5 @@ reject 'missing output argument' 'usage:' bash Scripts/materialize-authenticated
 reject 'missing parent' 'output parent must be an existing real directory' run "$TMP/absent/snapshot"
 
 run "$TMP/final" >/dev/null
-grep -Fxq 'bundle_build=4' "$TMP/final/history/2/RELEASE_EVIDENCE.txt"
+grep -Fxq 'bundle_build=4' "$TMP/final/history/4/RELEASE_EVIDENCE.txt"
 echo 'Authenticated full public Release history fixtures passed'
