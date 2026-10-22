@@ -1,0 +1,34 @@
+name: Ad-Hoc Candidate Approval Chain Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-candidate-approval-chain-validation.yml'
+      - 'Scripts/verify-adhoc-candidate-approval-chain.sh'
+      - 'Scripts/test-verify-adhoc-candidate-approval-chain.py'
+      - 'Scripts/verify-adhoc-run-artifact-from-github.sh'
+      - 'Scripts/verify-adhoc-run-from-github.sh'
+      - 'Scripts/verify-adhoc-qa-comment-from-github.sh'
+      - 'Scripts/extract-verified-adhoc-actions-archive.py'
+      - 'Scripts/verify-adhoc-candidate-artifact.sh'
+      - 'Scripts/verify-release-checksum-manifest.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Candidate Approval Chain / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check syntax
+        run: |
+          bash -n Scripts/verify-adhoc-candidate-approval-chain.sh
+          python3 -m py_compile Scripts/test-verify-adhoc-candidate-approval-chain.py
+
+      - name: Complete candidate identity, digest and QA negative fixtures
+        run: python3 Scripts/test-verify-adhoc-candidate-approval-chain.py
