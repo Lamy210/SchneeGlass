@@ -38,7 +38,7 @@ class ReadOnlyPreflightFixtures(unittest.TestCase):
         self.calls = self.work / "calls.txt"
         shim = self.bin / "bash"
         shim.write_text(
-            r"""#!/usr/bin/env bash
+            r"""#!/bin/bash
 set -euo pipefail
 name="$(basename -- "$1")"
 printf '%s\n' "$name" >> "$MOCK_CALLS"
@@ -130,7 +130,8 @@ esac
                 result = self.invoke(fail_step=step)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("failed:", result.stderr)
-                self.assertNotIn("verify-adhoc-run-artifact-from-github.sh", self.called())
+                if step != "verify-adhoc-run-artifact-from-github.sh":
+                    self.assertNotIn("verify-adhoc-run-artifact-from-github.sh", self.called())
                 if self.history.exists():
                     # Child-mocked output belongs to a prior iteration;
                     # never remove it implicitly in production.
