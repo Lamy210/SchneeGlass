@@ -24,7 +24,7 @@ The helper is **read-only with respect to the app**. It refuses symlinked app ro
 - Actual `Contents/Info.plist`: expected bundle ID `io.github.lamy210.schneeglass`, version, build and single-instance policy.
 - Actual `codesign -d --entitlements :-` output: App Sandbox enabled, user-selected read/write permission enabled, unexpected network client permission absent, and no debug `get-task-allow=true`.
 
-The tests mock macOS programs on an Ubuntu CI runner to exercise failure handling; **those mocked tests do not verify an actual macOS app**. Operators must run the helper against the genuine extracted candidate on macOS, and also exercise Menu Bar, filesystem source safety, copy-only Drop/Recovery and Gatekeeper behavior in the manual QA checklist.
+The Ubuntu fixtures mock macOS commands to exercise failure handling. **Additionally, the Ad-Hoc Release Candidate Xcode 26.6 workflow builds an actual ad-hoc app, packages it, extracts the resulting ZIP into an isolated runner temporary directory, and invokes this same validator on the real extracted app before candidate upload**. The workflow wiring is guarded by a negative-mutation fixture. These automated checks still do not replace manual installation and File Safety QA on an independent operator machine. Operators must run the helper against the genuine extracted candidate on macOS, and also exercise Menu Bar, filesystem source safety, copy-only Drop/Recovery and Gatekeeper behavior in the manual QA checklist.
 
 ## Security boundaries
 
