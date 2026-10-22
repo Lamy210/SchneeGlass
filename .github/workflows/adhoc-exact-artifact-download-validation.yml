@@ -1,0 +1,29 @@
+name: Ad-Hoc Exact Artifact Download Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-exact-artifact-download-validation.yml'
+      - 'Scripts/download-verified-adhoc-actions-artifact.sh'
+      - 'Scripts/test-download-verified-adhoc-actions-artifact.py'
+      - 'Scripts/verify-adhoc-run-artifact-from-github.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Exact Artifact Download / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check syntax
+        run: |
+          bash -n Scripts/download-verified-adhoc-actions-artifact.sh
+          python3 -m py_compile Scripts/test-download-verified-adhoc-actions-artifact.py
+
+      - name: Exact-ID and SHA-256 failure fixtures
+        run: python3 Scripts/test-download-verified-adhoc-actions-artifact.py
