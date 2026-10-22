@@ -65,43 +65,19 @@ jq -r '.[][] | select(.draft == false) | .tag_name' \
 EXPECTED="$(jq '[.[][] | select(.draft == false)] | length' "$STAGE/release-inventory.json")"
 [[ "$EXPECTED" =~ ^[0-9]+$ ]] || fail 'published Release count is invalid'
 
-# This repository already shipped public v0.1.x Releases. A supposedly empty
-# GitHub response is not evidence of first publication. Compare against the
-# checked-in legacy manifest before trusting the fetched history snapshot.
+# GitHub may return an apparently empty or incomplete inventory even though
+# this repository already shipped public Releases. Enforce the checked-in
+# legacy tags as a minimum observable baseline before trusting the snapshot.
 LEGACY_MANIFEST="$ROOT/docs/release-history/legacy-public-releases.tsv"
-[[ -f "$LEGACY_MANIFEST" ]] || fail 'checked-in known public Release manifest missing'
+[[ -f "$LEGACY_MANIFEST" ]] || fail 'known public Release manifest missing'
 BASELINE_COUNT=0
-while IFS=
-if [[ "$EXPECTED" -gt 0 ]]; then
-  (
-    cd "$ROOT"
-    bash Scripts/materialize-public-release-build-history.sh \
-      "$REPOSITORY" "$STAGE/published-tags.txt" "$STAGE/history" \
-      docs/release-history/legacy-public-releases.tsv
-  ) || fail 'published Release history could not be fully materialized'
-
-  i=1
-  while [[ "$i" -le "$EXPECTED" ]]; do
-    [[ -f "$STAGE/history/$i/RELEASE_EVIDENCE.txt" \
-       && ! -L "$STAGE/history/$i/RELEASE_EVIDENCE.txt" ]] \
-      || fail "missing verified public build evidence at history index $i"
-    i=$((i + 1))
-  done
-fi
-
-# Preserve the complete inventory and tag list as an auditable snapshot.
-# Never touch an already-existing destination; this remains an offline,
-# read-only GitHub history acquisition step rather than a publisher.
-[[ ! -e "$DEST" && ! -L "$DEST" ]] || fail 'output destination became occupied'
-mv -- "$STAGE" "$DEST" || fail 'unable to finalize verified history snapshot'
-STAGE=''
-echo "Authenticated public Release history snapshot created: $DEST ($EXPECTED published Releases)"
-\\t' read -r tag _; do
-  [[ -n "$tag" && "$tag" != \\#* ]] || continue
-  [[ "$tag" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] \\
-    || fail "malformed known public Release tag: $tag"
-  grep -Fxq -- "$tag" "$STAGE/published-tags.txt" \\
-    || fail "known public Release missing from GitHub inventory: $tag"
+while read -r tag ignored; do
+  [[ -n "$tag" ]] || continue
+  if [[ "${tag:0:1}" == "#" ]]; then
+    continue
+  fi
+  [[ "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]] || fail "malformed known public Release tag: $tag"
+  grep -Fxq -- "$tag" "$STAGE/published-tags.txt" || fail "known public Release missing from GitHub inventory: $tag"
   BASELINE_COUNT=$((BASELINE_COUNT + 1))
 done < "$LEGACY_MANIFEST"
 [[ "$BASELINE_COUNT" -gt 0 ]] || fail 'known public Release manifest is empty'
