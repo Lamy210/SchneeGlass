@@ -17,6 +17,7 @@ DEST="$PARENT/$(basename -- "$DEST")"
 
 command -v gh >/dev/null 2>&1 || fail 'gh CLI is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY='Lamy210/SchneeGlass'
@@ -104,6 +105,42 @@ fi
 # Never touch an already-existing destination; this remains an offline,
 # read-only GitHub history acquisition step rather than a publisher.
 [[ ! -e "$DEST" && ! -L "$DEST" ]] || fail 'output destination became occupied'
-mv -- "$STAGE" "$DEST" || fail 'unable to finalize verified history snapshot'
+# Plain mv can interpret a concurrently created directory as a container;
+# os.rename can replace an empty directory. Require a native exclusive rename.
+python3 - "$STAGE" "$DEST" <<'PY' || fail 'unable to finalize verified history snapshot without replacement'
+import ctypes
+import os
+import stat
+import sys
+
+source, destination = sys.argv[1:]
+if os.path.dirname(source) != os.path.dirname(destination):
+    sys.exit("history promotion must stay within one parent")
+libc = ctypes.CDLL(None, use_errno=True)
+if sys.platform == "darwin":
+    rename = getattr(libc, "renameatx_np", None)
+    flag = 0x00000004  # RENAME_EXCL (Darwin sys/stdio.h)
+elif sys.platform.startswith("linux"):
+    rename = getattr(libc, "renameat2", None)
+    flag = 1  # RENAME_NOREPLACE (Linux)
+else:
+    sys.exit("exclusive directory rename is unsupported on this platform")
+if rename is None:
+    sys.exit("native exclusive directory rename is unavailable")
+rename.argtypes = [ctypes.c_int, ctypes.c_char_p,
+                   ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+rename.restype = ctypes.c_int
+parent = os.open(os.path.dirname(source), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    src = os.fsencode(os.path.basename(source))
+    dst = os.fsencode(os.path.basename(destination))
+    if not stat.S_ISDIR(os.stat(src, dir_fd=parent, follow_symlinks=False).st_mode):
+        sys.exit("history stage must be a real directory")
+    if rename(parent, src, parent, dst, flag) != 0:
+        error = ctypes.get_errno()
+        sys.exit("exclusive directory rename failed: " + os.strerror(error))
+finally:
+    os.close(parent)
+PY
 STAGE=''
 echo "Authenticated public Release history snapshot created: $DEST ($EXPECTED published Releases)"
