@@ -100,3 +100,59 @@ func filenameFilterReturnsNoMatchesWithoutReadingOutsideTheSnapshot() {
   #expect(result.isEmpty)
   #expect(firstPage.count == 2)
 }
+
+@Test
+func filterStatusReportsOnlyLoadedMatches() {
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "report",
+      loadedCount: 500,
+      matchingCount: 0,
+      isTruncated: true
+    ) == "0 of 500 loaded items match. More items are not searched."
+  )
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "report",
+      loadedCount: 500,
+      matchingCount: 500,
+      isTruncated: true
+    ) == "500 of 500 loaded items match. More items are not searched."
+  )
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "report",
+      loadedCount: 2,
+      matchingCount: 1,
+      isTruncated: false
+    ) == "1 of 2 loaded items match."
+  )
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "missing",
+      loadedCount: 2,
+      matchingCount: 0,
+      isTruncated: false
+    ) == "0 of 2 loaded items match."
+  )
+}
+
+@Test
+func filterStatusForBlankQueryOnlyShowsTruncation() {
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: " \t\n ",
+      loadedCount: 500,
+      matchingCount: 500,
+      isTruncated: true
+    ) == "Showing 500 loaded items. More items exist."
+  )
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "",
+      loadedCount: 500,
+      matchingCount: 500,
+      isTruncated: false
+    ) == nil
+  )
+}
