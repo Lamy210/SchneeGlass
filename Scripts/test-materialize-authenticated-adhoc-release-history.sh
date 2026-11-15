@@ -139,6 +139,69 @@ done
 reject 'missing output argument' 'usage:' bash Scripts/materialize-authenticated-adhoc-release-history.sh
 reject 'missing parent' 'output parent must be an existing real directory' run "$TMP/absent/snapshot"
 
+# Inject a destination immediately after the final shell existence check.
+# Wrap both the original mv and the replacement python3, so the regression
+# actually fails on the old implementation rather than only the new path.
+export REAL_PYTHON3="$(command -v python3)"
+export REAL_MV="$(command -v mv)"
+cat > "$TMP/bin/inject-promotion" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${0##*/}" in
+  python3)
+    if [[ "$#" -ne 3 || "$1" != "-" ]]; then
+      exec "$REAL_PYTHON3" "$@"
+    fi
+    shift
+    src="$1"
+    dst="$2"
+    command_path="$REAL_PYTHON3"
+    ;;
+  mv)
+    if [[ "$#" -ne 3 || "$1" != "--" || "$2" != */.schneeglass-public-history.* ]]; then
+      exec "$REAL_MV" "$@"
+    fi
+    shift
+    src="$1"
+    dst="$2"
+    command_path="$REAL_MV"
+    ;;
+  *) exit 71 ;;
+esac
+[[ "$src" == */.schneeglass-public-history.* ]] || exit 72
+case "${MOCK_PROMOTION_RACE:-}" in
+  directory) mkdir "$dst" ;;
+  nonempty) mkdir "$dst"; printf 'preserve marker\n' > "$dst/marker.txt" ;;
+  symlink) ln -s "$MOCK_DIR/race-owner" "$dst" ;;
+  file) printf 'preserve file\n' > "$dst" ;;
+  '') ;;
+  *) exit 73 ;;
+esac
+if [[ "$command_path" == "$REAL_PYTHON3" ]]; then
+  exec "$command_path" - "$src" "$dst"
+fi
+exec "$command_path" -- "$src" "$dst"
+SHIM
+chmod +x "$TMP/bin/inject-promotion"
+ln -s inject-promotion "$TMP/bin/python3"
+ln -s inject-promotion "$TMP/bin/mv"
+mkdir "$TMP/race-owner"
+printf 'owner marker\n' > "$TMP/race-owner/keep.txt"
+for race in directory nonempty symlink file; do
+  export MOCK_PROMOTION_RACE="$race"
+  dest="$TMP/race-$race"
+  reject "$race at promotion" 'unable to finalize verified history snapshot without replacement' run "$dest"
+  # No private stage leaks, no destination replacement, no nested snapshot.
+  [[ -z "$(find "$TMP" -maxdepth 1 -name '.schneeglass-public-history.*' -print)" ]]
+  case "$race" in
+    directory) [[ -d "$dest" && -z "$(ls -A "$dest")" ]] ;;
+    nonempty) [[ -d "$dest" && "$(ls -A "$dest")" == 'marker.txt' ]]; grep -Fxq 'preserve marker' "$dest/marker.txt" ;;
+    symlink) [[ -L "$dest" && "$(ls -A "$TMP/race-owner")" == 'keep.txt' ]]; grep -Fxq 'owner marker' "$TMP/race-owner/keep.txt" ;;
+    file) [[ -f "$dest" ]]; grep -Fxq 'preserve file' "$dest" ;;
+  esac
+done
+unset MOCK_PROMOTION_RACE
+
 run "$TMP/final" >/dev/null
 grep -Fxq 'bundle_build=4' "$TMP/final/history/4/RELEASE_EVIDENCE.txt"
 echo 'Authenticated full public Release history fixtures passed'
