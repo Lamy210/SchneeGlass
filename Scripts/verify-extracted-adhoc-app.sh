@@ -69,4 +69,32 @@ bash "$ROOT/Scripts/verify-optional-release-entitlements.sh" \
   "$FIXTURE/entitlements.plist" 'Downloaded ad-hoc app' \
   || fail 'unexpected optional entitlement'
 
+# Verify the complete entitlement dictionary, not only individual probes.
+# The checked-in App/SchneeGlass.entitlements declares exactly these grants.
+# A disabled get-task-allow is harmless and matches the existing optional policy.
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
+python3 - "$FIXTURE/entitlements.plist" <<'PY' || fail 'unexpected entitlement dictionary'
+import plistlib
+import sys
+
+required = {
+    "com.apple.security.app-sandbox",
+    "com.apple.security.files.user-selected.read-write",
+}
+optional = {"com.apple.security.get-task-allow"}
+try:
+    with open(sys.argv[1], "rb") as source:
+        values = plistlib.load(source)
+except (OSError, ValueError, plistlib.InvalidFileException):
+    sys.exit("unable to parse extracted entitlement dictionary")
+if not isinstance(values, dict) or not required <= values.keys():
+    sys.exit("required entitlement dictionary keys are missing")
+if values.keys() - (required | optional):
+    sys.exit("unknown entitlement key is not allowed")
+if any(values[key] is not True for key in required):
+    sys.exit("required entitlement must be boolean true")
+if any(values[key] is not False for key in optional & values.keys()):
+    sys.exit("optional debug entitlement must be boolean false")
+PY
+
 echo "Real extracted app signature and entitlements verified (NOT Apple notarization): version=$VERSION build=$BUILD"
