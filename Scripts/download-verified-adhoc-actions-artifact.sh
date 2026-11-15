@@ -66,8 +66,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Bound disk writes while the response is streaming, not after completion.
+# pipefail also rejects a producer failure after partial or complete output.
 "$GH_BIN" api "repos/Lamy210/SchneeGlass/actions/artifacts/$ARTIFACT_ID/zip" \
-  > "$STAGE" || fail 'GitHub artifact ZIP download failed'
+  | python3 -c '
+import sys
+
+remaining = int(sys.argv[2])
+with open(sys.argv[1], "wb") as stage:
+    while True:
+        chunk = sys.stdin.buffer.read(min(65536, remaining + 1))
+        if not chunk:
+            break
+        if len(chunk) > remaining:
+            sys.exit("downloaded artifact exceeds the 1 GiB limit")
+        stage.write(chunk)
+        remaining -= len(chunk)
+' "$STAGE" 1073741824 || fail 'GitHub artifact ZIP download failed'
 
 [[ -f "$STAGE" && ! -L "$STAGE" && -s "$STAGE" ]] \
   || fail 'downloaded artifact is empty or not a regular file'
