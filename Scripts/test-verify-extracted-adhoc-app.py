@@ -66,7 +66,27 @@ case "$1" in
     ;;
   -d)
     [[ "$MOCK_ENTITLEMENTS_FAIL" != 1 ]] || exit 50
-    printf 'synthetic entitlements\\n'
+    printf '%s\\n' '<?xml version="1.0" encoding="UTF-8"?>' '<plist version="1.0"><dict>'
+    printf '<key>com.apple.security.app-sandbox</key><%s/>\\n' "$MOCK_SANDBOX"
+    printf '<key>com.apple.security.files.user-selected.read-write</key><%s/>\\n' "$MOCK_RW"
+    if [[ "$MOCK_NETWORK" == 1 ]]; then
+      printf '%s\\n' '<key>com.apple.security.network.client</key><true/>'
+    fi
+    if [[ "$MOCK_DEBUG" == 1 ]]; then
+      printf '%s\\n' '<key>com.apple.security.get-task-allow</key><true/>'
+    elif [[ "$MOCK_DEBUG_FALSE" == 1 ]]; then
+      printf '%s\\n' '<key>com.apple.security.get-task-allow</key><false/>'
+    fi
+    if [[ "$MOCK_EXTRA_ENTITLEMENT" == 1 ]]; then
+      printf '%s\\n' '<key>com.apple.security.network.server</key><true/>'
+    fi
+    if [[ "$MOCK_EXTRA_ENTITLEMENT" == 2 ]]; then
+      printf '%s\\n' '<key>com.apple.security.cs.disable-library-validation</key><true/>'
+    fi
+    if [[ "$MOCK_EXTRA_ENTITLEMENT" == 3 ]]; then
+      printf '%s\\n' '<key>com.apple.security.files.downloads.read-write</key><true/>'
+    fi
+    printf '%s\\n' '</dict></plist>'
     ;;
   *) exit 51 ;;
 esac
@@ -84,6 +104,7 @@ esac
             "MOCK_VERSION": "0.2.0", "MOCK_BUILD": "3",
             "MOCK_SANDBOX": "true", "MOCK_RW": "true",
             "MOCK_NETWORK": "0", "MOCK_DEBUG": "0",
+            "MOCK_EXTRA_ENTITLEMENT": "0", "MOCK_DEBUG_FALSE": "0",
             "MOCK_VERIFY_FAIL": "0", "MOCK_DETAILS_FAIL": "0",
             "MOCK_SIGNATURE": "1", "MOCK_RUNTIME": "1",
             "MOCK_AUTHORITY": "0", "MOCK_ENTITLEMENTS_FAIL": "0",
@@ -131,6 +152,15 @@ esac
         self.reject("unexpected optional entitlement", MOCK_NETWORK="1")
         self.reject("unexpected optional entitlement", MOCK_DEBUG="1")
         self.reject("unable to read real app entitlements", MOCK_ENTITLEMENTS_FAIL="1")
+
+    def test_rejects_any_extra_entitlement_even_when_required_probes_pass(self) -> None:
+        for case in ("1", "2", "3"):
+            with self.subTest(case=case):
+                self.reject("unexpected entitlement dictionary", MOCK_EXTRA_ENTITLEMENT=case)
+
+    def test_explicitly_disabled_debug_entitlement_is_allowed(self) -> None:
+        result = self.verify(MOCK_DEBUG_FALSE="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_missing_or_symlinked_info_plist(self) -> None:
         info = self.app / "Contents" / "Info.plist"
