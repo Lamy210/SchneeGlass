@@ -25,6 +25,25 @@ EOF
 # Control: valid monotonic history remains accepted with the real grep.
 bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" >/dev/null
 
+# Test the shared comparator independently of the ad-hoc 9-digit candidate
+# policy: canonical decimal values must retain ordering beyond machine width.
+printf 'schema_version=1\\nbundle_build=18446744073709551617\\n' > "$CURRENT"
+printf 'schema_version=1\\nbundle_build=18446744073709551616\\n' > "$HISTORICAL"
+bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" >/dev/null
+printf 'schema_version=1\\nbundle_build=18446744073709551617\\n' > "$HISTORICAL"
+if bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" >/dev/null 2>&1; then
+  echo 'Release history accepted the same oversized build twice' >&2
+  exit 1
+fi
+printf 'schema_version=1\\nbundle_build=9\\n' > "$CURRENT"
+printf 'schema_version=1\\nbundle_build=10\\n' > "$HISTORICAL"
+if bash Scripts/verify-release-build-history.sh "$CURRENT" "$FIXTURE/history" >/dev/null 2>&1; then
+  echo 'Release history compared different digit lengths lexically' >&2
+  exit 1
+fi
+printf 'schema_version=1\\nbundle_build=5\\n' > "$CURRENT"
+printf 'schema_version=1\\nbundle_build=4\\n' > "$HISTORICAL"
+
 cat > "$FIXTURE/bin/grep" <<'SHIM'
 #!/usr/bin/env bash
 set -euo pipefail
