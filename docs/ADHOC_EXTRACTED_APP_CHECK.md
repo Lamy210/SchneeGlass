@@ -17,12 +17,12 @@ bash Scripts/verify-extracted-adhoc-app.sh \
 
 The version/build above are examples. Supply independently verified expected values from the exact candidate's build metadata. Do not run this against irreplaceable user files or an arbitrary app obtained from an untrusted source.
 
-The helper is **read-only with respect to the app**. It refuses symlinked app roots, symlinked/missing/empty `Info.plist` or executables, and invalid version/build inputs. It checks:
+The helper requires Python 3 in addition to the macOS signing tools. It is **read-only with respect to the app**. It refuses symlinked app roots, symlinked/missing/empty `Info.plist` or executables, and invalid version/build inputs. It checks:
 
 - `codesign --verify --deep --strict --verbose=2` on the extracted bundle.
 - Live `codesign -dv --verbose=4` details: `Signature=adhoc`, absence of Apple certificate `Authority=`, and Hardened Runtime flag.
 - Actual `Contents/Info.plist`: expected bundle ID `io.github.lamy210.schneeglass`, version, build and single-instance policy.
-- Actual `codesign -d --entitlements :-` output: App Sandbox enabled, user-selected read/write permission enabled, unexpected network client permission absent, and no debug `get-task-allow=true`.
+- Actual `codesign -d --entitlements :-` output: App Sandbox enabled, user-selected read/write permission enabled, unexpected network client permission absent, and no debug `get-task-allow=true`. The complete extracted plist is parsed and only the two checked-in boolean-true grants (plus optional boolean-false `get-task-allow`) are permitted. Any other entitlement, including network server, library-validation bypass or additional folder access, fails closed. An intentional grant change requires a policy review and an updated verifier.
 
 The Ubuntu fixtures mock macOS commands to exercise failure handling. **Additionally, the Ad-Hoc Release Candidate Xcode 26.6 workflow builds an actual ad-hoc app, packages it, extracts the resulting ZIP into an isolated runner temporary directory, and invokes this same validator on the real extracted app before candidate upload**. The workflow wiring is guarded by a negative-mutation fixture. These automated checks still do not replace manual installation and File Safety QA on an independent operator machine. Operators must run the helper against the genuine extracted candidate on macOS, and also exercise Menu Bar, filesystem source safety, copy-only Drop/Recovery and Gatekeeper behavior in the manual QA checklist.
 
