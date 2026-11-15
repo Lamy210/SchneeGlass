@@ -239,7 +239,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
   private let model: SchneeGlassWorkspaceModel
   private let windowPreferences: DesktopGlassWindowPreferences
   private var panels: [GlassID: PanelRecord] = [:]
-  private var visibilityMode: DesktopGlassVisibilityMode = .shown
+  private var visibilityState = DesktopGlassVisibilityState()
   private var isPanelCreationSuppressed = false
   private var isTerminationFlushStarted = false
   private var isStopped = false
@@ -272,9 +272,9 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
-    windowPreferences.retainPreferences(
-      onlyFor: Set(model.glasses.map(\.id))
-    )
+    let currentIDs = Set(model.glasses.map(\.id))
+    windowPreferences.retainPreferences(onlyFor: currentIDs)
+    visibilityState.retainGlasses(currentIDs)
   }
 
   func sync() {
@@ -312,7 +312,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     }
 
     isPanelCreationSuppressed = false
-    visibilityMode = .shown
+    visibilityState.showAll()
     sync()
     for record in panels.values {
       record.panel.orderFrontRegardless()
@@ -324,7 +324,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
-    visibilityMode = .hidden
+    visibilityState.hideAll()
     for record in panels.values {
       record.panel.orderOut(nil)
     }
@@ -338,11 +338,41 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
-    switch visibilityMode.toggled(hasGlasses: true) {
-    case .shown:
+    let presentableIDs = Set(model.glasses.filter { $0.placement != nil }.map(\.id))
+    guard !presentableIDs.isEmpty else {
+      return
+    }
+    if visibilityState.shouldShowAllOnToggle(presentableIDs: presentableIDs) {
       showAll()
-    case .hidden:
+    } else {
       hideAll()
+    }
+  }
+
+  var canChangeIndividualVisibility: Bool {
+    !isStopped && !isPanelCreationSuppressed && model.canMutateConfiguration
+  }
+
+  func setIndividualVisibility(_ visible: Bool, for glassID: GlassID) {
+    guard canChangeIndividualVisibility,
+      model.glasses.contains(where: { $0.id == glassID && $0.placement != nil })
+    else {
+      return
+    }
+
+    guard visibilityState.setVisible(
+      visible,
+      for: glassID,
+      currentIDs: Set(model.glasses.map(\.id))
+    ) else {
+      return
+    }
+
+    sync()
+    if visible {
+      panels[glassID]?.panel.orderFrontRegardless()
+    } else {
+      panels[glassID]?.panel.orderOut(nil)
     }
   }
 
@@ -535,7 +565,7 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
     configureWindowControlsAccessory(for: panel, entry: entry)
 
     panels[entry.id] = PanelRecord(panel: panel, persistenceTask: nil)
-    if visibilityMode.presentsPanels {
+    if visibilityState.presentsPanel(for: entry.id) {
       panel.orderFront(nil)
     }
   }
