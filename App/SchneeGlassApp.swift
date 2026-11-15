@@ -200,6 +200,26 @@ private struct SchneeGlassMenuBarContent: View {
     }
     .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
+    Menu("Show Glass") {
+      ForEach(model.glasses) { entry in
+        Button(glassMenuTitle(entry)) {
+          panelCoordinator.setIndividualVisibility(true, for: entry.id)
+        }
+        .disabled(entry.placement == nil)
+      }
+    }
+    .disabled(model.glasses.isEmpty || !panelCoordinator.canChangeIndividualVisibility)
+
+    Menu("Hide Glass") {
+      ForEach(model.glasses) { entry in
+        Button(glassMenuTitle(entry)) {
+          panelCoordinator.setIndividualVisibility(false, for: entry.id)
+        }
+        .disabled(entry.placement == nil)
+      }
+    }
+    .disabled(model.glasses.isEmpty || !panelCoordinator.canChangeIndividualVisibility)
+
     Divider()
 
     Button("Reset Glass Positions…") {
@@ -216,6 +236,16 @@ private struct SchneeGlassMenuBarContent: View {
     Button("Quit SchneeGlass") {
       NSApplication.shared.terminate(nil)
     }
+  }
+
+  private func glassMenuTitle(_ entry: GlassWorkspaceEntry) -> String {
+    let sameTitle = model.glasses.filter { $0.title == entry.title }
+    guard sameTitle.count > 1,
+      let index = sameTitle.firstIndex(where: { $0.id == entry.id })
+    else {
+      return entry.title
+    }
+    return "\(entry.title) (\(index + 1) of \(sameTitle.count))"
   }
 }
 
