@@ -479,8 +479,29 @@ private struct DesktopFileGrid: View {
   }
 
   var body: some View {
+    let items = displayedItems
+    if let status = DesktopGlassFileNameFilter.statusText(
+      query: filterQuery,
+      loadedCount: snapshot.items.count,
+      matchingCount: items.count,
+      isTruncated: snapshot.isTruncated
+    ) {
+      VStack(alignment: .leading, spacing: SchneeGlassSpacing.controlGroup) {
+        Label(status, systemImage: "info.circle")
+          .font(SchneeGlassTypography.supporting)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        fileGrid(items)
+      }
+    } else {
+      fileGrid(items)
+    }
+  }
+
+  private func fileGrid(_ items: [GlassItem]) -> some View {
     LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
-      ForEach(displayedItems) { item in
+      ForEach(items) { item in
         let presentation = GlassItemPresentation.make(for: item)
         SchneeGlassFileTile(
           systemImage: presentation.systemImage,
@@ -501,18 +522,6 @@ private struct DesktopFileGrid: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(presentation.accessibilityLabel)
         .accessibilityHint("Double-click to open")
-      }
-
-      if displayedItems.isEmpty && filterQuery.contains(where: { !$0.isWhitespace }) {
-        Label("No matching files", systemImage: "magnifyingglass")
-          .font(SchneeGlassTypography.supporting)
-          .foregroundStyle(.secondary)
-      }
-
-      if snapshot.isTruncated {
-        Label("Showing the first 500 items", systemImage: "ellipsis.circle")
-          .font(SchneeGlassTypography.supporting)
-          .foregroundStyle(.secondary)
       }
     }
   }
