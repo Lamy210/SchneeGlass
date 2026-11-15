@@ -54,6 +54,7 @@ printf 'call\\n' >> "$MOCK_DIR/downloads"
 [[ "$MOCK_DOWNLOAD_FAIL" != 1 ]] || exit 48
 [[ "$MOCK_DOWNLOAD_EMPTY" != 1 ]] || exit 0
 cat "$MOCK_SOURCE"
+[[ "$MOCK_FAIL_AFTER_OUTPUT" != 1 ]] || exit 50
 """, encoding="utf-8"
         )
         gh.chmod(0o700)
@@ -64,6 +65,10 @@ cat "$MOCK_SOURCE"
             wrapper = self.bin / name
             wrapper.write_text(
                 '#!/bin/bash\nset -euo pipefail\n'
+                'if [[ "$1" == -c ]]; then\n'
+                '  [[ "$#" == 4 && "$4" == 1073741824 ]] || exit 49\n'
+                '  exec "$MOCK_REAL_PYTHON3" "$1" "$2" "$3" "${MOCK_STREAM_LIMIT:-$4}"\n'
+                'fi\n'
                 'case "$MOCK_LINK_RACE" in\n'
                 '  directory) mkdir "$DEST";;\n'
                 '  symlink) /bin/ln -s "$MOCK_DIR/owner-dir" "$DEST";;\n'
@@ -81,9 +86,9 @@ cat "$MOCK_SOURCE"
             "MOCK_SHA": SHA, "MOCK_ID": "777", "MOCK_DIGEST": self.digest,
             "MOCK_SECOND_DIGEST": "", "MOCK_PROVENANCE_FAIL": "0",
             "MOCK_SOURCE": str(self.archive), "MOCK_DOWNLOAD_FAIL": "0",
-            "MOCK_DOWNLOAD_EMPTY": "0",
+            "MOCK_DOWNLOAD_EMPTY": "0", "MOCK_FAIL_AFTER_OUTPUT": "0",
             "RUN_ID": "123456789", "DEST": str(self.dest),
-            "MOCK_LINK_RACE": "", "MOCK_REAL_LN": "/bin/ln",
+            "MOCK_LINK_RACE": "", "MOCK_STREAM_LIMIT": "", "MOCK_REAL_LN": "/bin/ln",
             "MOCK_REAL_PYTHON3": sys.executable,
         }
         values.update(changes)
@@ -122,6 +127,24 @@ cat "$MOCK_SOURCE"
         self.assert_rejected("ZIP download failed", MOCK_DOWNLOAD_FAIL="1")
         (self.work / "checks").unlink()
         self.assert_rejected("empty or not a regular file", MOCK_DOWNLOAD_EMPTY="1")
+
+    def test_stream_limit_rejects_oversized_response_before_promotion(self) -> None:
+        # Scale only the production stream limit in the test wrapper, not the
+        # copy algorithm. The legacy unbounded redirection passes this ZIP.
+        self.assert_rejected(
+            "downloaded artifact exceeds the 1 GiB limit",
+            MOCK_STREAM_LIMIT=str(self.archive.stat().st_size - 1),
+        )
+        self.assertEqual((self.work / "checks").read_text().count("call"), 1)
+
+    def test_stream_limit_accepts_exact_boundary(self) -> None:
+        res = self.run_gate(MOCK_STREAM_LIMIT=str(self.archive.stat().st_size))
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(self.dest.read_bytes(), self.archive.read_bytes())
+
+    def test_producer_failure_after_output_does_not_publish(self) -> None:
+        self.assert_rejected("ZIP download failed", MOCK_FAIL_AFTER_OUTPUT="1")
+        self.assertEqual((self.work / "checks").read_text().count("call"), 1)
 
     def test_download_body_mismatch(self) -> None:
         forged = self.work / "forged.zip"
