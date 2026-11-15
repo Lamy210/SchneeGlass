@@ -42,6 +42,19 @@ read_single_value() {
   sed -n "s/^${key}=//p" "$file"
 }
 
+# Values have already been validated as canonical decimal strings (or the
+# internal zero sentinel). Bash signed integer arithmetic can wrap arbitrarily
+# large published builds and accidentally accept a regressed candidate.
+decimal_gt() {
+  local LC_ALL=C
+  local left="$1" right="$2"
+  if (( ${#left} != ${#right} )); then
+    (( ${#left} > ${#right} ))
+  else
+    [[ "$left" > "$right" ]]
+  fi
+}
+
 CURRENT_SCHEMA="$(read_single_value "$CURRENT_EVIDENCE" schema_version)"
 CURRENT_BUILD="$(read_single_value "$CURRENT_EVIDENCE" bundle_build)"
 [[ "$CURRENT_SCHEMA" == "1" ]] || fail "unsupported current evidence schema: $CURRENT_SCHEMA"
@@ -64,7 +77,7 @@ while IFS= read -r evidence; do
   [[ "$schema" == "1" ]] || fail "unsupported historical evidence schema in $evidence: $schema"
   [[ "$build" =~ ^[1-9][0-9]*$ ]] || fail "historical bundle_build is invalid in $evidence: $build"
 
-  if (( build > MAX_PUBLISHED_BUILD )); then
+  if decimal_gt "$build" "$MAX_PUBLISHED_BUILD"; then
     MAX_PUBLISHED_BUILD="$build"
   fi
 done <<< "$HISTORICAL_EVIDENCE"
@@ -74,7 +87,7 @@ if (( PUBLISHED_COUNT == 0 )); then
   exit 0
 fi
 
-(( CURRENT_BUILD > MAX_PUBLISHED_BUILD )) \
+decimal_gt "$CURRENT_BUILD" "$MAX_PUBLISHED_BUILD" \
   || fail "current build $CURRENT_BUILD must be greater than published maximum $MAX_PUBLISHED_BUILD"
 
 echo "Release build history OK: current=$CURRENT_BUILD published_max=$MAX_PUBLISHED_BUILD releases=$PUBLISHED_COUNT"
