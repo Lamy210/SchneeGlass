@@ -6,7 +6,7 @@ The manually dispatched `Ad-Hoc Release Candidate` workflow creates a short-live
 
 ## Usage
 
-After authenticating the GitHub CLI for **Actions: read** access to `Lamy210/SchneeGlass` (plus `jq` and `shasum` for the existing verifiers):
+After authenticating the GitHub CLI for **Actions: read** access to `Lamy210/SchneeGlass` (plus `jq`, `shasum` and `python3`):
 
 ```bash
 bash Scripts/download-verified-adhoc-actions-artifact.sh \
@@ -19,7 +19,7 @@ bash Scripts/download-verified-adhoc-actions-artifact.sh \
 
 All identifiers are synthetic placeholders. The output path must not exist and its parent must be a real directory. `gh api` downloads the binary from GitHub's exact `/actions/artifacts/{artifact_id}/zip` endpoint. The endpoint redirects to an expiring download URL; the CLI follows it. GitHub's returned *outer Actions ZIP* digest is verified against the file's SHA-256.
 
-A private file is staged on the destination filesystem. The command refuses an empty or oversized (greater than 1 GiB) download, failed request, changed GitHub run/main or artifact digest on the second verification, and any occupied destination. Only after successful verification does it create a **new hard link** to the staged file, rather than overwriting an existing file with `mv -f`. Failed attempts remove their private stage, not any pre-existing user file.
+A private file is staged on the destination filesystem. The command refuses an empty or oversized (greater than 1 GiB) download, failed request, changed GitHub run/main or artifact digest on the second verification, and any occupied destination. Only after successful verification does it create a **new hard link** to the staged file, using Python's exact-path `os.link`, rather than overwriting an existing file with `mv -f` or treating an occupied directory as an `ln` destination. A directory or directory symlink created just before promotion is rejected. Run this from an operator-controlled directory; the helper does not defend against an adversary who can replace ancestor directories. Failed attempts remove their private stage, not any pre-existing user file.
 
 ## Continue the checks
 

@@ -5,6 +5,7 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from zipfile import ZipFile
@@ -56,6 +57,21 @@ cat "$MOCK_SOURCE"
 """, encoding="utf-8"
         )
         gh.chmod(0o700)
+        # Inject immediately before the actual promotion syscall/command,
+        # after the script's final existence check. Both old and new paths
+        # exercise the same race, so this fixture fails against plain ln.
+        for name, real in (("ln", "/bin/ln"), ("python3", sys.executable)):
+            wrapper = self.bin / name
+            wrapper.write_text(
+                '#!/bin/bash\nset -euo pipefail\n'
+                'case "$MOCK_LINK_RACE" in\n'
+                '  directory) mkdir "$DEST";;\n'
+                '  symlink) /bin/ln -s "$MOCK_DIR/owner-dir" "$DEST";;\n'
+                'esac\n'
+                'exec "$MOCK_REAL_' + name.upper() + '" "$@"\n',
+                encoding="utf-8",
+            )
+            wrapper.chmod(0o700)
 
     def run_gate(self, **changes: str) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
@@ -67,6 +83,8 @@ cat "$MOCK_SOURCE"
             "MOCK_SOURCE": str(self.archive), "MOCK_DOWNLOAD_FAIL": "0",
             "MOCK_DOWNLOAD_EMPTY": "0",
             "RUN_ID": "123456789", "DEST": str(self.dest),
+            "MOCK_LINK_RACE": "", "MOCK_REAL_LN": "/bin/ln",
+            "MOCK_REAL_PYTHON3": sys.executable,
         }
         values.update(changes)
         env.update(values)
@@ -128,6 +146,27 @@ cat "$MOCK_SOURCE"
         res = self.run_gate()
         self.assertNotEqual(res.returncode, 0)
         self.assertEqual(owner.read_text(), "keep owner")
+
+    def test_directory_appears_at_promotion(self) -> None:
+        res = self.run_gate(MOCK_LINK_RACE="directory")
+        self.assertNotEqual(res.returncode, 0, res.stdout)
+        self.assertIn("unable to create new artifact destination safely", res.stderr)
+        self.assertTrue(self.dest.is_dir())
+        self.assertEqual(list(self.dest.iterdir()), [])
+        self.assertEqual(list(self.work.glob(".schneeglass-actions-zip.*")), [])
+
+    def test_directory_symlink_appears_at_promotion(self) -> None:
+        owner = self.work / "owner-dir"
+        owner.mkdir()
+        marker = owner / "keep"
+        marker.write_text("keep owner", encoding="utf-8")
+        res = self.run_gate(MOCK_LINK_RACE="symlink")
+        self.assertNotEqual(res.returncode, 0, res.stdout)
+        self.assertIn("unable to create new artifact destination safely", res.stderr)
+        self.assertTrue(self.dest.is_symlink())
+        self.assertEqual(list(owner.iterdir()), [marker])
+        self.assertEqual(marker.read_text(), "keep owner")
+        self.assertEqual(list(self.work.glob(".schneeglass-actions-zip.*")), [])
 
     def test_symlink_parent_rejected(self) -> None:
         alias = self.work / "linked"

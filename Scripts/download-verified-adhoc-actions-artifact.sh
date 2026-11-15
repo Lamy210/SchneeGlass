@@ -31,6 +31,7 @@ ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 GH_BIN="${GH_BIN:-gh}"
 command -v "$GH_BIN" >/dev/null 2>&1 || fail 'gh CLI is required'
 command -v shasum >/dev/null 2>&1 || fail 'shasum is required'
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 
 # The helper queries the authenticated run, live main and every artifact page.
 # It selects exactly one non-expired artifact and validates the run binding.
@@ -86,9 +87,15 @@ resolve_digest
   || fail 'authenticated artifact digest changed during download'
 
 [[ ! -e "$DEST" && ! -L "$DEST" ]] || fail 'destination became occupied'
-# The stage and destination share a filesystem. Hard-link creation fails if
-# DEST exists (including a symlink); never use mv -f or gh --clobber.
-ln "$STAGE" "$DEST" || fail 'unable to create new artifact destination safely'
+# Use the exact destination pathname, not ln's directory-operand semantics.
+# A directory or symlink to a directory appearing after the precheck must fail,
+# never create a file inside that directory. link(2) is create-only.
+python3 - "$STAGE" "$DEST" <<'PY' || fail 'unable to create new artifact destination safely'
+import os
+import sys
+
+os.link(sys.argv[1], sys.argv[2], follow_symlinks=False)
+PY
 rm -f -- "$STAGE"
 STAGE=''
 
