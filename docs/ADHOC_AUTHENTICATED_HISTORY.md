@@ -6,14 +6,14 @@ The repository already contains a verified legacy-release manifest and `Scripts/
 
 ## Usage
 
-With GitHub CLI and jq installed and authenticated for read access to `Lamy210/SchneeGlass`:
+With GitHub CLI, jq and Python 3 installed and authenticated for read access to `Lamy210/SchneeGlass`:
 
 ```bash
 gh auth status
 bash Scripts/materialize-authenticated-adhoc-release-history.sh /tmp/schneeglass-history-snapshot
 ```
 
-The output path must not exist. The script stages data in a private temporary directory and only creates the final directory after all source data is accepted. It does not delete or replace earlier snapshots.
+The output path must not exist. The script stages data in a private temporary directory and only creates the final directory after all source data is accepted. It does not delete or replace earlier snapshots. The final promotion uses the operating system's atomic exclusive rename (`renameatx_np` with `RENAME_EXCL` on macOS; `renameat2` with `RENAME_NOREPLACE` on Linux). An occupied path, including an empty directory, file or symlink created after the last existence check, is rejected. Unsupported operating systems, missing native functions or filesystems without the exclusive rename flag fail closed; ordinary rename/mv is never a fallback. Use a trusted operator-controlled parent on a local filesystem; concurrent hostile modification of its ancestry and network-filesystem crash semantics are outside this contract.
 
 The output contains:
 

@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   fixture:
-    name: Ad-Hoc Public History / Fixture
-    runs-on: ubuntu-latest
+    name: Ad-Hoc Public History / Fixture (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
       - name: Checkout
