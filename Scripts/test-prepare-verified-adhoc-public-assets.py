@@ -47,10 +47,14 @@ class PreparationTests(unittest.TestCase):
                                  "INNER_DIGEST": self.inner_digest, "OUTER_DIGEST": self.outer_digest}
         self.gates = {
             "verify-adhoc-publication-preflight.sh": (
-                '[[ $# == 9 ]] && [[ "$1 $2 $3 $4 $5 $6" == "123 456 0.2.0 3 ' + SHA + ' 789" ]]\n'
+                'if [ "$#" -ne 9 ]; then exit 40; fi\n'
+                'if [ "$1 $2 $3 $4 $5 $6" != "123 456 0.2.0 3 ' + SHA + ' 789" ]; then exit 40; fi\n'
                 'cp -R "$FIXTURE_DIR" "$8"\nmkdir "$9"\n'),
             "verify-adhoc-qa-comment-from-github.sh": (
-                '[[ $# == 6 && "$6" == "$INNER_DIGEST" ]]\n'
+                'if [ "$#" -ne 6 ]; then exit 42; fi\n'
+                'if [ "$6" != "$INNER_DIGEST" ]; then\n'
+                '  echo "synthetic owner QA digest mismatch" >&2; exit 42\n'
+                'fi\n'
                 'printf "Verified GitHub owner QA approval comment ID=%s run=%s source=%s inner_zip_sha256=%s approved_at=2026-01-02T03:04:05Z\\n" "$1" "$2" "$5" "$6"\n'),
             "verify-current-release-governance.sh": '[[ "$1" == "Lamy210/SchneeGlass" ]]',
             "verify-adhoc-run-artifact-from-github.sh":
@@ -103,15 +107,29 @@ class PreparationTests(unittest.TestCase):
 
     def test_qa_and_artifact_mismatch(self):
         self.env["INNER_DIGEST"] = "b" * 64
-        self.assert_clean_failure(self.run_prepare())
+        # Prove the synthetic owner gate itself fails on the mismatch on this OS;
+        # do not assume Bash errexit behavior in a compound conditional.
+        probe = subprocess.run(
+            ["bash", str(self.scripts / "verify-adhoc-qa-comment-from-github.sh"),
+             "789", "123", VERSION, "3", SHA, self.inner_digest],
+            env=self.env, capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(probe.returncode, 42, probe.stdout + probe.stderr)
+        result = self.run_prepare()
+        self.assert_clean_failure(result)
+        self.assertIn("synthetic owner QA digest mismatch", result.stderr)
         self.env["INNER_DIGEST"] = self.inner_digest
         self.env["OUTER_DIGEST"] = "b" * 64
-        self.assert_clean_failure(self.run_prepare())
+        result = self.run_prepare()
+        self.assert_clean_failure(result)
+        self.assertIn("authenticated outer artifact identity changed", result.stderr)
         self.env["OUTER_DIGEST"] = self.outer_digest
         self.gate("verify-adhoc-qa-comment-from-github.sh",
                   self.gates["verify-adhoc-qa-comment-from-github.sh"].replace(
                       "2026-01-02", "2026-02-31"))
-        self.assert_clean_failure(self.run_prepare())
+        result = self.run_prepare()
+        self.assert_clean_failure(result)
+        self.assertIn("invalid QA calendar timestamp", result.stderr)
 
     def test_metadata_inconsistency(self):
         info = self.candidate / "BUILD_INFO.txt"
