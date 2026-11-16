@@ -1,0 +1,30 @@
+name: Ad-Hoc Publisher Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-publisher-validation.yml'
+      - '.github/workflows/publish-adhoc-release.yml'
+      - 'Scripts/publish-adhoc-release.py'
+      - 'Scripts/test-publish-adhoc-release.py'
+      - 'Scripts/verify-adhoc-release-readback.py'
+      - 'Scripts/verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/test-verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'Scripts/prepare-verified-adhoc-public-assets.py'
+      - 'Scripts/materialize-authenticated-adhoc-release-history.sh'
+      - 'Scripts/materialize-strict-authenticated-release-history.py'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Publisher / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Publisher state machine and failure fixtures (no network)
+        run: python3 Scripts/test-publish-adhoc-release.py
