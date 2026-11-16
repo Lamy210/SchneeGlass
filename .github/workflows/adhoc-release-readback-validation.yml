@@ -1,0 +1,27 @@
+name: Ad-Hoc Release Read-Back Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-release-readback-validation.yml'
+      - 'Scripts/verify-adhoc-release-readback.py'
+      - 'Scripts/test-verify-adhoc-release-readback.py'
+      - 'Scripts/verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/test-verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'docs/release-history/legacy-public-releases.tsv'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Release Read-Back / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Exact prepared bytes, draft and published read-back fixtures
+        run: python3 Scripts/test-verify-adhoc-release-readback.py
