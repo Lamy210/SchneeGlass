@@ -98,7 +98,10 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] 大文字小文字・アクセントの違いを無視してファイル名を絞り込める
 - [ ] 絞り込みは表示済み500件以内に限定され、source folderの再走査やmutationを行わない
 - [ ] Sort Displayed Files / Folders Firstの順序を絞り込み中も維持する
-- [ ] 一致なしの案内が表示され、閉じると全ファイル表示に戻る
+- [ ] 検索時は取得済みsnapshot内の一致数 / 取得数をグリッド上部に表示する。0件でもfolder全体に存在しないとは表示しない
+- [ ] truncate時は検索対象外の項目があることを表示する（500件と501件を別々に確認）
+- [ ] 空白queryは検索として扱わない。閉じると取得済み全項目に戻り、truncateの案内は残る
+- [ ] 小さいGlass / Compact Tiles / VoiceOverでも件数と検索範囲が読める。既存のconnected-folder Finder操作で全体を確認できる
 - [ ] ファイル名フィルターでOpen / Reveal / Copy Dropの操作権限やtargetが変化しない
 - [ ] Glassごとの検索状態は独立し、アプリ再起動後に永続化されない
 
