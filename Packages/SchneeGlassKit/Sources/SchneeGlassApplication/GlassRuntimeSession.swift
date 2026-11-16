@@ -31,6 +31,9 @@ public actor GlassRuntimeSession {
   private var stateContinuation: AsyncStream<GlassContentState>.Continuation?
   private var eventTask: Task<Void, Never>?
   private var activeCopyTask: Task<CopyBatchResult, Never>?
+  private var isReadingSnapshot = false
+  private var snapshotReadWaiters: [CheckedContinuation<Void, Never>] = []
+  private var refreshRequiresStop = false
   private var activePlanningCount = 0
   private var planningWaiters: [CheckedContinuation<Void, Never>] = []
   private var pendingAuthoritativePlans: [UUID: CopyBatchPlan] = [:]
@@ -93,8 +96,25 @@ public actor GlassRuntimeSession {
     return pair.stream
   }
 
+  /// A manual refresh reuses the live security-scoped access and the same
+  /// serialized snapshot path as filesystem events. Repeated requests while a
+  /// snapshot is being read are coalesced; filesystem events are not discarded.
+  public func refresh() async {
+    guard lifecycle == .running, !Task.isCancelled, !isReadingSnapshot,
+      !refreshRequiresStop, activeCopyTask == nil, activePlanningCount == 0,
+      pendingAuthoritativePlans.isEmpty, activePlanCleanupCount == 0
+    else {
+      return
+    }
+
+    await readSnapshot()
+    if refreshRequiresStop, lifecycle == .running {
+      await stop()
+    }
+  }
+
   public func previewDrop(sourceURLs: [URL]) async -> DropPlan {
-    guard lifecycle == .running, !Task.isCancelled else {
+    guard lifecycle == .running, !refreshRequiresStop, !Task.isCancelled else {
       return .reject(.destinationUnavailable)
     }
 
@@ -104,7 +124,7 @@ public actor GlassRuntimeSession {
       destinationAccess: access
     )
 
-    guard lifecycle == .running, !Task.isCancelled else {
+    guard lifecycle == .running, !refreshRequiresStop, !Task.isCancelled else {
       finishPlanning()
       return .reject(.destinationUnavailable)
     }
@@ -114,7 +134,7 @@ public actor GlassRuntimeSession {
   }
 
   public func planDrop(sourceURLs: [URL]) async -> DropPlan {
-    guard lifecycle == .running, !Task.isCancelled else {
+    guard lifecycle == .running, !refreshRequiresStop, !Task.isCancelled else {
       return .reject(.destinationUnavailable)
     }
 
@@ -124,7 +144,7 @@ public actor GlassRuntimeSession {
       destinationAccess: access
     )
 
-    guard lifecycle == .running, !Task.isCancelled else {
+    guard lifecycle == .running, !refreshRequiresStop, !Task.isCancelled else {
       if case .copy(let copyPlan) = plan {
         await dropPlanning.abandon(
           AuthorizedCopyBatchRequest(
@@ -158,7 +178,7 @@ public actor GlassRuntimeSession {
     _ plan: CopyBatchPlan,
     onProgress: @escaping CopyProgressHandler
   ) async throws -> CopyBatchResult {
-    guard lifecycle == .running else {
+    guard lifecycle == .running, !refreshRequiresStop else {
       await abandonPendingPlanIfOwned(plan)
       throw GlassCopyExecutionError.sessionNotRunning
     }
@@ -240,6 +260,7 @@ public actor GlassRuntimeSession {
       eventTask = nil
     }
 
+    await waitForSnapshotReadIfNeeded()
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
     await waitForPlanCleanupIfNeeded()
@@ -261,32 +282,16 @@ public actor GlassRuntimeSession {
         return
 
       case .changed, .requiresFullRescan:
-        generation &+= 1
-        do {
-          let snapshot = try await snapshotReader.snapshot(
-            for: access,
-            generation: generation
-          )
-          guard !Task.isCancelled, lifecycle == .running else {
-            return
-          }
-          stateContinuation?.yield(Self.contentState(for: snapshot))
-        } catch let error as FolderSnapshotReadError {
-          guard !Task.isCancelled, lifecycle == .running else {
-            return
-          }
-
-          switch error {
-          case .rootIdentityMismatch:
-            stateContinuation?.yield(.unavailable(.replacementDetected))
-            await stopFromEventLoop()
-            return
-          }
-        } catch {
-          guard !Task.isCancelled, lifecycle == .running else {
-            return
-          }
-          stateContinuation?.yield(.failed(.enumerationFailed))
+        // An event received while a manual read is active still needs a fresh
+        // snapshot after that read completes; joining it could lose changes.
+        await waitForSnapshotReadIfNeeded()
+        guard !Task.isCancelled, lifecycle == .running, !refreshRequiresStop else {
+          return
+        }
+        await readSnapshot()
+        if refreshRequiresStop {
+          await stopFromEventLoop()
+          return
         }
       }
     }
@@ -297,6 +302,52 @@ public actor GlassRuntimeSession {
     }
   }
 
+  private func readSnapshot() async {
+    isReadingSnapshot = true
+    defer {
+      isReadingSnapshot = false
+      let waiters = snapshotReadWaiters
+      snapshotReadWaiters.removeAll(keepingCapacity: false)
+      for waiter in waiters {
+        waiter.resume()
+      }
+    }
+
+    generation &+= 1
+    do {
+      let snapshot = try await snapshotReader.snapshot(
+        for: access,
+        generation: generation
+      )
+      guard lifecycle == .running else {
+        return
+      }
+      stateContinuation?.yield(Self.contentState(for: snapshot))
+    } catch let error as FolderSnapshotReadError {
+      guard lifecycle == .running else {
+        return
+      }
+      switch error {
+      case .rootIdentityMismatch:
+        refreshRequiresStop = true
+        stateContinuation?.yield(.unavailable(.replacementDetected))
+      }
+    } catch {
+      guard lifecycle == .running else {
+        return
+      }
+      stateContinuation?.yield(.failed(.enumerationFailed))
+    }
+  }
+
+  private func waitForSnapshotReadIfNeeded() async {
+    while isReadingSnapshot {
+      await withCheckedContinuation { continuation in
+        snapshotReadWaiters.append(continuation)
+      }
+    }
+  }
+
   private func stopFromEventLoop() async {
     guard lifecycle == .running else {
       return
@@ -304,6 +355,7 @@ public actor GlassRuntimeSession {
     lifecycle = .stopping
 
     await stopSubscriptionIfNeeded()
+    await waitForSnapshotReadIfNeeded()
     await waitForPlanningIfNeeded()
     await abandonAllPendingPlans()
     await waitForPlanCleanupIfNeeded()
