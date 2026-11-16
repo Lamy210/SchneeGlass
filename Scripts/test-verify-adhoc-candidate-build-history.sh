@@ -66,6 +66,12 @@ evidence "$HISTORY/two" 3
 reject 'reused build' 'candidate build is not greater than the published build history' verify
 evidence "$HISTORY/two" 4
 reject 'regressed build' 'candidate build is not greater than the published build history' verify
+# Signed shell arithmetic used to wrap these published builds to negative,
+# zero, or one and incorrectly accept this build-3 candidate.
+for historical_build in 9223372036854775808 18446744073709551616 18446744073709551617; do
+  evidence "$HISTORY/two" "$historical_build"
+  reject 'overflowing published build' 'candidate build is not greater than the published build history' verify
+done
 evidence "$HISTORY/two" 'invalid'
 reject 'invalid public build history' 'candidate build is not greater than the published build history' verify
 evidence "$HISTORY/two" 2
