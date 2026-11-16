@@ -165,10 +165,16 @@ def materialize(inventory_path, history):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inventory", type=Path)
-    parser.add_argument("private_history_stage", type=Path)
+    parser.add_argument("private_history_stage", type=Path,
+                        help="private stage, or second inventory when --compare is set")
+    parser.add_argument("--compare", action="store_true")
     args = parser.parse_args()
     try:
-        materialize(args.inventory, args.private_history_stage)
+        if args.compare:
+            require(inventory(args.inventory) == inventory(args.private_history_stage),
+                    "published Release inventory changed")
+        else:
+            materialize(args.inventory, args.private_history_stage)
     except (OSError, ValueError, RecursionError, subprocess.CalledProcessError) as exc:
         print(f"Strict authenticated history failed: {exc}", file=sys.stderr)
         return 1
