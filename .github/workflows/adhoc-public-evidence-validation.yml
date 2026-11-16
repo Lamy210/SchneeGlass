@@ -1,0 +1,23 @@
+name: Ad-Hoc Public Evidence Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-public-evidence-validation.yml'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'Scripts/test-verify-adhoc-public-release-evidence.py'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Public Evidence / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Strict public evidence and real asset failure fixtures
+        run: python3 Scripts/test-verify-adhoc-public-release-evidence.py
