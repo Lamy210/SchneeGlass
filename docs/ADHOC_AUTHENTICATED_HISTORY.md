@@ -2,7 +2,7 @@
 
 Status: **read-only GitHub history preparation**. This is not an ad-hoc Release publisher, a public-release authorization step, or a proof that main cannot change.
 
-The repository already contains a verified legacy-release manifest and `Scripts/materialize-public-release-build-history.sh`. The new wrapper obtains the **published Release tag list directly from authenticated GitHub API pagination**, instead of trusting an arbitrary tag list provided by a caller.
+The repository contains a pinned legacy-release manifest. The wrapper obtains the **published Release tag list directly from authenticated GitHub API pagination**, instead of trusting an arbitrary tag list provided by a caller.
 
 ## Usage
 
@@ -19,9 +19,9 @@ The output contains:
 
 - `release-inventory.json` — original paginated API response, including drafts for auditing.
 - `published-tags.txt` — all distinct non-draft public Release tags, including prereleases, sorted deterministically.
-- `history/{index}/RELEASE_EVIDENCE.txt` — evidence materialized for each public Release by the pre-existing legacy/evidence-aware verifier, plus its supporting metadata.
+- `history/{index}/RELEASE_EVIDENCE.txt` — normalized build evidence from the strict authenticated history consumer, plus release metadata and legacy/notarized metadata when applicable. The new ad-hoc reader validates assets in a private temporary directory without persisting ZIP bytes.
 
-The wrapper refuses malformed pages, repeated Release IDs or public tag names, unsupported public tag syntax, incomplete materialization, and GitHub API failures. It also **requires every tag recorded in the checked-in legacy-public-releases.tsv baseline** (currently v0.1.0 and v0.1.1) to appear in the authenticated non-draft GitHub inventory; a supposedly empty inventory is rejected for SchneeGlass. Private/draft releases are not public build history; their tag collisions must still be rejected separately by the Release slot preflight.
+For known legacy tags, the actual tag commit and pinned BUILD_INFO digest are mandatory; added evidence is refused. Other releases must have exactly one recognized evidence schema and immutable=true. New ad-hoc releases use exact-ID asset downloads and the offline validator. Historical notarized releases use the existing strict text evidence verifier and authenticated metadata digest; that format does not independently attest ZIP bytes. Every release and tag is re-read before its normalized record is written. The wrapper refuses malformed pages, repeated Release IDs or public tag names, unsupported public tag syntax, incomplete materialization, and GitHub API failures. It also **requires every tag recorded in the checked-in legacy-public-releases.tsv baseline** (currently v0.1.0 and v0.1.1) to appear in the authenticated non-draft GitHub inventory; a supposedly empty inventory is rejected for SchneeGlass. Private/draft releases are not public build history; their tag collisions must still be rejected separately by the Release slot preflight.
 
 To verify a candidate against this snapshot, use the existing ad-hoc monotonic build adapter:
 
