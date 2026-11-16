@@ -87,6 +87,35 @@ def validate_context(args):
             "strict full-history integration required")
 
 
+REQUIRED_CHECKS = {
+    "Canonical / Xcode 26.6 / App Build / Safety Guards",
+    "Compatibility / macOS 15 / App Build",
+}
+
+
+def verify_exact_main_checks(pages, sha):
+    require(type(pages) is list and pages, "invalid check run pages")
+    found = {name: [] for name in REQUIRED_CHECKS}
+    ids = set()
+    for page in pages:
+        require(type(page) is dict and type(page.get("check_runs")) is list,
+                "malformed check run page")
+        for check in page["check_runs"]:
+            require(type(check) is dict and type(check.get("id")) is int
+                    and check["id"] > 0 and check["id"] not in ids
+                    and type(check.get("name")) is str, "malformed or duplicate check run")
+            ids.add(check["id"])
+            if check["name"] in found:
+                found[check["name"]].append(check)
+    for name, checks in found.items():
+        require(len(checks) == 1, "missing or ambiguous required CI: " + name)
+        check = checks[0]
+        require(check.get("head_sha") == sha and type(check.get("app")) is dict
+                and check["app"].get("id") == 15368
+                and check.get("status") == "completed" and check.get("conclusion") == "success",
+                "required exact-main CI not successful: " + name)
+
+
 class GitHub:
     def verify_authority(self, args):
         user = gh_json("GET", "user")
@@ -106,6 +135,9 @@ class GitHub:
                 and type(main.get("commit")) is dict
                 and main["commit"].get("sha") == args.source_sha,
                 "live main differs from candidate")
+        checks = gh_json("GET", PREFIX + "/commits/" + args.source_sha
+                         + "/check-runs?per_page=100&filter=latest", paginate=True)
+        verify_exact_main_checks(checks, args.source_sha)
 
     def prepare(self, args, workspace):
         outer = workspace / "outer.zip"
@@ -231,6 +263,11 @@ class GitHub:
             gate("verify-release-build-history.sh", current, history / "history")
         self.verify_authority(args)
 
+    def final_assets(self, identity, tag, expected, uploaded):
+        remote = readback.remote_assets(identity, tag, "draft")
+        require({name: (uploaded[name], *value) for name, value in expected.items()} == remote,
+                "final draft asset identities differ from uploads")
+
     def publish(self, identity):
         return gh_json("PATCH", PREFIX + "/releases/" + identity,
                        {"draft": False, "make_latest": "true"})
@@ -240,7 +277,7 @@ def execute(args, workspace, api):
     tag, sha = "v" + args.version, args.source_sha
     identity = None
     stage = "preflight"
-    uploaded_ids = []
+    uploaded_ids = {}
     try:
         api.verify_authority(args)
         public = api.prepare(args, workspace)
@@ -264,8 +301,8 @@ def execute(args, workspace, api):
             api.owned_slot(identity, tag, sha)
             require(readback.local_assets(public, tag) == expected, "prepared assets changed")
             asset_id = api.upload(identity, name, public, expected[name])
-            require(asset_id not in uploaded_ids, "duplicate created asset ID")
-            uploaded_ids.append(asset_id)
+            require(asset_id not in uploaded_ids.values(), "duplicate created asset ID")
+            uploaded_ids[name] = asset_id
         stage = "draft-readback"
         require(api.readback("draft", public, identity, tag, sha) == args.build, "draft build mismatch")
         stage = "final-preflight"
@@ -276,6 +313,7 @@ def execute(args, workspace, api):
         # Repeat authority after the potentially long read-back, then verify the owned slot.
         api.verify_authority(args)
         api.owned_slot(identity, tag, sha)
+        api.final_assets(identity, tag, expected, uploaded_ids)
         stage = "publish"
         response = api.publish(identity)
         require(type(response) is dict and str(response.get("id")) == identity
@@ -288,7 +326,7 @@ def execute(args, workspace, api):
         return identity
     except Exception:
         print(f"Publisher stopped: stage={stage} tag={tag} release_id={identity or 'unknown'} "
-              f"uploaded_asset_ids={','.join(map(str, uploaded_ids)) or 'none'}. "
+              f"uploaded_asset_ids={','.join(map(str, uploaded_ids.values())) or 'none'}. "
               "No retry, deletion, overwrite or adoption; reconcile observed remote state manually.",
               file=sys.stderr)
         raise
