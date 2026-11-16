@@ -129,6 +129,7 @@ public final class SchneeGlassWorkspaceModel {
   private let folderActionUseCase: WorkspaceFolderActionUseCase
   private let runtimeSessionFactory: GlassRuntimeSessionFactory
   private var sessions: [GlassID: GlassRuntimeSession] = [:]
+  private var manuallyRefreshingGlassIDs: Set<GlassID> = []
   private var connectedFolderURLs: [GlassID: URL] = [:]
   private var stateTasks: [GlassID: Task<Void, Never>] = [:]
   private var sessionTaskTracker = WorkspaceSessionTaskTracker()
@@ -748,6 +749,34 @@ public final class SchneeGlassWorkspaceModel {
           "SchneeGlass couldn't update this Glass's Spaces behavior. Nothing was changed."
       }
     }
+  }
+
+  public func canRefreshGlass(glassID: GlassID) -> Bool {
+    guard canMutateConfiguration,
+      sessions[glassID] != nil,
+      !manuallyRefreshingGlassIDs.contains(glassID),
+      !isDropBusy(glassID: glassID),
+      let entry = glasses.first(where: { $0.id == glassID }),
+      GlassInteractionPolicy.allowsRemoval(during: entry.interactionState)
+    else {
+      return false
+    }
+
+    switch entry.contentState {
+    case .ready, .empty, .failed(.enumerationFailed), .failed(.metadataFailed):
+      return true
+    case .loading, .unavailable, .failed(.unexpected):
+      return false
+    }
+  }
+
+  public func refreshGlass(glassID: GlassID) async {
+    guard canRefreshGlass(glassID: glassID), let session = sessions[glassID] else {
+      return
+    }
+    manuallyRefreshingGlassIDs.insert(glassID)
+    defer { manuallyRefreshingGlassIDs.remove(glassID) }
+    await session.refresh()
   }
 
   public func canReconnectSource(glassID: GlassID) -> Bool {
