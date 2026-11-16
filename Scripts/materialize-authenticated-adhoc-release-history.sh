@@ -87,9 +87,8 @@ mkdir "$STAGE/history"
 if [[ "$EXPECTED" -gt 0 ]]; then
   (
     cd "$ROOT"
-    bash Scripts/materialize-public-release-build-history.sh \
-      "$REPOSITORY" "$STAGE/published-tags.txt" "$STAGE/history" \
-      docs/release-history/legacy-public-releases.tsv
+    python3 Scripts/materialize-strict-authenticated-release-history.py \
+      "$STAGE/release-inventory.json" "$STAGE/history"
   ) || fail 'published Release history could not be fully materialized'
 
   i=1
