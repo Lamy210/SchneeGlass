@@ -360,11 +360,12 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
-    guard visibilityState.setVisible(
+    let didUpdate = visibilityState.setVisible(
       visible,
       for: glassID,
       currentIDs: Set(model.glasses.map(\.id))
-    ) else {
+    )
+    guard didUpdate else {
       return
     }
 
