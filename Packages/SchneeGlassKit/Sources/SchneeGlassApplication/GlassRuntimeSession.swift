@@ -107,8 +107,8 @@ public actor GlassRuntimeSession {
       return
     }
 
-    await readSnapshot()
-    if refreshRequiresStop, lifecycle == .running {
+    await readSnapshot(waitForExisting: false)
+    if refreshRequiresStop {
       await stop()
     }
   }
@@ -271,7 +271,7 @@ public actor GlassRuntimeSession {
 
   private func consumeEvents() async {
     for await event in eventSubscription.events {
-      if Task.isCancelled || lifecycle != .running {
+      if Task.isCancelled || lifecycle != .running || refreshRequiresStop {
         return
       }
 
@@ -284,11 +284,7 @@ public actor GlassRuntimeSession {
       case .changed, .requiresFullRescan:
         // An event received while a manual read is active still needs a fresh
         // snapshot after that read completes; joining it could lose changes.
-        await waitForSnapshotReadIfNeeded()
-        guard !Task.isCancelled, lifecycle == .running, !refreshRequiresStop else {
-          return
-        }
-        await readSnapshot()
+        await readSnapshot(waitForExisting: true)
         if refreshRequiresStop {
           await stopFromEventLoop()
           return
@@ -296,13 +292,27 @@ public actor GlassRuntimeSession {
       }
     }
 
-    if !Task.isCancelled, lifecycle == .running {
+    if !Task.isCancelled, lifecycle == .running, !refreshRequiresStop {
       stateContinuation?.yield(.failed(.unexpected))
       await stopFromEventLoop()
     }
   }
 
-  private func readSnapshot() async {
+  private func readSnapshot(waitForExisting: Bool) async {
+    while isReadingSnapshot {
+      guard waitForExisting, !Task.isCancelled, lifecycle == .running, !refreshRequiresStop else {
+        return
+      }
+      await withCheckedContinuation { continuation in
+        snapshotReadWaiters.append(continuation)
+      }
+    }
+
+    guard !Task.isCancelled, lifecycle == .running, !refreshRequiresStop else {
+      return
+    }
+    // Claim the read in the same actor turn as the idle check. There is no
+    // suspension point between observing idle and reserving the reader.
     isReadingSnapshot = true
     defer {
       isReadingSnapshot = false
