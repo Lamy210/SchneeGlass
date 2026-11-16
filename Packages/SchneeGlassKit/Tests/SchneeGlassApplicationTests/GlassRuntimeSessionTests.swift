@@ -917,3 +917,60 @@ func filesystemEventDuringManualRefreshStillGetsItsOwnSnapshot() async throws {
   #expect(await fixture.snapshotReader.callCount() == 2)
   await fixture.session.stop()
 }
+
+@Test
+func rootChangedDuringManualRefreshCannotRepublishStaleSnapshot() async throws {
+  let fixture = try makeRuntimeFixture(
+    refreshBehaviors: [.fail],
+    blockFirstRefresh: true
+  )
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+  let refresh = Task { await fixture.session.refresh() }
+  let didStart = await waitForSnapshotReads(fixture.snapshotReader, count: 1)
+  #expect(didStart)
+  if !didStart {
+    fixture.refreshGateContinuation?.finish()
+    await refresh.value
+    await fixture.session.stop()
+    return
+  }
+  fixture.eventContinuation.yield(.rootChanged)
+  #expect(await waitForWatcherStop(fixture.eventStreaming))
+  #expect(await fixture.accessController.releaseCount() == 0)
+  #expect(await iterator.next() == .unavailable(.sourceMissing))
+
+  fixture.refreshGateContinuation?.finish()
+  await refresh.value
+  await fixture.session.stop()
+  #expect(await iterator.next() == nil)
+  #expect(await fixture.accessController.releaseCount() == 1)
+}
+
+@Test
+func manualRefreshDoesNotReadDuringCopyAuthorityOrActiveCopy() async throws {
+  let fixture = try makeRuntimeFixture(refreshBehaviors: [.fail], blockCopy: true)
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+  let candidate = try copyPlan(for: fixture)
+  guard let plan = await authorizeCopyPlan(candidate, in: fixture) else {
+    Issue.record("Expected authoritative copy plan")
+    await fixture.session.stop()
+    return
+  }
+
+  await fixture.session.refresh()
+  #expect(await fixture.snapshotReader.callCount() == 0)
+  let copyTask = Task { try await fixture.session.executeCopy(plan) }
+  #expect(await waitForCopyStart(fixture.fileCopying))
+  await fixture.session.refresh()
+  #expect(await fixture.snapshotReader.callCount() == 0)
+  fixture.copyGateContinuation?.finish()
+  _ = try await copyTask.value
+  await fixture.session.refresh()
+  #expect(await iterator.next() == .failed(.enumerationFailed))
+  #expect(await fixture.snapshotReader.callCount() == 1)
+  await fixture.session.stop()
+}
