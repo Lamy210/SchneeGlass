@@ -33,7 +33,7 @@ trap cleanup EXIT
 
 # GitHub CLI paginates every page and slurps them as an array of JSON arrays.
 # No user-provided tag list, release JSON, or unauthenticated history is accepted.
-gh api --paginate --slurp "repos/$REPOSITORY/releases?per_page=100" \
+gh api --hostname github.com --method GET --paginate --slurp "repos/$REPOSITORY/releases?per_page=100" \
   > "$STAGE/release-inventory.json" \
   || fail 'unable to enumerate public Releases from GitHub'
 
@@ -99,6 +99,14 @@ if [[ "$EXPECTED" -gt 0 ]]; then
     i=$((i + 1))
   done
 fi
+
+# Detect additions/removals/replacement of published Release IDs during collection.
+gh api --hostname github.com --method GET --paginate --slurp "repos/$REPOSITORY/releases?per_page=100" \
+  > "$STAGE/release-inventory-final.json" \
+  || fail 'unable to re-enumerate public Releases from GitHub'
+python3 "$ROOT/Scripts/materialize-strict-authenticated-release-history.py" \
+  --compare "$STAGE/release-inventory.json" "$STAGE/release-inventory-final.json" \
+  || fail 'published Release inventory changed during collection'
 
 # Preserve the complete inventory and tag list as an auditable snapshot.
 # Never touch an already-existing destination; this remains an offline,
