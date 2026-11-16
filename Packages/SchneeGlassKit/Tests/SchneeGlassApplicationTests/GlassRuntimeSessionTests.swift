@@ -47,13 +47,16 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
   enum Behavior: Sendable {
     case snapshot(FolderSnapshot)
     case fail
+    case replacement
   }
 
+  private let firstReadGate: AsyncStream<Void>?
   private var behaviors: [Behavior]
   private var readCount = 0
 
-  init(behaviors: [Behavior]) {
+  init(behaviors: [Behavior], firstReadGate: AsyncStream<Void>? = nil) {
     self.behaviors = behaviors
+    self.firstReadGate = firstReadGate
   }
 
   func snapshot(
@@ -61,6 +64,10 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
     generation: UInt64
   ) async throws -> FolderSnapshot {
     readCount += 1
+    if readCount == 1, let firstReadGate {
+      var iterator = firstReadGate.makeAsyncIterator()
+      _ = await iterator.next()
+    }
     guard !behaviors.isEmpty else {
       throw RuntimeSessionTestError.injected
     }
@@ -77,6 +84,8 @@ private actor RuntimeSnapshotReader: FolderSnapshotReading {
       )
     case .fail:
       throw RuntimeSessionTestError.injected
+    case .replacement:
+      throw FolderSnapshotReadError.rootIdentityMismatch
     }
   }
 
@@ -153,6 +162,7 @@ private struct RuntimeFixture {
   let session: GlassRuntimeSession
   let eventContinuation: AsyncStream<FileEvent>.Continuation
   let copyGateContinuation: AsyncStream<Void>.Continuation?
+  let refreshGateContinuation: AsyncStream<Void>.Continuation?
   let accessController: RuntimeAccessController
   let eventStreaming: RuntimeEventStreaming
   let snapshotReader: RuntimeSnapshotReader
@@ -166,7 +176,8 @@ private struct RuntimeFixture {
 private func makeRuntimeFixture(
   initialItems: [GlassItem] = [],
   refreshBehaviors: [RuntimeSnapshotReader.Behavior] = [],
-  blockCopy: Bool = false
+  blockCopy: Bool = false,
+  blockFirstRefresh: Bool = false
 ) throws -> RuntimeFixture {
   let root = URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
   let configuration = try GlassConfiguration(
@@ -191,7 +202,11 @@ private func makeRuntimeFixture(
   let copyPair = blockCopy ? AsyncStream<Void>.makeStream() : nil
   let accessController = RuntimeAccessController()
   let eventStreaming = RuntimeEventStreaming()
-  let reader = RuntimeSnapshotReader(behaviors: refreshBehaviors)
+  let refreshPair = blockFirstRefresh ? AsyncStream<Void>.makeStream() : nil
+  let reader = RuntimeSnapshotReader(
+    behaviors: refreshBehaviors,
+    firstReadGate: refreshPair?.stream
+  )
   let dropPlanner = RuntimeDropPlanner()
   let fileCopying = RuntimeFileCopying(gate: copyPair?.stream)
   let seed = CreatedGlassRuntimeSeed(
@@ -212,6 +227,7 @@ private func makeRuntimeFixture(
     ),
     eventContinuation: eventPair.continuation,
     copyGateContinuation: copyPair?.continuation,
+    refreshGateContinuation: refreshPair?.continuation,
     accessController: accessController,
     eventStreaming: eventStreaming,
     snapshotReader: reader,
@@ -779,5 +795,125 @@ func runtimeCopyBeforeStartIsRejected() async throws {
   }
 
   #expect(await fixture.fileCopying.callCount() == 0)
+  await fixture.session.stop()
+}
+
+@Test
+func manualRefreshReadsWithoutFilesystemEventAndRecoversFromFailure() async throws {
+  let snapshot = FolderSnapshot(
+    folderIdentity: FolderIdentity(
+      resourceIdentifier: nil,
+      standardizedURL: URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
+    ),
+    items: [item(named: "manual.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_002),
+    generation: 99
+  )
+  let fixture = try makeRuntimeFixture(refreshBehaviors: [.fail, .snapshot(snapshot)])
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+
+  await fixture.session.refresh()
+  #expect(await iterator.next() == .failed(.enumerationFailed))
+  await fixture.session.refresh()
+  guard case .ready(let refreshed)? = await iterator.next() else {
+    Issue.record("Expected manual retry to recover the folder")
+    await fixture.session.stop()
+    return
+  }
+  #expect(refreshed.items.map(\.displayName) == ["manual.txt"])
+  #expect(refreshed.generation == 3)
+  await fixture.session.stop()
+  await fixture.session.refresh()
+  #expect(await fixture.snapshotReader.callCount() == 2)
+}
+
+@Test
+func manualRefreshCoalescesAndStopWaitsForAccessUse() async throws {
+  let fixture = try makeRuntimeFixture(refreshBehaviors: [.fail], blockFirstRefresh: true)
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+  let refresh = Task { await fixture.session.refresh() }
+  let didStart = await waitForSnapshotReads(fixture.snapshotReader, count: 1)
+  #expect(didStart)
+  if !didStart {
+    fixture.refreshGateContinuation?.finish()
+    await refresh.value
+    await fixture.session.stop()
+    return
+  }
+  await fixture.session.refresh()
+  #expect(await fixture.snapshotReader.callCount() == 1)
+
+  let stop = Task { await fixture.session.stop() }
+  #expect(await waitForWatcherStop(fixture.eventStreaming))
+  #expect(await fixture.accessController.releaseCount() == 0)
+  fixture.refreshGateContinuation?.finish()
+  await refresh.value
+  await stop.value
+  #expect(await iterator.next() == nil)
+  #expect(await fixture.accessController.releaseCount() == 1)
+}
+
+@Test
+func manualRefreshReplacementTerminatesAndReleasesAccess() async throws {
+  let fixture = try makeRuntimeFixture(refreshBehaviors: [.replacement])
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+  await fixture.session.refresh()
+  #expect(await iterator.next() == .unavailable(.replacementDetected))
+  #expect(await iterator.next() == nil)
+  #expect(await fixture.accessController.releaseCount() == 1)
+  #expect(await fixture.eventStreaming.stopCount() == 1)
+}
+
+@Test
+func filesystemEventDuringManualRefreshStillGetsItsOwnSnapshot() async throws {
+  let snapshot = FolderSnapshot(
+    folderIdentity: FolderIdentity(
+      resourceIdentifier: nil,
+      standardizedURL: URL(fileURLWithPath: "/tmp/SchneeGlassRuntime", isDirectory: true)
+    ),
+    items: [item(named: "after-event.txt")],
+    isTruncated: false,
+    observedAt: Date(timeIntervalSince1970: 1_700_000_002),
+    generation: 99
+  )
+  let fixture = try makeRuntimeFixture(
+    refreshBehaviors: [.fail, .snapshot(snapshot)],
+    blockFirstRefresh: true
+  )
+  let states = try await fixture.session.start()
+  var iterator = states.makeAsyncIterator()
+  #expect(await iterator.next() == .empty(fixture.initialSnapshot))
+  let refresh = Task { await fixture.session.refresh() }
+  let didStart = await waitForSnapshotReads(fixture.snapshotReader, count: 1)
+  #expect(didStart)
+  if !didStart {
+    fixture.refreshGateContinuation?.finish()
+    await refresh.value
+    await fixture.session.stop()
+    return
+  }
+  fixture.eventContinuation.yield(.changed)
+  fixture.refreshGateContinuation?.finish()
+  await refresh.value
+
+  var next = await iterator.next()
+  if next == .failed(.enumerationFailed) {
+    next = await iterator.next()
+  }
+  guard case .ready(let refreshed)? = next else {
+    Issue.record("Expected a fresh snapshot for the event")
+    await fixture.session.stop()
+    return
+  }
+  #expect(refreshed.generation == 3)
+  #expect(refreshed.items.map(\.displayName) == ["after-event.txt"])
+  #expect(await fixture.snapshotReader.callCount() == 2)
   await fixture.session.stop()
 }
