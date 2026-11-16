@@ -115,10 +115,18 @@ import sys
 root = Path(os.environ["MOCK_DIR"])
 args = sys.argv[1:]
 prefix = "repos/Lamy210/SchneeGlass"
-if args == ["api", "--paginate", "--slurp", prefix + "/releases?per_page=100"]:
+if args == ["api", "--hostname", "github.com", "--method", "GET",
+            "--paginate", "--slurp", prefix + "/releases?per_page=100"]:
     if (root / "fail-api").exists():
         sys.exit(62)
-    sys.stdout.buffer.write((root / "releases.json").read_bytes())
+    pages = json.loads((root / "releases.json").read_text())
+    if (root / "inventory-change").exists():
+        marker = root / "inventory-read"
+        if marker.exists():
+            pages[0].append({"id": 1000, "tag_name": "v0.4.0", "draft": False})
+        else:
+            marker.touch()
+    print(json.dumps(pages))
     sys.exit(0)
 if len(args) != 8 or args[:6] != ["api", "--hostname", "github.com", "--method", "GET", "-H"]:
     sys.exit(63)
@@ -243,6 +251,11 @@ for case_name in fail-api fail-view fail-download duplicate-asset legacy-overrid
   [[ ! -e "$TMP/fail-$case_name" ]] || { echo "Leaked failed history snapshot: $case_name" >&2; exit 1; }
   rm "$TMP/$case_name"
 done
+
+touch "$TMP/inventory-change"
+reject 'new release during collection' 'published Release inventory changed during collection' run "$TMP/changed-inventory"
+[[ ! -e "$TMP/changed-inventory" ]]
+rm "$TMP/inventory-change" "$TMP/inventory-read"
 
 reject 'missing output argument' 'usage:' bash Scripts/materialize-authenticated-adhoc-release-history.sh
 reject 'missing parent' 'output parent must be an existing real directory' run "$TMP/absent/snapshot"
