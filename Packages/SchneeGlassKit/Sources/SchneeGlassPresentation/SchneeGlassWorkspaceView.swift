@@ -497,7 +497,9 @@ private struct GlassPreviewSurface: View {
       }
       .disabled(!canRename)
     } message: {
-      Text("This changes only the Glass display name. The connected folder itself will not be renamed.")
+      Text(
+        "This changes only the Glass display name. The connected folder itself will not be renamed."
+      )
     }
     .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
       Button("Cancel", role: .cancel) {}
