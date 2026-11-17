@@ -9,3 +9,17 @@
 "refreshFailedDetail" = "SchneeGlass will retry when the folder changes.";
 "unexpectedTitle" = "This Glass couldn't continue";
 "unexpectedDetail" = "Restart SchneeGlass to retry. If it still fails, remove this Glass and add the folder again.";
+"renameGlassMenu" = "Rename Glass…";
+"refreshFiles" = "Refresh Files";
+"showConnectedFolder" = "Show Connected Folder in Finder";
+"removeGlassMenu" = "Remove Glass…";
+"glassOptions" = "Glass options";
+"renameGlassTitle" = "Rename Glass";
+"glassName" = "Glass name";
+"cancelAction" = "Cancel";
+"renameAction" = "Rename";
+"renameGlassDetail" = "This changes only the Glass display name. The connected folder itself will not be renamed.";
+"removeGlassTitle" = "Remove Glass?";
+"removeGlassAction" = "Remove Glass";
+"removeGlassDetail" = "This removes the Glass only. The connected folder and its files will not be deleted or moved.";
+"reconnectOriginalFolder" = "Reconnect Original Folder…";
