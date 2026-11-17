@@ -1,8 +1,8 @@
 import FileDomain
 import SchneeGlassApplication
 
-/// A temporary presentation choice, independent of file authority or persistence.
-enum GlassFileDisplayMode: Equatable {
+/// A presentation choice independent of file authority.
+public enum GlassFileDisplayMode: Equatable, Sendable {
   case grid
   case list
 

@@ -719,8 +719,28 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       fileSortOrder: Self.presentationSortOrder(
         for: windowPreferences.fileSortPreference(for: glassID)
       ),
-      foldersFirst: windowPreferences.putsFoldersFirst(for: glassID)
+      foldersFirst: windowPreferences.putsFoldersFirst(for: glassID),
+      persistedDisplayMode: windowPreferences.usesListDisplay(for: glassID) ? .list : .grid,
+      onDisplayModeChange: { [weak self] mode in
+        self?.setFileDisplayMode(mode, for: glassID)
+      }
     )
+  }
+
+  private func setFileDisplayMode(_ mode: GlassFileDisplayMode, for glassID: GlassID) {
+    guard !isStopped,
+      !isTerminationFlushStarted,
+      model.hasAuthoritativeConfigurationSnapshot,
+      !model.isMutatingConfiguration,
+      let panel = panels[glassID]?.panel,
+      let entry = model.glasses.first(where: { $0.id == glassID }),
+      case .idle = entry.interactionState
+    else {
+      return
+    }
+
+    windowPreferences.setUsesListDisplay(mode == .list, for: glassID)
+    refreshDesktopGlassContent(for: panel)
   }
 
   private func refreshDesktopGlassContent(for panel: DesktopGlassPanel) {
