@@ -377,6 +377,7 @@ func retainingPreferencesRemovesStateForGlassesNoLongerInConfiguration() throws 
     store.setUsesCompactFileTiles(true, for: glassID)
     store.setFileSortPreference(.sizeLargest, for: glassID)
     store.setFoldersFirst(true, for: glassID)
+    store.setUsesListDisplay(true, for: glassID)
   }
 
   store.retainPreferences(onlyFor: [retainedID])
@@ -387,6 +388,7 @@ func retainingPreferencesRemovesStateForGlassesNoLongerInConfiguration() throws 
   #expect(store.usesCompactFileTiles(for: retainedID))
   #expect(store.fileSortPreference(for: retainedID) == .sizeLargest)
   #expect(store.putsFoldersFirst(for: retainedID))
+  #expect(store.usesListDisplay(for: retainedID))
 
   #expect(!store.isPositionLocked(for: removedID))
   #expect(!store.keepsOnTop(removedID))
@@ -394,6 +396,7 @@ func retainingPreferencesRemovesStateForGlassesNoLongerInConfiguration() throws 
   #expect(!store.usesCompactFileTiles(for: removedID))
   #expect(store.fileSortPreference(for: removedID) == .nameAscending)
   #expect(!store.putsFoldersFirst(for: removedID))
+  #expect(!store.usesListDisplay(for: removedID))
 }
 
 @Test
@@ -410,6 +413,7 @@ func retainingNoGlassPreferencesClearsAllWindowPreferenceStorage() throws {
   store.setUsesCompactFileTiles(true, for: glassID)
   store.setFileSortPreference(.modifiedNewest, for: glassID)
   store.setFoldersFirst(true, for: glassID)
+  store.setUsesListDisplay(true, for: glassID)
 
   store.retainPreferences(onlyFor: [])
 
@@ -419,6 +423,7 @@ func retainingNoGlassPreferencesClearsAllWindowPreferenceStorage() throws {
   #expect(defaults.object(forKey: "desktopGlass.compactFileTileIDs.v1") == nil)
   #expect(defaults.object(forKey: "desktopGlass.fileSortByID.v1") == nil)
   #expect(defaults.object(forKey: "desktopGlass.foldersFirstIDs.v1") == nil)
+  #expect(defaults.object(forKey: "desktopGlass.listDisplayIDs.v1") == nil)
 }
 
 @Test
@@ -479,7 +484,33 @@ func listDisplayWithCorruptStorageDefaultsToIcons() throws {
   let defaults = try #require(UserDefaults(suiteName: suiteName))
   defer { defaults.removePersistentDomain(forName: suiteName) }
 
-  defaults.set("unexpected", forKey: "desktopGlass.listDisplayIDs.v1")
+  let glassID = GlassID()
+  defaults.set(glassID.rawValue.uuidString, forKey: "desktopGlass.listDisplayIDs.v1")
   let store = DesktopGlassWindowPreferences(defaults: defaults)
-  #expect(!store.usesListDisplay(for: GlassID()))
+  #expect(!store.usesListDisplay(for: glassID))
+
+  store.setUsesListDisplay(true, for: glassID)
+  #expect(store.usesListDisplay(for: glassID))
+  #expect(defaults.stringArray(forKey: "desktopGlass.listDisplayIDs.v1") == [
+    glassID.rawValue.uuidString
+  ])
+}
+
+@Test
+func listDisplayCustomStorageKeyDoesNotChangeDefaultStorage() throws {
+  let suiteName = "DesktopGlassWindowPreferencesTests-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+
+  let glassID = GlassID()
+  let standard = DesktopGlassWindowPreferences(defaults: defaults)
+  let custom = DesktopGlassWindowPreferences(defaults: defaults, listDisplayKey: "custom.list")
+  custom.setUsesListDisplay(true, for: glassID)
+  #expect(custom.usesListDisplay(for: glassID))
+  #expect(!standard.usesListDisplay(for: glassID))
+
+  standard.setUsesListDisplay(true, for: glassID)
+  custom.retainPreferences(onlyFor: [])
+  #expect(!custom.usesListDisplay(for: glassID))
+  #expect(standard.usesListDisplay(for: glassID))
 }
