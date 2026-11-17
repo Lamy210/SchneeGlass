@@ -1,4 +1,5 @@
 import Testing
+
 @testable import SchneeGlassPresentation
 
 @Test
@@ -34,6 +35,7 @@ func unavailableFolderGuidanceDoesNotPresentPendingCopyRecoveryAsSourceReconnect
   #expect(presentation.detail.contains("Reconnect the original folder"))
   #expect(presentation.detail.contains("without removing this Glass"))
   #expect(presentation.detail.contains("restart SchneeGlass"))
-  #expect(presentation.detail.contains("Pending Copy Recovery in Settings is for interrupted copies"))
+  #expect(
+    presentation.detail.contains("Pending Copy Recovery in Settings is for interrupted copies"))
   #expect(!presentation.detail.contains("add the folder again"))
 }
