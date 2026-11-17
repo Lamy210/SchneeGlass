@@ -22,6 +22,6 @@ func localizedWorkspaceConfirmationPreservesOriginalFileSafetyContract() {
   #expect(GlassLocalizedText.removeGlassDetail.resolve(locale: ja).contains("削除・移動されません"))
   #expect(
     GlassLocalizedText.renameGlassDetail.resolve(locale: en).contains("will not be renamed"))
-  #expect(
-    GlassLocalizedText.removeGlassDetail.resolve(locale: en).contains("will not be deleted or moved"))
+  let removalDetail = GlassLocalizedText.removeGlassDetail.resolve(locale: en)
+  #expect(removalDetail.contains("will not be deleted or moved"))
 }
