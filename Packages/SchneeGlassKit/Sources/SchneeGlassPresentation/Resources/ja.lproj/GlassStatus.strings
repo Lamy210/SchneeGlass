@@ -1,0 +1,11 @@
+"connected" = "接続済み";
+"empty" = "空のフォルダ";
+"unavailable" = "接続不能";
+"refreshFailed" = "更新に失敗";
+"needsAttention" = "確認が必要";
+"unavailableTitle" = "フォルダに接続できません";
+"unavailableDetail" = "Glassを削除せずにアクセスを復旧するには、元のフォルダを再接続してください。再接続できない場合は、現在の操作が完了するまで待つか、SchneeGlassを再起動してください。設定の中断されたコピーの復旧は、コピー操作が中断された場合に使用します。";
+"refreshFailedTitle" = "フォルダの更新に失敗しました";
+"refreshFailedDetail" = "フォルダに変更があるとSchneeGlassが再試行します。";
+"unexpectedTitle" = "Glassの処理を続行できません";
+"unexpectedDetail" = "SchneeGlassを再起動して再試行してください。それでも復旧しない場合は、このGlassを削除してフォルダを再登録してください。";

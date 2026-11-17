@@ -1,0 +1,11 @@
+"connected" = "Connected";
+"empty" = "Empty";
+"unavailable" = "Unavailable";
+"refreshFailed" = "Refresh failed";
+"needsAttention" = "Needs attention";
+"unavailableTitle" = "Folder unavailable";
+"unavailableDetail" = "Reconnect the original folder to restore access without removing this Glass. If Reconnect is disabled, wait for the current operation to finish or restart SchneeGlass. Pending Copy Recovery in Settings is for interrupted copies.";
+"refreshFailedTitle" = "Couldn't refresh this folder";
+"refreshFailedDetail" = "SchneeGlass will retry when the folder changes.";
+"unexpectedTitle" = "This Glass couldn't continue";
+"unexpectedDetail" = "Restart SchneeGlass to retry. If it still fails, remove this Glass and add the folder again.";
