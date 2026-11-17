@@ -363,6 +363,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 ## 11. Menu Bar / Global Shortcut
 
 - [ ] Menu BarからAdd / Show All / Hide All / Settings / Quitを実行できる
+- [ ] Show Glass / Hide Glassでは同名Glassに構成順の番号付きlabelを表示する。実名が番号付きlabelやそのfallbackと一致しても表示名が重複せず、対象Glass IDのみ操作する。Glass名の変更・削除後にメニューを開き直して更新を確認し、長い日本語名とVoiceOverでも識別性を確認する
 - [ ] shortcut未設定時に既存global shortcutを占有しない
 - [ ] user-customizable shortcutを設定できる
 - [ ] shortcutでHide Allできる
