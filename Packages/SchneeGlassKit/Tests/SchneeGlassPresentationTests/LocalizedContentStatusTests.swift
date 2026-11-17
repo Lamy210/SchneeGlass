@@ -28,9 +28,9 @@ func contentFailureAndReconnectGuidanceUseTheSameLocale() {
   #expect(unavailable.title == "フォルダに接続できません")
   #expect(unavailable.detail.contains("元のフォルダを再接続"))
   #expect(unavailable.detail.contains("Glassを削除せず"))
-  #expect(
-    GlassContentStatusPresentation.make(for: .failed(.enumerationFailed), locale: locale)?
-      .label == transient.status)
+  let status = GlassContentStatusPresentation.make(
+    for: .failed(.enumerationFailed), locale: locale)
+  #expect(status?.label == transient.status)
 }
 
 @Test
