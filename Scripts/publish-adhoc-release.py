@@ -97,9 +97,14 @@ def verify_exact_main_checks(pages, sha):
     require(type(pages) is list and pages, "invalid check run pages")
     found = {name: [] for name in REQUIRED_CHECKS}
     ids = set()
+    total_count = None
     for page in pages:
-        require(type(page) is dict and type(page.get("check_runs")) is list,
+        require(type(page) is dict and type(page.get("check_runs")) is list
+                and type(page.get("total_count")) is int and page["total_count"] >= 0,
                 "malformed check run page")
+        if total_count is None:
+            total_count = page["total_count"]
+        require(page["total_count"] == total_count, "check run inventory count changed")
         for check in page["check_runs"]:
             require(type(check) is dict and type(check.get("id")) is int
                     and check["id"] > 0 and check["id"] not in ids
@@ -107,11 +112,12 @@ def verify_exact_main_checks(pages, sha):
             ids.add(check["id"])
             if check["name"] in found:
                 found[check["name"]].append(check)
+    require(len(ids) == total_count, "incomplete check run inventory")
     for name, checks in found.items():
         require(len(checks) == 1, "missing or ambiguous required CI: " + name)
         check = checks[0]
         require(check.get("head_sha") == sha and type(check.get("app")) is dict
-                and check["app"].get("id") == 15368
+                and type(check["app"].get("id")) is int and check["app"]["id"] == 15368
                 and check.get("status") == "completed" and check.get("conclusion") == "success",
                 "required exact-main CI not successful: " + name)
 
@@ -263,10 +269,12 @@ class GitHub:
             gate("verify-release-build-history.sh", current, history / "history")
         self.verify_authority(args)
 
-    def final_assets(self, identity, tag, expected, uploaded):
-        remote = readback.remote_assets(identity, tag, "draft")
+    def final_assets(self, phase, identity, tag, expected, uploaded):
+        require(phase in {"draft", "published"}, "invalid final asset verification phase")
+        require(set(expected) == set(uploaded), "incomplete captured upload identities")
+        remote = readback.remote_assets(identity, tag, phase)
         require({name: (uploaded[name], *value) for name, value in expected.items()} == remote,
-                "final draft asset identities differ from uploads")
+                "final " + phase + " asset identities differ from uploads")
 
     def publish(self, identity):
         return gh_json("PATCH", PREFIX + "/releases/" + identity,
@@ -313,7 +321,7 @@ def execute(args, workspace, api):
         # Repeat authority after the potentially long read-back, then verify the owned slot.
         api.verify_authority(args)
         api.owned_slot(identity, tag, sha)
-        api.final_assets(identity, tag, expected, uploaded_ids)
+        api.final_assets("draft", identity, tag, expected, uploaded_ids)
         stage = "publish"
         response = api.publish(identity)
         require(type(response) is dict and str(response.get("id")) == identity
@@ -322,6 +330,7 @@ def execute(args, workspace, api):
         stage = "published-readback"
         require(api.readback("published", public, identity, tag, sha) == args.build,
                 "published build mismatch")
+        api.final_assets("published", identity, tag, expected, uploaded_ids)
         require(readback.local_assets(public, tag) == expected, "prepared assets changed")
         return identity
     except Exception:

@@ -80,8 +80,8 @@ class FakeGitHub:
         assert identity == "123"
         return ARGS.build
 
-    def final_assets(self, identity, tag, expected, uploaded):
-        self.record("final-assets")
+    def final_assets(self, phase, identity, tag, expected, uploaded):
+        self.record("final-assets:" + phase)
         assert identity == "123"
         assert set(expected) == set(uploaded)
 
@@ -114,12 +114,12 @@ class PublisherTests(fixture.ReleaseReaderTests):
         self.assertEqual(api.upload_count, 4)
         self.assertEqual(api.events.count("readback:draft"), 2)
         self.assertEqual(api.events.count("fresh"), 2)
-        self.assertEqual(api.events[-2:], ["publish", "readback:published"])
+        self.assertEqual(api.events[-4:], ["final-assets:draft", "publish", "readback:published", "final-assets:published"])
 
     def test_publisher_stops_at_every_failed_step(self):
         for event in ["authority", "prepare", "fresh", "empty", "tag", "draft", "owned",
                       "upload:ADHOC_RELEASE_EVIDENCE.json", "readback:draft",
-                      "final-assets", "publish", "readback:published"]:
+                      "final-assets:draft", "publish", "readback:published", "final-assets:published"]:
             with self.subTest(event=event):
                 api = FakeGitHub(self)
                 api.fail = event
@@ -128,7 +128,7 @@ class PublisherTests(fixture.ReleaseReaderTests):
                 self.assertEqual(api.events[-1], event)
                 self.assertEqual(api.events.count(event), 1)
                 self.assertIn("No retry, deletion, overwrite or adoption", self.failure_log)
-                if event not in {"publish", "readback:published"}:
+                if event not in {"publish", "readback:published", "final-assets:published"}:
                     self.assertNotIn("publish", api.events)
 
     def test_publisher_second_fresh_check_blocks_publication(self):
@@ -186,26 +186,47 @@ class PublisherTests(fixture.ReleaseReaderTests):
         checks = [{"id": i, "name": name, "head_sha": fixture.SHA, "app": {"id": 15368},
                    "status": "completed", "conclusion": "success"}
                   for i, name in enumerate(names, 1)]
-        publisher.verify_exact_main_checks([{"check_runs": checks}], fixture.SHA)
+        publisher.verify_exact_main_checks([{"total_count": 2, "check_runs": checks}], fixture.SHA)
+        publisher.verify_exact_main_checks(
+            [{"total_count": 2, "check_runs": checks[:1]},
+             {"total_count": 2, "check_runs": checks[1:]}], fixture.SHA)
         for changes in [{"head_sha": "b" * 40}, {"app": {"id": 7}}, {"conclusion": "failure"},
                         {"status": "queued"}, {"conclusion": "skipped"}]:
             with self.subTest(changes=changes):
                 with self.assertRaises(ValueError):
                     publisher.verify_exact_main_checks(
-                        [{"check_runs": [checks[0] | changes, checks[1]]}], fixture.SHA)
+                        [{"total_count": 2, "check_runs": [checks[0] | changes, checks[1]]}], fixture.SHA)
         with self.assertRaises(ValueError):
-            publisher.verify_exact_main_checks([{"check_runs": checks[:1]}], fixture.SHA)
+            publisher.verify_exact_main_checks([{"total_count": 1, "check_runs": checks[:1]}], fixture.SHA)
         with self.assertRaises(ValueError):
             publisher.verify_exact_main_checks(
-                [{"check_runs": checks + [checks[0] | {"id": 100}]}], fixture.SHA)
+                [{"total_count": 3, "check_runs": checks + [checks[0] | {"id": 100}]}], fixture.SHA)
+        for pages in (
+            [{"total_count": 3, "check_runs": checks}],
+            [{"check_runs": checks}],
+            [{"total_count": True, "check_runs": checks}],
+            [{"total_count": 2, "check_runs": checks[:1]},
+             {"total_count": 3, "check_runs": checks[1:]}],
+            [{"total_count": 3, "check_runs": checks},
+             {"total_count": 3, "check_runs": checks[:1]}],
+        ):
+            with self.subTest(pages=pages), self.assertRaises(ValueError):
+                publisher.verify_exact_main_checks(pages, fixture.SHA)
 
     def test_publisher_final_asset_ids_must_match(self):
         api = publisher.GitHub()
         expected = {"one": (10, "sha256:" + "a" * 64)}
-        with patch.object(publisher.readback, "remote_assets", return_value={"one": (5, *expected["one"])}):
-            api.final_assets("123", fixture.TAG, expected, {"one": 5})
-            with self.assertRaisesRegex(ValueError, "identities differ"):
-                api.final_assets("123", fixture.TAG, expected, {"one": 6})
+        for phase in ("draft", "published"):
+            with self.subTest(phase=phase), patch.object(
+                publisher.readback, "remote_assets", return_value={"one": (5, *expected["one"])}
+            ) as remote:
+                api.final_assets(phase, "123", fixture.TAG, expected, {"one": 5})
+                remote.assert_called_once_with("123", fixture.TAG, phase)
+                # A replacement with identical bytes but a different upload ID is not ours.
+                with self.assertRaisesRegex(ValueError, "identities differ"):
+                    api.final_assets(phase, "123", fixture.TAG, expected, {"one": 6})
+                with self.assertRaisesRegex(ValueError, "incomplete captured"):
+                    api.final_assets(phase, "123", fixture.TAG, expected, {})
 
     def test_publisher_owner_workflow_context_required(self):
         with patch.dict(publisher.os.environ, {}, clear=True):
