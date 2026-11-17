@@ -14,42 +14,42 @@ struct GlassInteractiveFileTile: View {
   var body: some View {
     let presentation = GlassItemPresentation.make(for: item)
     tileLabel(presentation)
-    .contentShape(Rectangle())
-    .onTapGesture(count: 2) {
-      onOpen(item)
-    }
-    .contextMenu {
-      Button("Open") {
+      .contentShape(Rectangle())
+      .onTapGesture(count: 2) {
         onOpen(item)
       }
-      Button("Reveal in Finder") {
+      .contextMenu {
+        Button("Open") {
+          onOpen(item)
+        }
+        Button("Reveal in Finder") {
+          onReveal(item)
+        }
+      }
+      .focusable(interactions: .activate)
+      .onKeyPress(keys: [.return, .space], phases: [.down, .repeat]) { press in
+        switch GlassFileTileKeyPolicy.action(
+          key: press.key, phase: press.phase, modifiers: press.modifiers
+        ) {
+        case .open:
+          onOpen(item)
+          return .handled
+        case .consume:
+          return .handled
+        case .ignore:
+          return .ignored
+        }
+      }
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(presentation.accessibilityLabel)
+      .accessibilityHint("Opens the item")
+      .accessibilityAddTraits(.isButton)
+      .accessibilityAction {
+        onOpen(item)
+      }
+      .accessibilityAction(named: Text("Reveal in Finder")) {
         onReveal(item)
       }
-    }
-    .focusable(interactions: .activate)
-    .onKeyPress(keys: [.return, .space], phases: [.down, .repeat]) { press in
-      switch GlassFileTileKeyPolicy.action(
-        key: press.key, phase: press.phase, modifiers: press.modifiers
-      ) {
-      case .open:
-        onOpen(item)
-        return .handled
-      case .consume:
-        return .handled
-      case .ignore:
-        return .ignored
-      }
-    }
-    .accessibilityElement(children: .ignore)
-    .accessibilityLabel(presentation.accessibilityLabel)
-    .accessibilityHint("Opens the item")
-    .accessibilityAddTraits(.isButton)
-    .accessibilityAction {
-      onOpen(item)
-    }
-    .accessibilityAction(named: Text("Reveal in Finder")) {
-      onReveal(item)
-    }
   }
 
   @ViewBuilder

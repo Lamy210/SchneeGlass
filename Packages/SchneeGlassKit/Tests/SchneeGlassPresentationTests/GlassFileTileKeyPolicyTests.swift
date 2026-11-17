@@ -18,7 +18,11 @@ func fileTileLeavesNavigationAndModifierShortcutsAlone() {
     #expect(GlassFileTileKeyPolicy.action(key: key, phase: .down, modifiers: []) == .ignore)
   }
   for modifiers in [EventModifiers.command, .shift, .option, .control] {
-    #expect(GlassFileTileKeyPolicy.action(key: .return, phase: .down, modifiers: modifiers) == .ignore)
-    #expect(GlassFileTileKeyPolicy.action(key: .space, phase: .repeat, modifiers: modifiers) == .ignore)
+    #expect(
+      GlassFileTileKeyPolicy.action(key: .return, phase: .down, modifiers: modifiers) == .ignore
+    )
+    #expect(
+      GlassFileTileKeyPolicy.action(key: .space, phase: .repeat, modifiers: modifiers) == .ignore
+    )
   }
 }
