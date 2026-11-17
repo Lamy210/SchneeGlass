@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SchneeGlassKit",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v15)
     ],
@@ -50,7 +51,8 @@ let package = Package(
                 "SchneeGlassDomain",
                 "FileDomain",
                 "SchneeGlassDesignSystem"
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .target(
             name: "SchneeGlassFileSystemAdapter",
