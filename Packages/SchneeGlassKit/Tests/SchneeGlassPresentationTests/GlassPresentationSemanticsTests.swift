@@ -65,9 +65,11 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
   assertRejection(
     .tooManyItems(maximum: 20),
     workspaceTitle: "Too many files to copy at once",
-    workspaceDetail: "SchneeGlass copies up to 20 files per drop. Split this selection into smaller drops.",
+    workspaceDetail:
+      "SchneeGlass copies up to 20 files per drop. Split this selection into smaller drops.",
     desktopTitle: "Too many files to copy at once",
-    desktopDetail: "SchneeGlass copies up to 20 files per drop. Split this selection into smaller drops."
+    desktopDetail:
+      "SchneeGlass copies up to 20 files per drop. Split this selection into smaller drops."
   )
   assertRejection(
     .collision,
@@ -86,7 +88,8 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
   assertRejection(
     .destinationUnavailable,
     workspaceTitle: "Folder unavailable",
-    workspaceDetail: "End this drop. If the Glass shows Folder unavailable, reconnect the original folder. Otherwise, refresh the files and try again.",
+    workspaceDetail:
+      "End this drop. If the Glass shows Folder unavailable, reconnect the original folder. Otherwise, refresh the files and try again.",
     desktopTitle: "Folder unavailable",
     desktopDetail: nil
   )
@@ -100,9 +103,11 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
   assertRejection(
     .destinationCopySafetyUnsupported,
     workspaceTitle: "Copy isn't supported for this folder",
-    workspaceDetail: "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires.",
+    workspaceDetail:
+      "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires.",
     desktopTitle: "Copy isn't supported for this folder",
-    desktopDetail: "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
+    desktopDetail:
+      "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
   )
   assertRejection(
     .networkDestinationUnsupported,
@@ -121,9 +126,11 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
   assertRejection(
     .sourceCapacityReached(maximum: 64),
     workspaceTitle: "Copy capacity is busy",
-    workspaceDetail: "SchneeGlass keeps up to 64 source files ready across active drops. Finish another copy and try again.",
+    workspaceDetail:
+      "SchneeGlass keeps up to 64 source files ready across active drops. Finish another copy and try again.",
     desktopTitle: "Copy capacity is busy",
-    desktopDetail: "SchneeGlass keeps up to 64 source files ready across active drops. Finish another copy and try again."
+    desktopDetail:
+      "SchneeGlass keeps up to 64 source files ready across active drops. Finish another copy and try again."
   )
   assertRejection(
     .cloudPlaceholderUnavailable,
