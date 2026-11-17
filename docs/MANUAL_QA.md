@@ -224,6 +224,8 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 ### 7.3 Glass Display Name Rename (v0.2)
 
 - [ ] Rename controlからGlass表示名を変更できる
+- [ ] WorkspaceのGlass optionsからRename Glass…を開くと現在の表示名が入力される。Cancelで変更せず、Renameで対象Glass IDのみ変更する。同名Glass、名称・状態フィルター中、他画面の更新、copy/drop・設定変更中の無効化と実行時guard、Tab/VoiceOverを確認する
+- [ ] Workspaceから空白・101文字超の入力、保存競合・保存失敗を操作し既存のuserMessageが表示され、原本・他Glassの状態が変化しないことを確認する
 - [ ] rename前後でconnected source folderの実ファイル名 / directory名が変化しない
 - [ ] bookmark / persistent identity / placement / show-on-all-spaces / createdAtがrenameで変化しない
 - [ ] 前後のwhitespace / newlineはtrimされて保存される
