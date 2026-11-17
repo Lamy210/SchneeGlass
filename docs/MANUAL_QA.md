@@ -213,6 +213,12 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] 検索中でもidle以外のGlassを表示し、drag/drop/copyの進捗・取消操作を失わない。再接続や設定変更の既存guardは維持する
 - [ ] Clearで全件に戻り、Done / 検索欄のEscapeで検索状態を解除する。最後のGlassを削除した場合にも検索状態を解除する。VoiceOver/Tabで操作でき、設定・原本・Desktop Glassには影響しない
 
+### 7.2.2 Workspace Glass Status Filter
+
+- [ ] 検索欄の状態選択でAll States / Connected (ready) / Empty / Loading / Unavailable / Failedを切り替え、名称検索とのAND条件を確認する。EmptyをConnectedに混入させず、FailedとUnavailableを区別する
+- [ ] 状態変更・再接続後に結果が追従し、idle以外のGlassは条件不一致でも進捗と取消操作を維持する。Clear / Done / Escape / 最後のGlass削除で状態フィルターも解除される
+- [ ] 520ptの最小Workspace幅、Tab/VoiceOver、日本語の名称、0件時の案内を確認する。検索欄を閉じた状態の基準画像・設定・原本・Desktop Glassは不変
+
 ### 7.3 Glass Display Name Rename (v0.2)
 
 - [ ] Rename controlからGlass表示名を変更できる
