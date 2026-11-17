@@ -101,6 +101,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] File TypeをAll Types / Files / Folders / Packages / Links and Aliases / Otherに切り替えられる。名前とのAND条件、ソート順、対象ID、取得済み範囲の件数表示を維持する
 - [ ] Filterを閉じると名前・種類が両方リセットされ、再表示時にAll Typesとなる。種類は他Glassや再起動へ永続化しない
 - [ ] VoiceOverでFile Typeと選択中の項目を確認でき、小さいGlassでも既存スクロール・Open/Reveal・Dropの操作を妨げない
+- [ ] Ready状態のGlass optionsからFilter Filesを開くと名前入力欄へfocusが移る。通常の入力・日本語IME変換を検証し、IME候補のEscapeは変換を取り消して検索を閉じないことを確認する。入力欄がexit commandを受けた場合はEscapeで閉じ、名前・種類の両条件を解除する
+- [ ] Filterのclose button / Hide File Filter / Escapeで同じreset動作。空・不可用・読込失敗状態で新規に開けない。すでに開いていた場合は閉じられる。snapshotが一時的に空/失敗になり復旧しても条件は保持し、入力欄へfocusを奪い返さない
+- [ ] 他のGlass、検索以外の操作、Remove確認ダイアログ、copy cancellation、Picker、IME候補がEscapeを使う場合の競合がないことをmacOS 15/26で確認する
 - [ ] 大文字小文字・アクセントの違いを無視してファイル名を絞り込める
 - [ ] 絞り込みは表示済み500件以内に限定され、source folderの再走査やmutationを行わない
 - [ ] Sort Displayed Files / Folders Firstの順序を絞り込み中も維持する
@@ -123,6 +126,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 - [ ] regular fileをOpenできる
 - [ ] Reveal in Finderが正しいfileを選択する
+- [ ] Desktop GlassとWorkspaceの両方でmacOSのキーボードナビゲーションを有効にし、Tab / Shift+Tabでfile tileへ移動でき、focusが見える。Return / Spaceは対象のfileを開き、長押しで重複起動しない。修飾キー付きshortcutと検索TextFieldの入力は奪わない
+- [ ] VoiceOverでfile名・種類・button traitを確認し、標準activateでOpen、ActionsからReveal in Finderが正しいitemを選ぶ。通常のsingle-clickではOpenしない。double-clickとcontext menuを維持する
+- [ ] filter・sort・snapshot更新でfocus対象が消えたとき、削除済み・別名・別Glassのitemを誤って開かない。小さいGlass、複数Glass、VoiceOverとキーボードナビゲーションの同時使用、copy overlay中も確認する
 - [ ] fileが操作直前に消えた場合、別fileを誤って開かない
 - [ ] directory / package / symlink等がv0.1 contract外なら安全に拒否される
 
@@ -278,6 +284,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Modifiedは更新日時が新しいitemから並び、日時不明itemは末尾へ送られる
 - [ ] Sizeはsizeが大きいitemから並び、size不明itemは末尾へ送られる
 - [ ] sortを切り替えてもdouble-click Open / Reveal in Finder / context menuの対象が変わらない
+- [ ] Desktop Glass optionsのShow as List / Show as Iconsで縦並びとアイコングリッドを往復できる。初期値はIcons、Workspaceは従来のグリッド。表示modeはGlassごとのview-local stateで永続化しない。空/失敗から復旧した際にも同一view内で維持する
+- [ ] Listでも名前・種類のAND検索、folders first、sort順、500件の取得範囲と件数表示、0件表示、正しいFileIdentityを維持する。長い日本語/英語filename、狭いpanel、light/dark、VoiceOver、Tab/Return/Space、double-click/Revealを確認する
+- [ ] Drop/copy中は表示mode変更不可。表示変更前後で原本/設定/配置/権限は不変。グリッドのdensityを変更してListを経由しIconsへ戻してもdensity設定を維持する
 - [ ] sort状態がGlass単位で独立し、アプリ再起動後も維持される
 - [ ] Compact File Tiles / Opacity / Position Lockなど他のWindow UX preferenceと独立する
 - [ ] Glass削除時にstale sort preferenceをcleanupする
