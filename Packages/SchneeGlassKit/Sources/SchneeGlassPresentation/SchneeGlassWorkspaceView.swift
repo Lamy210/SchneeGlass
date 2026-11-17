@@ -299,11 +299,6 @@ private struct GlassPreviewSurface: View {
         statusLabel
 
         Menu {
-          if case .unavailable = entry.contentState {
-            Button("Reconnect Original Folder…", action: onReconnectSource)
-              .disabled(!canReconnectSource)
-          }
-
           Button("Remove Glass…", role: .destructive) {
             showsRemoveConfirmation = true
           }
@@ -508,11 +503,17 @@ private struct GlassPreviewSurface: View {
 
     case .unavailable:
       let presentation = GlassUnavailablePresentation.current
-      SchneeGlassStateMessage(
-        systemImage: "externaldrive.badge.exclamationmark",
-        title: presentation.title,
-        detail: presentation.detail
-      )
+      VStack(spacing: SchneeGlassSpacing.controlGroup) {
+        SchneeGlassStateMessage(
+          systemImage: "externaldrive.badge.exclamationmark",
+          title: presentation.title,
+          detail: presentation.detail
+        )
+
+        Button("Reconnect Original Folder…", action: onReconnectSource)
+          .buttonStyle(.borderedProminent)
+          .disabled(!canReconnectSource)
+      }
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .failed(let error):
