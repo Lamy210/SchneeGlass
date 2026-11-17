@@ -98,6 +98,7 @@ struct DesktopGlassSurface: View {
 
   @State private var showsRemoveConfirmation = false
   @State private var fileFilter = DesktopGlassFilterSession()
+  @State private var fileDisplayMode: GlassFileDisplayMode = .grid
   @FocusState private var isFileFilterFocused: Bool
 
   init(
@@ -212,6 +213,12 @@ struct DesktopGlassSurface: View {
           }
         }
         .disabled(!supportsFileFilter && !fileFilter.isVisible)
+
+        Button(fileDisplayMode.alternateMenuTitle) {
+          guard GlassFileDisplayMode.allowsChange(during: entry.interactionState) else { return }
+          fileDisplayMode = fileDisplayMode.alternate
+        }
+        .disabled(!GlassFileDisplayMode.allowsChange(during: entry.interactionState))
 
         Divider()
 
@@ -348,8 +355,9 @@ struct DesktopGlassSurface: View {
 
   private func fileGridScrollView(snapshot: FolderSnapshot) -> some View {
     ScrollView {
-      DesktopFileGrid(
+      DesktopFileContent(
         snapshot: snapshot,
+        displayMode: fileDisplayMode,
         density: fileGridDensity,
         sortOrder: fileSortOrder,
         foldersFirst: foldersFirst,
@@ -496,8 +504,9 @@ struct DesktopGlassSurface: View {
   }
 }
 
-private struct DesktopFileGrid: View {
+private struct DesktopFileContent: View {
   let snapshot: FolderSnapshot
+  let displayMode: GlassFileDisplayMode
   let density: DesktopGlassFileGridDensity
   let sortOrder: DesktopGlassFileSortOrder?
   let foldersFirst: Bool
@@ -507,20 +516,9 @@ private struct DesktopFileGrid: View {
   let onReveal: (GlassItem) -> Void
 
   private var displayedItems: [GlassItem] {
-    let orderedItems: [GlassItem]
-    if let sortOrder {
-      orderedItems = sortOrder.sortedItems(snapshot.items, foldersFirst: foldersFirst)
-    } else if foldersFirst {
-      let directories = snapshot.items.filter { $0.kind == .directory }
-      let remaining = snapshot.items.filter { $0.kind != .directory }
-      orderedItems = directories + remaining
-    } else {
-      orderedItems = snapshot.items
-    }
-    return DesktopGlassFileNameFilter.matchingItems(
-      orderedItems,
-      query: filterQuery,
-      kind: kindFilter
+    DesktopGlassDisplayedItems.make(
+      snapshot.items, sortOrder: sortOrder, foldersFirst: foldersFirst,
+      query: filterQuery, kind: kindFilter
     )
   }
 
@@ -552,17 +550,29 @@ private struct DesktopFileGrid: View {
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
-        fileGrid(items)
+        fileItems(items)
       }
     } else {
-      fileGrid(items)
+      fileItems(items)
     }
   }
 
-  private func fileGrid(_ items: [GlassItem]) -> some View {
-    LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
-      ForEach(items) { item in
-        GlassInteractiveFileTile(item: item, onOpen: onOpen, onReveal: onReveal)
+  @ViewBuilder
+  private func fileItems(_ items: [GlassItem]) -> some View {
+    switch displayMode {
+    case .grid:
+      LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
+        ForEach(items) { item in
+          GlassInteractiveFileTile(item: item, onOpen: onOpen, onReveal: onReveal)
+        }
+      }
+    case .list:
+      LazyVStack(alignment: .leading, spacing: SchneeGlassSpacing.compactContent) {
+        ForEach(items) { item in
+          GlassInteractiveFileTile(
+            item: item, onOpen: onOpen, onReveal: onReveal, displayMode: .list
+          )
+        }
       }
     }
   }
