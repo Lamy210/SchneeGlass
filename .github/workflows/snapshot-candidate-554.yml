@@ -1,0 +1,71 @@
+name: Snapshot candidate 554 (read-only)
+
+on:
+  push:
+    branches:
+      - 'snapshot-candidate/554-2d57460'
+    paths:
+      - '.github/workflows/snapshot-candidate-554.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snapshot-candidate-554
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      SOURCE_SHA: '2d57460aaf2320e7f2c18566e5e06c5a386c532c'
+    steps:
+      - name: Checkout fixed PR candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: '2d57460aaf2320e7f2c18566e5e06c5a386c532c'
+          persist-credentials: false
+      - name: Generate reference candidates and verify all suites
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          bash Scripts/update-visual-snapshots.sh
+      - name: Collect only changed PNG references
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, re, subprocess
+          root = pathlib.Path("Packages/SchneeGlassKit/Tests/SchneeGlassVisualSnapshotTests/__Snapshots__")
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "snapshot-candidates"
+          out.mkdir()
+          paths = subprocess.check_output(["git", "diff", "--name-only", "-z", "HEAD"]).decode().split("\0")
+          entries = []
+          for name in filter(None, paths):
+              p = pathlib.Path(name)
+              rel = p.relative_to(root)
+              if len(rel.parts) != 2 or not re.fullmatch(r"[A-Za-z0-9_]+\.macos-26-xcode-26-6\.png", p.name):
+                  raise SystemExit("Unexpected changed path: " + name)
+              if not p.is_file() or p.is_symlink():
+                  raise SystemExit("Expected regular PNG: " + name)
+              data = p.read_bytes()
+              if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+                  raise SystemExit("Invalid PNG: " + name)
+              target = out / rel
+              target.parent.mkdir(exist_ok=True)
+              target.write_bytes(data)
+              digest = hashlib.sha256(data).hexdigest()
+              entries.append({"path": name, "sha256": digest, "bytes": len(data)})
+              print("SNAPSHOT_CANDIDATE " + json.dumps({"path": name, "sha256": digest, "base64": base64.b64encode(data).decode()}), flush=True)
+          if not entries:
+              raise SystemExit("No changed snapshot references")
+          (out / "manifest.json").write_text(json.dumps({"source_sha": os.environ["SOURCE_SHA"], "files": entries}, indent=2))
+          PY
+      - name: Upload review candidates
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: snapshot-candidates-554
+          path: ${{ runner.temp }}/snapshot-candidates
+          if-no-files-found: error
+          retention-days: 3
