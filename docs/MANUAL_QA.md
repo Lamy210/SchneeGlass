@@ -178,6 +178,8 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 ### 7.1 General Glass Source Reconnect (v0.2)
 
+- [ ] Workspaceで接続不能によるドロップ拒否を確認する。ドロップ終了→unavailableなら元フォルダ再接続、接続が維持されるならRefresh Filesを案内し、Glassの削除・再登録を復旧の前提としない。Desktopの簡略表示は維持する
+
 - [ ] bookmark/permission failureなどで`unavailable`になったGlassにReconnect controlが表示される
 - [ ] healthyな`ready` / `empty` GlassにはReconnect controlが表示されない
 - [ ] Workspaceのunavailable状態に直接Reconnect Original Folder…を表示する（Glass optionsを開く必要なし）。Tab/VoiceOverから操作できることを確認する。構成変更中・copy/drop中など既存modelの許可条件を満たさない場合は無効化する
