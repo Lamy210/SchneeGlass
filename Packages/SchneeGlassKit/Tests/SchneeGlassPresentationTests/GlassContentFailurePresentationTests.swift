@@ -31,9 +31,9 @@ func unavailableFolderGuidanceDoesNotPresentPendingCopyRecoveryAsSourceReconnect
     let presentation = GlassUnavailablePresentation.current
 
     #expect(presentation.title == "Folder unavailable")
-    #expect(presentation.detail.contains("Restart SchneeGlass"))
-    #expect(presentation.detail.contains("remove this Glass"))
-    #expect(presentation.detail.contains("add the folder again"))
-    #expect(presentation.detail.contains("Pending Copy Recovery"))
-    #expect(!presentation.detail.contains("Reconnect support"))
+    #expect(presentation.detail.contains("Reconnect the original folder"))
+    #expect(presentation.detail.contains("without removing this Glass"))
+    #expect(presentation.detail.contains("restart SchneeGlass"))
+    #expect(presentation.detail.contains("Pending Copy Recovery in Settings is for interrupted copies"))
+    #expect(!presentation.detail.contains("add the folder again"))
 }
