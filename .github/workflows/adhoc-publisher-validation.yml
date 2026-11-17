@@ -12,6 +12,11 @@ on:
       - 'Scripts/test-verify-authenticated-adhoc-public-release.py'
       - 'Scripts/verify-adhoc-public-release-evidence.py'
       - 'Scripts/prepare-verified-adhoc-public-assets.py'
+      - 'Scripts/test-prepare-verified-adhoc-public-assets.py'
+      - 'Scripts/test-materialize-authenticated-adhoc-release-history.sh'
+      - 'Scripts/verify-release-build-history.sh'
+      - 'Scripts/test-verify-adhoc-release-readback.py'
+      - 'docs/release-history/legacy-public-releases.tsv'
       - 'Scripts/materialize-authenticated-adhoc-release-history.sh'
       - 'Scripts/materialize-strict-authenticated-release-history.py'
 
@@ -28,3 +33,5 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Publisher state machine and failure fixtures (no network)
         run: python3 Scripts/test-publish-adhoc-release.py
+      - name: Authenticated full-history fixtures (mock GitHub)
+        run: bash Scripts/test-materialize-authenticated-adhoc-release-history.sh
