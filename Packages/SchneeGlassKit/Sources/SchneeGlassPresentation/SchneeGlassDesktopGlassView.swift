@@ -97,9 +97,8 @@ struct DesktopGlassSurface: View {
   let onPerformDrop: @MainActor ([URL]) async -> Void
 
   @State private var showsRemoveConfirmation = false
-  @State private var showsFileFilter = false
-  @State private var fileFilterQuery = ""
-  @State private var fileKindFilter: DesktopGlassFileKindFilter = .all
+  @State private var fileFilter = DesktopGlassFilterSession()
+  @FocusState private var isFileFilterFocused: Bool
 
   init(
     entry: GlassWorkspaceEntry,
@@ -173,6 +172,19 @@ struct DesktopGlassSurface: View {
       )
     }
     .accessibilityElement(children: .contain)
+    .onChange(of: supportsFileFilter) { _, supported in
+      if !supported {
+        isFileFilterFocused = false
+        fileFilter.discardFocusRequest()
+      }
+    }
+  }
+
+  private var supportsFileFilter: Bool {
+    if case .ready = entry.contentState {
+      return true
+    }
+    return false
   }
 
   private var header: some View {
@@ -192,12 +204,14 @@ struct DesktopGlassSurface: View {
         Button("Refresh Files", action: onRefresh)
           .disabled(!canRefresh)
 
-        Button(showsFileFilter ? "Hide File Filter" : "Filter Files…") {
-          if showsFileFilter {
-            resetFileFilter()
+        Button(fileFilter.isVisible ? "Hide File Filter" : "Filter Files…") {
+          if fileFilter.isVisible {
+            closeFileFilter()
+          } else {
+            fileFilter.open(ifSupported: supportsFileFilter)
           }
-          showsFileFilter.toggle()
         }
+        .disabled(!supportsFileFilter && !fileFilter.isVisible)
 
         Divider()
 
@@ -243,16 +257,26 @@ struct DesktopGlassSurface: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .ready(let snapshot):
-      if showsFileFilter {
+      if fileFilter.isVisible {
         VStack(spacing: SchneeGlassSpacing.controlGroup) {
           HStack(spacing: SchneeGlassSpacing.controlGroup) {
-            TextField("Filter files by name", text: $fileFilterQuery)
+            TextField("Filter files by name", text: $fileFilter.query)
               .textFieldStyle(.roundedBorder)
               .accessibilityLabel("Filter files by name")
+              .focused($isFileFilterFocused)
+              .onAppear {
+                if fileFilter.consumeFocusRequest() {
+                  isFileFilterFocused = true
+                }
+              }
+              .onExitCommand {
+                if isFileFilterFocused {
+                  closeFileFilter()
+                }
+              }
 
             Button {
-              resetFileFilter()
-              showsFileFilter = false
+              closeFileFilter()
             } label: {
               Image(systemName: "xmark.circle.fill")
             }
@@ -260,7 +284,7 @@ struct DesktopGlassSurface: View {
             .accessibilityLabel("Clear and close file filter")
           }
 
-          Picker("File Type", selection: $fileKindFilter) {
+          Picker("File Type", selection: $fileFilter.kind) {
             ForEach(DesktopGlassFileKindFilter.allCases) { kind in
               Text(kind.rawValue).tag(kind)
             }
@@ -317,9 +341,9 @@ struct DesktopGlassSurface: View {
     }
   }
 
-  private func resetFileFilter() {
-    fileFilterQuery = ""
-    fileKindFilter = .all
+  private func closeFileFilter() {
+    isFileFilterFocused = false
+    fileFilter.close()
   }
 
   private func fileGridScrollView(snapshot: FolderSnapshot) -> some View {
@@ -329,8 +353,8 @@ struct DesktopGlassSurface: View {
         density: fileGridDensity,
         sortOrder: fileSortOrder,
         foldersFirst: foldersFirst,
-        filterQuery: showsFileFilter ? fileFilterQuery : "",
-        kindFilter: showsFileFilter ? fileKindFilter : .all,
+        filterQuery: fileFilter.effectiveQuery,
+        kindFilter: fileFilter.effectiveKind,
         onOpen: onOpen,
         onReveal: onReveal
       )

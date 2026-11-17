@@ -101,6 +101,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] File TypeをAll Types / Files / Folders / Packages / Links and Aliases / Otherに切り替えられる。名前とのAND条件、ソート順、対象ID、取得済み範囲の件数表示を維持する
 - [ ] Filterを閉じると名前・種類が両方リセットされ、再表示時にAll Typesとなる。種類は他Glassや再起動へ永続化しない
 - [ ] VoiceOverでFile Typeと選択中の項目を確認でき、小さいGlassでも既存スクロール・Open/Reveal・Dropの操作を妨げない
+- [ ] Ready状態のGlass optionsからFilter Filesを開くと名前入力欄へfocusが移る。通常の入力・日本語IME変換を検証し、IME候補のEscapeは変換を取り消して検索を閉じないことを確認する。入力欄がexit commandを受けた場合はEscapeで閉じ、名前・種類の両条件を解除する
+- [ ] Filterのclose button / Hide File Filter / Escapeで同じreset動作。空・不可用・読込失敗状態で新規に開けない。すでに開いていた場合は閉じられる。snapshotが一時的に空/失敗になり復旧しても条件は保持し、入力欄へfocusを奪い返さない
+- [ ] 他のGlass、検索以外の操作、Remove確認ダイアログ、copy cancellation、Picker、IME候補がEscapeを使う場合の競合がないことをmacOS 15/26で確認する
 - [ ] 大文字小文字・アクセントの違いを無視してファイル名を絞り込める
 - [ ] 絞り込みは表示済み500件以内に限定され、source folderの再走査やmutationを行わない
 - [ ] Sort Displayed Files / Folders Firstの順序を絞り込み中も維持する

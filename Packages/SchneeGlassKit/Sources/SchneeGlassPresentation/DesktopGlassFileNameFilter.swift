@@ -63,3 +63,38 @@ enum DesktopGlassFileNameFilter {
     return nil
   }
 }
+
+/// A view-local filter session. Refreshes may temporarily remove the search
+/// field; restore the query, but never steal focus when the field reappears.
+struct DesktopGlassFilterSession {
+  private(set) var isVisible = false
+  private var requestsFocus = false
+  var query = ""
+  var kind: DesktopGlassFileKindFilter = .all
+
+  var effectiveQuery: String { isVisible ? query : "" }
+  var effectiveKind: DesktopGlassFileKindFilter { isVisible ? kind : .all }
+
+  mutating func open(ifSupported supported: Bool) {
+    guard supported, !isVisible else { return }
+    isVisible = true
+    requestsFocus = true
+  }
+
+  mutating func consumeFocusRequest() -> Bool {
+    let requested = requestsFocus && isVisible
+    requestsFocus = false
+    return requested
+  }
+
+  mutating func discardFocusRequest() {
+    requestsFocus = false
+  }
+
+  mutating func close() {
+    isVisible = false
+    requestsFocus = false
+    query = ""
+    kind = .all
+  }
+}
