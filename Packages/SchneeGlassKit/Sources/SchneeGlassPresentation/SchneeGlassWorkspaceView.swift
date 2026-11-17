@@ -62,6 +62,22 @@ public struct SchneeGlassWorkspaceView: View {
         Task {
           await model.reconnectGlassSource(glassID: glassID)
         }
+      },
+      canRefresh: { model.canRefreshGlass(glassID: $0) },
+      onRefresh: { glassID in
+        Task {
+          await model.refreshGlass(glassID: glassID)
+        }
+      },
+      canRevealConnectedFolder: { glassID in
+        model.canMutateConfiguration && model.canRevealConnectedFolder(glassID: glassID)
+      },
+      onRevealConnectedFolder: { glassID in
+        guard model.canMutateConfiguration, model.canRevealConnectedFolder(glassID: glassID)
+        else {
+          return
+        }
+        model.revealConnectedFolder(glassID: glassID)
       }
     )
   }
@@ -86,6 +102,10 @@ struct WorkspaceSurface: View {
   let onPerformDrop: @MainActor (GlassID, [URL]) async -> Void
   var canReconnectSource: @MainActor (GlassID) -> Bool = { _ in false }
   var onReconnectSource: @MainActor (GlassID) -> Void = { _ in }
+  var canRefresh: @MainActor (GlassID) -> Bool = { _ in false }
+  var onRefresh: @MainActor (GlassID) -> Void = { _ in }
+  var canRevealConnectedFolder: @MainActor (GlassID) -> Bool = { _ in false }
+  var onRevealConnectedFolder: @MainActor (GlassID) -> Void = { _ in }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -175,7 +195,11 @@ struct WorkspaceSurface: View {
               canReconnectSource: canReconnectSource(entry.id),
               onReconnectSource: {
                 onReconnectSource(entry.id)
-              }
+              },
+              canRefresh: canRefresh(entry.id),
+              onRefresh: { onRefresh(entry.id) },
+              canRevealConnectedFolder: canRevealConnectedFolder(entry.id),
+              onRevealConnectedFolder: { onRevealConnectedFolder(entry.id) }
             )
           }
         }
@@ -284,6 +308,10 @@ private struct GlassPreviewSurface: View {
   let onPerformDrop: @MainActor ([URL]) async -> Void
   let canReconnectSource: Bool
   let onReconnectSource: @MainActor () -> Void
+  let canRefresh: Bool
+  let onRefresh: @MainActor () -> Void
+  let canRevealConnectedFolder: Bool
+  let onRevealConnectedFolder: @MainActor () -> Void
 
   @State private var showsRemoveConfirmation = false
 
@@ -299,6 +327,15 @@ private struct GlassPreviewSurface: View {
         statusLabel
 
         Menu {
+          Button("Refresh Files", action: onRefresh)
+            .disabled(!canRefresh)
+
+          if canRevealConnectedFolder {
+            Button("Show Connected Folder in Finder", action: onRevealConnectedFolder)
+          }
+
+          Divider()
+
           Button("Remove Glass…", role: .destructive) {
             showsRemoveConfirmation = true
           }
