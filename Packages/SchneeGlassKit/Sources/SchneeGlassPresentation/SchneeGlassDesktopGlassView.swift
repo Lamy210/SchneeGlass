@@ -35,6 +35,12 @@ public struct SchneeGlassDesktopGlassView: View {
           foldersFirst: foldersFirst,
           canRemove: model.canMutateConfiguration
             && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
+          canRefresh: model.canRefreshGlass(glassID: entry.id),
+          onRefresh: {
+            Task {
+              await model.refreshGlass(glassID: entry.id)
+            }
+          },
           onOpen: model.open,
           onReveal: model.revealInFinder,
           onRemove: {
@@ -80,6 +86,8 @@ struct DesktopGlassSurface: View {
   let fileSortOrder: DesktopGlassFileSortOrder?
   let foldersFirst: Bool
   let canRemove: Bool
+  let canRefresh: Bool
+  let onRefresh: () -> Void
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
   let onRemove: () -> Void
@@ -99,6 +107,8 @@ struct DesktopGlassSurface: View {
     fileSortOrder: DesktopGlassFileSortOrder? = nil,
     foldersFirst: Bool = false,
     canRemove: Bool,
+    canRefresh: Bool = false,
+    onRefresh: @escaping () -> Void = {},
     onOpen: @escaping (GlassItem) -> Void,
     onReveal: @escaping (GlassItem) -> Void,
     onRemove: @escaping () -> Void,
@@ -112,6 +122,8 @@ struct DesktopGlassSurface: View {
     self.fileSortOrder = fileSortOrder
     self.foldersFirst = foldersFirst
     self.canRemove = canRemove
+    self.canRefresh = canRefresh
+    self.onRefresh = onRefresh
     self.onOpen = onOpen
     self.onReveal = onReveal
     self.onRemove = onRemove
@@ -177,6 +189,9 @@ struct DesktopGlassSurface: View {
       statusLabel
 
       Menu {
+        Button("Refresh Files", action: onRefresh)
+          .disabled(!canRefresh)
+
         Button(showsFileFilter ? "Hide File Filter" : "Filter Files…") {
           if showsFileFilter {
             resetFileFilter()

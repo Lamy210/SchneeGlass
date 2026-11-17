@@ -94,6 +94,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] folderのdirect childrenだけが表示される
 - [ ] hidden itemが意図どおり非表示になる
 - [ ] 500-item上限を超えるfolderでもUIが破綻しない
+- [ ] Glass optionsの「Refresh Files」で接続中のフォルダを手動更新できる。通常時・空フォルダ・enumeration failureの復旧を確認する
+- [ ] 手動更新の連打で読み取りが並列化されない。更新中のFSEventsは後続snapshotとして扱い、終了・Glass削除中に古いsnapshotやアクセス権が残らない
+- [ ] コピー中・接続不能・停止後はRefreshが無効。フォルダidentity差し替えは従来通り不可用となり再接続が必要
 - [ ] Glass optionsの「Filter Files…」で検索欄を開閉できる
 - [ ] File TypeをAll Types / Files / Folders / Packages / Links and Aliases / Otherに切り替えられる。名前とのAND条件、ソート順、対象ID、取得済み範囲の件数表示を維持する
 - [ ] Filterを閉じると名前・種類が両方リセットされ、再表示時にAll Typesとなる。種類は他Glassや再起動へ永続化しない
