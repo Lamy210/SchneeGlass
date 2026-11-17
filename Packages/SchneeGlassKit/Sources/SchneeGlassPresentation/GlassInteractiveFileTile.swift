@@ -13,7 +13,8 @@ struct GlassInteractiveFileTile: View {
 
   var body: some View {
     let presentation = GlassItemPresentation.make(for: item)
-    tileLabel(presentation)
+    let metadata = displayMode == .list ? GlassListItemMetadata.make(for: item) : nil
+    tileLabel(presentation, metadata: metadata)
       .contentShape(Rectangle())
       .onTapGesture(count: 2) {
         onOpen(item)
@@ -42,6 +43,7 @@ struct GlassInteractiveFileTile: View {
       }
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(presentation.accessibilityLabel)
+      .accessibilityValue(metadata?.accessibilityText ?? "")
       .accessibilityHint("Opens the item")
       .accessibilityAddTraits(.isButton)
       .accessibilityAction {
@@ -53,7 +55,9 @@ struct GlassInteractiveFileTile: View {
   }
 
   @ViewBuilder
-  private func tileLabel(_ presentation: GlassItemPresentation) -> some View {
+  private func tileLabel(
+    _ presentation: GlassItemPresentation, metadata: GlassListItemMetadata?
+  ) -> some View {
     switch displayMode {
     case .grid:
       SchneeGlassFileTile(systemImage: presentation.systemImage, title: item.displayName)
@@ -64,11 +68,19 @@ struct GlassInteractiveFileTile: View {
           .foregroundStyle(.primary)
           .frame(width: SchneeGlassMetrics.fileIconHeight)
           .accessibilityHidden(true)
-        Text(item.displayName)
-          .font(SchneeGlassTypography.body)
-          .lineLimit(2)
-          .truncationMode(.middle)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: SchneeGlassSpacing.compactContent) {
+          Text(item.displayName)
+            .font(SchneeGlassTypography.body)
+            .lineLimit(2)
+            .truncationMode(.middle)
+          if let detail = metadata?.displayText {
+            Text(detail)
+              .font(SchneeGlassTypography.supporting)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .frame(minHeight: SchneeGlassMetrics.minimumControlHitTarget)
       .padding(.vertical, SchneeGlassSpacing.compactContent)
