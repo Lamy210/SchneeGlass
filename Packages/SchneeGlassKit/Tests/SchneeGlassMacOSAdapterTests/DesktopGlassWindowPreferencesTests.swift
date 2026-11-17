@@ -491,9 +491,10 @@ func listDisplayWithCorruptStorageDefaultsToIcons() throws {
 
   store.setUsesListDisplay(true, for: glassID)
   #expect(store.usesListDisplay(for: glassID))
-  #expect(defaults.stringArray(forKey: "desktopGlass.listDisplayIDs.v1") == [
-    glassID.rawValue.uuidString
-  ])
+  #expect(
+    defaults.stringArray(forKey: "desktopGlass.listDisplayIDs.v1") == [
+      glassID.rawValue.uuidString
+    ])
 }
 
 @Test
