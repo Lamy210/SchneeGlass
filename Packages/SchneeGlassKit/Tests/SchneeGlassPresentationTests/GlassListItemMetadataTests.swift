@@ -32,6 +32,31 @@ func listMetadataDistinguishesZeroSizeFromUnknownOrInvalidSize() {
 }
 
 @Test
+func listMetadataDisplaysModificationDateWhenRegularFileSizeIsUnavailable() {
+  let date = Date(timeIntervalSince1970: 1_700_000_000)
+  let modified = date.formatted(date: .abbreviated, time: .shortened)
+  for size in [nil, -1] as [Int64?] {
+    let metadata = GlassListItemMetadata.make(
+      for: listMetadataItem(kind: .regular, size: size, date: date)
+    )
+    #expect(metadata.size == nil)
+    #expect(metadata.displayText == modified)
+    #expect(metadata.accessibilityText == "Modified: \(modified)")
+  }
+}
+
+@Test
+func listMetadataDisplaysOnlySizeWithoutInventingModificationDate() {
+  let metadata = GlassListItemMetadata.make(
+    for: listMetadataItem(kind: .regular, size: 1024)
+  )
+  let size = ByteCountFormatter.string(fromByteCount: 1024, countStyle: .file)
+  #expect(metadata.modified == nil)
+  #expect(metadata.displayText == size)
+  #expect(metadata.accessibilityText == "Size: \(size)")
+}
+
+@Test
 func listMetadataNeverDisplaysNonRegularItemSizeAsTargetOrRecursiveSize() {
   let date = Date(timeIntervalSince1970: 1_700_000_000)
   let kinds: [FileKind] = [.directory, .package, .alias, .symbolicLink, .unsupported]
