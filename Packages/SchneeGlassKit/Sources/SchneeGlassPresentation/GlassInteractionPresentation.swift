@@ -29,7 +29,7 @@ struct GlassInteractionPresentation: Equatable {
     glassTitle: String,
     surface: GlassInteractionPresentationSurface
   ) -> Self? {
-    guard case let .copy(batch) = plan else {
+    guard case .copy(let batch) = plan else {
       guard surface == .workspace else {
         return nil
       }
@@ -77,7 +77,8 @@ struct GlassInteractionPresentation: Equatable {
   ) -> Self {
     switch surface {
     case .workspace:
-      let detail = progress.totalCount <= 1
+      let detail =
+        progress.totalCount <= 1
         ? progress.currentFilename
         : "\(progress.currentIndex) of \(progress.totalCount) · \(progress.currentFilename)"
       return Self(
@@ -87,7 +88,8 @@ struct GlassInteractionPresentation: Equatable {
       )
 
     case .desktop:
-      let title = progress.totalCount == 1
+      let title =
+        progress.totalCount == 1
         ? "Copying \(progress.currentFilename)…"
         : "Copying \(progress.currentIndex) of \(progress.totalCount)…"
       return Self(
@@ -144,10 +146,12 @@ struct GlassInteractionPresentation: Equatable {
     surface: GlassInteractionPresentationSurface
   ) -> String? {
     switch reason {
-    case let .tooManyItems(maximum):
-      return "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
-    case let .sourceCapacityReached(maximum):
-      return "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
+    case .tooManyItems(let maximum):
+      return
+        "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
+    case .sourceCapacityReached(let maximum):
+      return
+        "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
     case .collision:
       return "Nothing will be overwritten."
     case .unsupportedFolder:
