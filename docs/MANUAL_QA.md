@@ -284,9 +284,10 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Modifiedは更新日時が新しいitemから並び、日時不明itemは末尾へ送られる
 - [ ] Sizeはsizeが大きいitemから並び、size不明itemは末尾へ送られる
 - [ ] sortを切り替えてもdouble-click Open / Reveal in Finder / context menuの対象が変わらない
-- [ ] Desktop Glass optionsのShow as List / Show as Iconsで縦並びとアイコングリッドを往復できる。初期値はIcons、Workspaceは従来のグリッド。表示modeはGlassごとのview-local stateで永続化しない。空/失敗から復旧した際にも同一view内で維持する
+- [ ] Desktop Glass optionsのShow as List / Show as Iconsで縦並びとアイコングリッドを往復できる。初期値はIcons、Workspaceは従来のグリッド。表示modeはGlass ID単位の端末ローカル設定として永続化し、hide/show、panel再生成、再起動、空/失敗からの復旧でも維持する。JSON構成backup/recoveryの対象外であり検索条件は保存しない
 - [ ] Listでも名前・種類のAND検索、folders first、sort順、500件の取得範囲と件数表示、0件表示、正しいFileIdentityを維持する。長い日本語/英語filename、狭いpanel、light/dark、VoiceOver、Tab/Return/Space、double-click/Revealを確認する
-- [ ] Drop/copy中は表示mode変更不可。表示変更前後で原本/設定/配置/権限は不変。グリッドのdensityを変更してListを経由しIconsへ戻してもdensity設定を維持する
+- [ ] Drop/copy中、構成変更中、非authoritative状態では表示mode変更不可。表示変更前後で原本/JSON構成/配置/権限は不変。グリッドのdensityを変更してListを経由しIconsへ戻してもdensity設定を維持する
+- [ ] 別Glassの表示modeには影響しない。構成が一時的に読めずpanelが消えても保存状態を削除しない。authoritativeな構成でGlass削除を確認したときのみ不要なIDを除去する。再作成された別IDはIconsから開始する
 - [ ] sort状態がGlass単位で独立し、アプリ再起動後も維持される
 - [ ] Compact File Tiles / Opacity / Position Lockなど他のWindow UX preferenceと独立する
 - [ ] Glass削除時にstale sort preferenceをcleanupする

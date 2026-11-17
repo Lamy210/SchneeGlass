@@ -10,19 +10,25 @@ public struct SchneeGlassDesktopGlassView: View {
   private let fileGridDensity: DesktopGlassFileGridDensity
   private let fileSortOrder: DesktopGlassFileSortOrder
   private let foldersFirst: Bool
+  private let persistedDisplayMode: GlassFileDisplayMode?
+  private let onDisplayModeChange: (@MainActor (GlassFileDisplayMode) -> Void)?
 
   public init(
     model: SchneeGlassWorkspaceModel,
     glassID: GlassID,
     fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
     fileSortOrder: DesktopGlassFileSortOrder = .nameAscending,
-    foldersFirst: Bool = false
+    foldersFirst: Bool = false,
+    persistedDisplayMode: GlassFileDisplayMode? = nil,
+    onDisplayModeChange: (@MainActor (GlassFileDisplayMode) -> Void)? = nil
   ) {
     self._model = Bindable(wrappedValue: model)
     self.glassID = glassID
     self.fileGridDensity = fileGridDensity
     self.fileSortOrder = fileSortOrder
     self.foldersFirst = foldersFirst
+    self.persistedDisplayMode = persistedDisplayMode
+    self.onDisplayModeChange = onDisplayModeChange
   }
 
   public var body: some View {
@@ -33,6 +39,10 @@ public struct SchneeGlassDesktopGlassView: View {
           fileGridDensity: fileGridDensity,
           fileSortOrder: fileSortOrder,
           foldersFirst: foldersFirst,
+          persistedDisplayMode: persistedDisplayMode,
+          onDisplayModeChange: onDisplayModeChange,
+          canChangeDisplayMode: model.hasAuthoritativeConfigurationSnapshot
+            && !model.isMutatingConfiguration,
           canRemove: model.canMutateConfiguration
             && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
           canRefresh: model.canRefreshGlass(glassID: entry.id),
@@ -85,6 +95,9 @@ struct DesktopGlassSurface: View {
   let fileGridDensity: DesktopGlassFileGridDensity
   let fileSortOrder: DesktopGlassFileSortOrder?
   let foldersFirst: Bool
+  let persistedDisplayMode: GlassFileDisplayMode?
+  let onDisplayModeChange: (@MainActor (GlassFileDisplayMode) -> Void)?
+  let canChangeDisplayMode: Bool
   let canRemove: Bool
   let canRefresh: Bool
   let onRefresh: () -> Void
@@ -98,7 +111,17 @@ struct DesktopGlassSurface: View {
 
   @State private var showsRemoveConfirmation = false
   @State private var fileFilter = DesktopGlassFilterSession()
-  @State private var fileDisplayMode: GlassFileDisplayMode = .grid
+  @State private var localDisplayMode: GlassFileDisplayMode = .grid
+
+  private var fileDisplayMode: GlassFileDisplayMode {
+    persistedDisplayMode ?? localDisplayMode
+  }
+
+  private var allowsDisplayModeChange: Bool {
+    canChangeDisplayMode
+      && (persistedDisplayMode == nil || onDisplayModeChange != nil)
+      && GlassFileDisplayMode.allowsChange(during: entry.interactionState)
+  }
   @FocusState private var isFileFilterFocused: Bool
 
   init(
@@ -106,6 +129,9 @@ struct DesktopGlassSurface: View {
     fileGridDensity: DesktopGlassFileGridDensity = .comfortable,
     fileSortOrder: DesktopGlassFileSortOrder? = nil,
     foldersFirst: Bool = false,
+    persistedDisplayMode: GlassFileDisplayMode? = nil,
+    onDisplayModeChange: (@MainActor (GlassFileDisplayMode) -> Void)? = nil,
+    canChangeDisplayMode: Bool = true,
     canRemove: Bool,
     canRefresh: Bool = false,
     onRefresh: @escaping () -> Void = {},
@@ -121,6 +147,9 @@ struct DesktopGlassSurface: View {
     self.fileGridDensity = fileGridDensity
     self.fileSortOrder = fileSortOrder
     self.foldersFirst = foldersFirst
+    self.persistedDisplayMode = persistedDisplayMode
+    self.onDisplayModeChange = onDisplayModeChange
+    self.canChangeDisplayMode = canChangeDisplayMode
     self.canRemove = canRemove
     self.canRefresh = canRefresh
     self.onRefresh = onRefresh
@@ -215,10 +244,15 @@ struct DesktopGlassSurface: View {
         .disabled(!supportsFileFilter && !fileFilter.isVisible)
 
         Button(fileDisplayMode.alternateMenuTitle) {
-          guard GlassFileDisplayMode.allowsChange(during: entry.interactionState) else { return }
-          fileDisplayMode = fileDisplayMode.alternate
+          guard allowsDisplayModeChange else { return }
+          let next = fileDisplayMode.alternate
+          if persistedDisplayMode != nil {
+            onDisplayModeChange?(next)
+          } else {
+            localDisplayMode = next
+          }
         }
-        .disabled(!GlassFileDisplayMode.allowsChange(during: entry.interactionState))
+        .disabled(!allowsDisplayModeChange)
 
         Divider()
 
