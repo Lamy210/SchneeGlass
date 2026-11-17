@@ -14,12 +14,18 @@ enum WorkspaceGlassStatusFilter: String, CaseIterable, Identifiable {
   func localizedLabel(locale: Locale) -> String {
     let key: GlassLocalizedText
     switch self {
-    case .all: key = .allStates
-    case .connected: key = .connected
-    case .empty: key = .empty
-    case .loading: key = .loading
-    case .unavailable: key = .unavailable
-    case .failed: key = .failed
+    case .all:
+      key = .allStates
+    case .connected:
+      key = .connected
+    case .empty:
+      key = .empty
+    case .loading:
+      key = .loading
+    case .unavailable:
+      key = .unavailable
+    case .failed:
+      key = .failed
     }
     return key.resolve(locale: locale)
   }
