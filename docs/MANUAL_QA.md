@@ -178,6 +178,8 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 ### 7.1 General Glass Source Reconnect (v0.2)
 
+- [ ] Workspaceで接続不能によるドロップ拒否を確認する。ドロップ終了→unavailableなら元フォルダ再接続、接続が維持されるならRefresh Filesを案内し、Glassの削除・再登録を復旧の前提としない。Desktopの簡略表示は維持する
+
 - [ ] bookmark/permission failureなどで`unavailable`になったGlassにReconnect controlが表示される
 - [ ] healthyな`ready` / `empty` GlassにはReconnect controlが表示されない
 - [ ] Workspaceのunavailable状態に直接Reconnect Original Folder…を表示する（Glass optionsを開く必要なし）。Tab/VoiceOverから操作できることを確認する。構成変更中・copy/drop中など既存modelの許可条件を満たさない場合は無効化する
@@ -212,6 +214,12 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Workspaceの検索ボタン / Command+Fで検索欄にfocusする。日本語、大小文字、前後空白、同名Glass、0件、全件を確認し、件数と表示順・操作対象IDが正しいことを確認する
 - [ ] 検索中でもidle以外のGlassを表示し、drag/drop/copyの進捗・取消操作を失わない。再接続や設定変更の既存guardは維持する
 - [ ] Clearで全件に戻り、Done / 検索欄のEscapeで検索状態を解除する。最後のGlassを削除した場合にも検索状態を解除する。VoiceOver/Tabで操作でき、設定・原本・Desktop Glassには影響しない
+
+### 7.2.2 Workspace Glass Status Filter
+
+- [ ] 検索欄の状態選択でAll States / Connected (ready) / Empty / Loading / Unavailable / Failedを切り替え、名称検索とのAND条件を確認する。EmptyをConnectedに混入させず、FailedとUnavailableを区別する
+- [ ] 状態変更・再接続後に結果が追従し、idle以外のGlassは条件不一致でも進捗と取消操作を維持する。Clear / Done / Escape / 最後のGlass削除で状態フィルターも解除される
+- [ ] 520ptの最小Workspace幅、Tab/VoiceOver、日本語の名称、0件時の案内を確認する。検索欄を閉じた状態の基準画像・設定・原本・Desktop Glassは不変
 
 ### 7.3 Glass Display Name Rename (v0.2)
 
