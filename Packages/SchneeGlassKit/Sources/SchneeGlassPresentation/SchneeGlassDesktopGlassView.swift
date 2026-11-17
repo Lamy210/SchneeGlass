@@ -538,26 +538,7 @@ private struct DesktopFileGrid: View {
   private func fileGrid(_ items: [GlassItem]) -> some View {
     LazyVGrid(columns: columns, alignment: .leading, spacing: density.rowSpacing) {
       ForEach(items) { item in
-        let presentation = GlassItemPresentation.make(for: item)
-        SchneeGlassFileTile(
-          systemImage: presentation.systemImage,
-          title: item.displayName
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-          onOpen(item)
-        }
-        .contextMenu {
-          Button("Open") {
-            onOpen(item)
-          }
-          Button("Reveal in Finder") {
-            onReveal(item)
-          }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.accessibilityLabel)
-        .accessibilityHint("Double-click to open")
+        GlassInteractiveFileTile(item: item, onOpen: onOpen, onReveal: onReveal)
       }
     }
   }

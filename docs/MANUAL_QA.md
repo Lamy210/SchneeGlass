@@ -123,6 +123,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 - [ ] regular fileをOpenできる
 - [ ] Reveal in Finderが正しいfileを選択する
+- [ ] Desktop GlassとWorkspaceの両方でmacOSのキーボードナビゲーションを有効にし、Tab / Shift+Tabでfile tileへ移動でき、focusが見える。Return / Spaceは対象のfileを開き、長押しで重複起動しない。修飾キー付きshortcutと検索TextFieldの入力は奪わない
+- [ ] VoiceOverでfile名・種類・button traitを確認し、標準activateでOpen、ActionsからReveal in Finderが正しいitemを選ぶ。通常のsingle-clickではOpenしない。double-clickとcontext menuを維持する
+- [ ] filter・sort・snapshot更新でfocus対象が消えたとき、削除済み・別名・別Glassのitemを誤って開かない。小さいGlass、複数Glass、VoiceOverとキーボードナビゲーションの同時使用、copy overlay中も確認する
 - [ ] fileが操作直前に消えた場合、別fileを誤って開かない
 - [ ] directory / package / symlink等がv0.1 contract外なら安全に拒否される
 
