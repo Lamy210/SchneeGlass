@@ -1,0 +1,33 @@
+name: Ad-Hoc Public Asset Preparation Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-public-asset-preparation-validation.yml'
+      - 'Scripts/prepare-verified-adhoc-public-assets.py'
+      - 'Scripts/test-prepare-verified-adhoc-public-assets.py'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'Scripts/verify-adhoc-publication-preflight.sh'
+      - 'Scripts/verify-adhoc-qa-comment-from-github.sh'
+      - 'Scripts/verify-current-release-governance.sh'
+      - 'Scripts/verify-adhoc-run-artifact-from-github.sh'
+      - 'Scripts/verify-adhoc-release-slot.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Ad-Hoc Public Asset Preparation / Fixture (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Public assets, gate failure and native promotion fixtures
+        run: python3 Scripts/test-prepare-verified-adhoc-public-assets.py
