@@ -107,14 +107,63 @@ struct WorkspaceSurface: View {
   var canRevealConnectedFolder: @MainActor (GlassID) -> Bool = { _ in false }
   var onRevealConnectedFolder: @MainActor (GlassID) -> Void = { _ in }
 
+  @State private var isSearchVisible = false
+  @State private var glassQuery = ""
+  @State private var glassStatus: WorkspaceGlassStatusFilter = .all
+  @FocusState private var isSearchFocused: Bool
+
   var body: some View {
     VStack(spacing: 0) {
       header
+      if isSearchVisible && !glasses.isEmpty {
+        searchBar
+      }
       Divider()
       content
     }
     .frame(minWidth: 520, minHeight: 420)
     .background(.background)
+    .onChange(of: glasses.isEmpty) { _, isEmpty in
+      if isEmpty {
+        closeSearch()
+      }
+    }
+  }
+
+  private func closeSearch() {
+    isSearchFocused = false
+    isSearchVisible = false
+    resetSearchFilters()
+  }
+
+  private func resetSearchFilters() {
+    glassQuery = ""
+    glassStatus = .all
+  }
+
+  private var searchBar: some View {
+    HStack(spacing: SchneeGlassSpacing.surfaceContent) {
+      TextField("Find Glass by name", text: $glassQuery)
+        .textFieldStyle(.roundedBorder)
+        .focused($isSearchFocused)
+        .onAppear { isSearchFocused = true }
+        .onExitCommand { closeSearch() }
+
+      Picker("Glass status", selection: $glassStatus) {
+        ForEach(WorkspaceGlassStatusFilter.allCases) { status in
+          Text(status.rawValue).tag(status)
+        }
+      }
+      .labelsHidden()
+      .accessibilityLabel("Glass status")
+      .fixedSize()
+
+      Button("Clear", action: resetSearchFilters)
+        .disabled(glassQuery.isEmpty && glassStatus == .all)
+
+      Button("Done", action: closeSearch)
+    }
+    .padding(SchneeGlassPadding.workspaceContent)
   }
 
   private var header: some View {
@@ -143,6 +192,21 @@ struct WorkspaceSurface: View {
         }
       }
 
+      if !glasses.isEmpty {
+        Button {
+          if isSearchVisible {
+            isSearchFocused = true
+          } else {
+            isSearchVisible = true
+          }
+        } label: {
+          Image(systemName: "magnifyingglass")
+        }
+        .keyboardShortcut("f", modifiers: .command)
+        .accessibilityLabel("Find Glass")
+        .help("Find Glass by name")
+      }
+
       Button(action: onAddGlass) {
         if isCreatingGlass {
           ProgressView()
@@ -163,13 +227,35 @@ struct WorkspaceSurface: View {
     if glasses.isEmpty {
       emptyWorkspace
     } else {
+      let visibleGlasses = WorkspaceGlassSearch.matchingEntries(
+        glasses,
+        query: isSearchVisible ? glassQuery : "",
+        status: isSearchVisible ? glassStatus : .all
+      )
       ScrollView {
         LazyVStack(spacing: SchneeGlassSpacing.workspaceSection) {
           if let userMessage {
             messageBanner(userMessage)
           }
 
-          ForEach(glasses) { entry in
+          if isSearchVisible {
+            Text(
+              "Showing \(visibleGlasses.count) of \(glasses.count) Glasses. Active operations remain visible."
+            )
+            .font(SchneeGlassTypography.supporting)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if visibleGlasses.isEmpty {
+              SchneeGlassStateMessage(
+                systemImage: "magnifyingglass",
+                title: "No matching Glasses",
+                detail: "Try another name or status, or clear your search."
+              )
+            }
+          }
+
+          ForEach(visibleGlasses) { entry in
             GlassPreviewSurface(
               entry: entry,
               canRemove: !isMutatingConfiguration
