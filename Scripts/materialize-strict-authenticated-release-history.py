@@ -9,6 +9,11 @@ import re
 import subprocess
 import sys
 
+# This read-only helper must not dirty the exact-main checkout: the publisher
+# revalidates git status after preparation/history acquisition. Set this BEFORE
+# importlib can write a .pyc beside the checked-in reader.
+sys.dont_write_bytecode = True
+
 # Reuse the exact-ID and bounded streaming reader; do not implement a second downloader.
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location(
