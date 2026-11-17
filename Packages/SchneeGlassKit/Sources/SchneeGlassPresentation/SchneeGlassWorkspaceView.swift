@@ -111,10 +111,6 @@ struct WorkspaceSurface: View {
   @State private var glassQuery = ""
   @FocusState private var isSearchFocused: Bool
 
-  private var visibleGlasses: [GlassWorkspaceEntry] {
-    WorkspaceGlassSearch.matchingEntries(glasses, query: isSearchVisible ? glassQuery : "")
-  }
-
   var body: some View {
     VStack(spacing: 0) {
       header
@@ -216,6 +212,8 @@ struct WorkspaceSurface: View {
     if glasses.isEmpty {
       emptyWorkspace
     } else {
+      let visibleGlasses = WorkspaceGlassSearch.matchingEntries(
+        glasses, query: isSearchVisible ? glassQuery : "")
       ScrollView {
         LazyVStack(spacing: SchneeGlassSpacing.workspaceSection) {
           if let userMessage {
@@ -223,10 +221,12 @@ struct WorkspaceSurface: View {
           }
 
           if isSearchVisible {
-            Text("Showing \(visibleGlasses.count) of \(glasses.count) Glasses. Active operations remain visible.")
-              .font(SchneeGlassTypography.supporting)
-              .foregroundStyle(.secondary)
-              .frame(maxWidth: .infinity, alignment: .leading)
+            Text(
+              "Showing \(visibleGlasses.count) of \(glasses.count) Glasses. Active operations remain visible."
+            )
+            .font(SchneeGlassTypography.supporting)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if visibleGlasses.isEmpty {
               SchneeGlassStateMessage(
