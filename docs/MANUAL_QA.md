@@ -95,6 +95,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] hidden itemが意図どおり非表示になる
 - [ ] 500-item上限を超えるfolderでもUIが破綻しない
 - [ ] Glass optionsの「Filter Files…」で検索欄を開閉できる
+- [ ] File TypeをAll Types / Files / Folders / Packages / Links and Aliases / Otherに切り替えられる。名前とのAND条件、ソート順、対象ID、取得済み範囲の件数表示を維持する
+- [ ] Filterを閉じると名前・種類が両方リセットされ、再表示時にAll Typesとなる。種類は他Glassや再起動へ永続化しない
+- [ ] VoiceOverでFile Typeと選択中の項目を確認でき、小さいGlassでも既存スクロール・Open/Reveal・Dropの操作を妨げない
 - [ ] 大文字小文字・アクセントの違いを無視してファイル名を絞り込める
 - [ ] 絞り込みは表示済み500件以内に限定され、source folderの再走査やmutationを行わない
 - [ ] Sort Displayed Files / Folders Firstの順序を絞り込み中も維持する

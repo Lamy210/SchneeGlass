@@ -91,6 +91,7 @@ struct DesktopGlassSurface: View {
   @State private var showsRemoveConfirmation = false
   @State private var showsFileFilter = false
   @State private var fileFilterQuery = ""
+  @State private var fileKindFilter: DesktopGlassFileKindFilter = .all
 
   init(
     entry: GlassWorkspaceEntry,
@@ -178,7 +179,7 @@ struct DesktopGlassSurface: View {
       Menu {
         Button(showsFileFilter ? "Hide File Filter" : "Filter Files…") {
           if showsFileFilter {
-            fileFilterQuery = ""
+            resetFileFilter()
           }
           showsFileFilter.toggle()
         }
@@ -235,7 +236,7 @@ struct DesktopGlassSurface: View {
               .accessibilityLabel("Filter files by name")
 
             Button {
-              fileFilterQuery = ""
+              resetFileFilter()
               showsFileFilter = false
             } label: {
               Image(systemName: "xmark.circle.fill")
@@ -243,6 +244,14 @@ struct DesktopGlassSurface: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("Clear and close file filter")
           }
+
+          Picker("File Type", selection: $fileKindFilter) {
+            ForEach(DesktopGlassFileKindFilter.allCases) { kind in
+              Text(kind.rawValue).tag(kind)
+            }
+          }
+          .pickerStyle(.menu)
+          .controlSize(.small)
 
           fileGridScrollView(snapshot: snapshot)
         }
@@ -293,6 +302,11 @@ struct DesktopGlassSurface: View {
     }
   }
 
+  private func resetFileFilter() {
+    fileFilterQuery = ""
+    fileKindFilter = .all
+  }
+
   private func fileGridScrollView(snapshot: FolderSnapshot) -> some View {
     ScrollView {
       DesktopFileGrid(
@@ -301,6 +315,7 @@ struct DesktopGlassSurface: View {
         sortOrder: fileSortOrder,
         foldersFirst: foldersFirst,
         filterQuery: showsFileFilter ? fileFilterQuery : "",
+        kindFilter: showsFileFilter ? fileKindFilter : .all,
         onOpen: onOpen,
         onReveal: onReveal
       )
@@ -448,6 +463,7 @@ private struct DesktopFileGrid: View {
   let sortOrder: DesktopGlassFileSortOrder?
   let foldersFirst: Bool
   let filterQuery: String
+  let kindFilter: DesktopGlassFileKindFilter
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
 
@@ -462,7 +478,11 @@ private struct DesktopFileGrid: View {
     } else {
       orderedItems = snapshot.items
     }
-    return DesktopGlassFileNameFilter.matchingItems(orderedItems, query: filterQuery)
+    return DesktopGlassFileNameFilter.matchingItems(
+      orderedItems,
+      query: filterQuery,
+      kind: kindFilter
+    )
   }
 
   private var columns: [GridItem] {
@@ -484,7 +504,8 @@ private struct DesktopFileGrid: View {
       query: filterQuery,
       loadedCount: snapshot.items.count,
       matchingCount: items.count,
-      isTruncated: snapshot.isTruncated
+      isTruncated: snapshot.isTruncated,
+      kind: kindFilter
     ) {
       VStack(alignment: .leading, spacing: SchneeGlassSpacing.controlGroup) {
         Label(status, systemImage: "info.circle")

@@ -156,3 +156,63 @@ func filterStatusForBlankQueryOnlyShowsTruncation() {
     ) == nil
   )
 }
+
+@Test
+func kindFilterSeparatesEveryObservedFileKind() {
+  let items = [
+    filterItem("Report.txt"),
+    filterItem("Report", kind: .directory),
+    filterItem("Report.app", kind: .package),
+    filterItem("Report alias", kind: .alias),
+    filterItem("Report link", kind: .symbolicLink),
+    filterItem("Report other", kind: .unsupported),
+  ]
+  let expected: [(DesktopGlassFileKindFilter, [GlassItem])] = [
+    (.all, items),
+    (.files, [items[0]]),
+    (.folders, [items[1]]),
+    (.packages, [items[2]]),
+    (.links, [items[3], items[4]]),
+    (.other, [items[5]]),
+  ]
+  for (kind, matches) in expected {
+    #expect(DesktopGlassFileNameFilter.matchingItems(items, query: " ", kind: kind) == matches)
+  }
+}
+
+@Test
+func combinedNameAndKindFilterPreservesOrderAndIdentities() {
+  let items = [
+    filterItem("資料-z", kind: .alias),
+    filterItem("資料.txt"),
+    filterItem("other", kind: .symbolicLink),
+    filterItem("資料-a", kind: .symbolicLink),
+  ]
+  let matches = DesktopGlassFileNameFilter.matchingItems(items, query: "資料", kind: .links)
+  #expect(matches == [items[0], items[3]])
+  #expect(matches.map(\.id) == [items[0].id, items[3].id])
+  #expect(DesktopGlassFileNameFilter.matchingItems(items, query: "missing", kind: .links).isEmpty)
+  #expect(DesktopGlassFileNameFilter.matchingItems(items, query: "", kind: .all) == items)
+}
+
+@Test
+func kindOnlyFilterReportsLoadedSelectionAndTruncation() {
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "",
+      loadedCount: 500,
+      matchingCount: 0,
+      isTruncated: true,
+      kind: .folders
+    ) == "0 of 500 loaded items match. More items are not searched."
+  )
+  #expect(
+    DesktopGlassFileNameFilter.statusText(
+      query: "",
+      loadedCount: 5,
+      matchingCount: 2,
+      isTruncated: false,
+      kind: .links
+    ) == "2 of 5 loaded items match."
+  )
+}
