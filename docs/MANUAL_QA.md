@@ -180,6 +180,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 - [ ] bookmark/permission failureなどで`unavailable`になったGlassにReconnect controlが表示される
 - [ ] healthyな`ready` / `empty` GlassにはReconnect controlが表示されない
+- [ ] WorkspaceのGlass optionsにもunavailable時だけReconnect Original Folder…を表示する。構成変更中・copy/drop中など既存modelの許可条件を満たさない場合は無効化する
+- [ ] 同名Glassが複数あっても、選択したGlass IDだけを再接続する。WorkspaceからCancel・別folder拒否・正常再接続を確認し、Desktop Glass側の状態も追従する
+- [ ] unavailableの案内は再接続を優先し、Glass削除・再作成やPending Copy Recoveryを通常のsource reconnectとして案内しない
 - [ ] pickerをCancelした場合、configuration / runtime / user fileを変更しない
 - [ ] 元の同一folderを選択するとGlass ID/title/placement/show-on-all-spacesを維持したまま復旧する
 - [ ] volume UUIDまたはdocument identifierが異なる別folderは、pathやfolder名が同じでも拒否する
