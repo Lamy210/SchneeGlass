@@ -325,4 +325,8 @@ unset MOCK_PROMOTION_RACE
 
 run "$TMP/final" >/dev/null
 grep -Fxq 'bundle_build=4' "$TMP/final/history/4/RELEASE_EVIDENCE.txt"
+# The actual Publisher requires a clean source checkout again after history
+# acquisition. The helper must not generate bytecode/cache files alongside code.
+[[ -z "$(find "$FIXTURE_REPO/Scripts" -name '__pycache__' -o -name '*.pyc')" ]] \
+  || { echo 'Read-only history acquisition dirtied the source tree' >&2; exit 1; }
 echo 'Authenticated full public Release history fixtures passed'
