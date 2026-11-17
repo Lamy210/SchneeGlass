@@ -186,6 +186,9 @@ jobs:
       - name: Production release preflight
         run: bash Scripts/verify-production-release-preflight.sh
 
+      - name: Localization resource guard fixtures
+        run: python3 Scripts/test-verify-localization-bundle.py
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
@@ -265,6 +268,9 @@ jobs:
           bash Scripts/verify-required-plist-value.sh App/SchneeGlass.entitlements 'com.apple.security.files.user-selected.read-write' 'true' 'Bootstrap entitlement verification'
           bash Scripts/verify-optional-release-entitlements.sh App/SchneeGlass.entitlements 'Bootstrap entitlement verification'
 
+      - name: Verify Release app localization resources
+        run: python3 Scripts/verify-localization-bundle.py "$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
+
       - name: Package unsigned CI app artifact
         run: |
           APP="$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Release/SchneeGlass.app"
@@ -307,3 +313,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build
+
+      - name: Verify macOS 15 Debug app localization resources
+        run: python3 Scripts/verify-localization-bundle.py "$RUNNER_TEMP/SchneeGlassDerivedData/Build/Products/Debug/SchneeGlass.app"

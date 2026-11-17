@@ -78,6 +78,12 @@ public struct SchneeGlassWorkspaceView: View {
           return
         }
         model.revealConnectedFolder(glassID: glassID)
+      },
+      canRename: { model.canRenameGlass(glassID: $0) },
+      onRename: { glassID, title in
+        Task {
+          await model.renameGlass(glassID: glassID, title: title)
+        }
       }
     )
   }
@@ -106,6 +112,8 @@ struct WorkspaceSurface: View {
   var onRefresh: @MainActor (GlassID) -> Void = { _ in }
   var canRevealConnectedFolder: @MainActor (GlassID) -> Bool = { _ in false }
   var onRevealConnectedFolder: @MainActor (GlassID) -> Void = { _ in }
+  var canRename: @MainActor (GlassID) -> Bool = { _ in false }
+  var onRename: @MainActor (GlassID, String) -> Void = { _, _ in }
 
   @State private var isSearchVisible = false
   @State private var glassQuery = ""
@@ -285,7 +293,9 @@ struct WorkspaceSurface: View {
               canRefresh: canRefresh(entry.id),
               onRefresh: { onRefresh(entry.id) },
               canRevealConnectedFolder: canRevealConnectedFolder(entry.id),
-              onRevealConnectedFolder: { onRevealConnectedFolder(entry.id) }
+              onRevealConnectedFolder: { onRevealConnectedFolder(entry.id) },
+              canRename: canRename(entry.id),
+              onRename: { title in onRename(entry.id, title) }
             )
           }
         }
@@ -383,6 +393,7 @@ struct WorkspaceSurface: View {
 }
 
 private struct GlassPreviewSurface: View {
+  @Environment(\.locale) private var locale
   let entry: GlassWorkspaceEntry
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
@@ -398,8 +409,12 @@ private struct GlassPreviewSurface: View {
   let onRefresh: @MainActor () -> Void
   let canRevealConnectedFolder: Bool
   let onRevealConnectedFolder: @MainActor () -> Void
+  let canRename: Bool
+  let onRename: @MainActor (String) -> Void
 
   @State private var showsRemoveConfirmation = false
+  @State private var showsRenamePrompt = false
+  @State private var proposedTitle = ""
 
   var body: some View {
     VStack(alignment: .leading, spacing: SchneeGlassSpacing.surfaceContent) {
@@ -413,6 +428,12 @@ private struct GlassPreviewSurface: View {
         statusLabel
 
         Menu {
+          Button("Rename Glass…") {
+            proposedTitle = entry.title
+            showsRenamePrompt = true
+          }
+          .disabled(!canRename)
+
           Button("Refresh Files", action: onRefresh)
             .disabled(!canRefresh)
 
@@ -467,6 +488,20 @@ private struct GlassPreviewSurface: View {
       .accessibilityHidden(true)
     }
     .accessibilityElement(children: .contain)
+    .alert("Rename Glass", isPresented: $showsRenamePrompt) {
+      TextField("Glass name", text: $proposedTitle)
+      Button("Cancel", role: .cancel) {}
+      Button("Rename") {
+        if canRename {
+          onRename(proposedTitle)
+        }
+      }
+      .disabled(!canRename)
+    } message: {
+      Text(
+        "This changes only the Glass display name. The connected folder itself will not be renamed."
+      )
+    }
     .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
       Button("Cancel", role: .cancel) {}
       Button("Remove Glass", role: .destructive, action: onRemove)
@@ -587,7 +622,9 @@ private struct GlassPreviewSurface: View {
       Label("Copying", systemImage: "doc.on.doc")
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
-    } else if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
+    } else if let presentation = GlassContentStatusPresentation.make(
+      for: entry.contentState, locale: locale
+    ) {
       Label(presentation.label, systemImage: presentation.systemImage)
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
@@ -625,7 +662,7 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .unavailable:
-      let presentation = GlassUnavailablePresentation.current
+      let presentation = GlassUnavailablePresentation.make(locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         SchneeGlassStateMessage(
           systemImage: "externaldrive.badge.exclamationmark",
@@ -640,7 +677,7 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error)
+      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
       SchneeGlassStateMessage(
         systemImage: "arrow.clockwise.circle",
         title: presentation.title,
