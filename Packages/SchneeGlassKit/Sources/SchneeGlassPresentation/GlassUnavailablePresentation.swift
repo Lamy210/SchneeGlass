@@ -1,9 +1,10 @@
 struct GlassUnavailablePresentation: Equatable {
-    let title: String
-    let detail: String
+  let title: String
+  let detail: String
 
-    static let current = Self(
-        title: "Folder unavailable",
-        detail: "Restart SchneeGlass to retry access. If it remains unavailable, remove this Glass and add the folder again. If removal is blocked by an interrupted copy, resolve it in Settings > Pending Copy Recovery first."
-    )
+  static let current = Self(
+    title: "Folder unavailable",
+    detail:
+      "Reconnect the original folder to restore access without removing this Glass. If Reconnect is disabled, wait for the current operation to finish or restart SchneeGlass. Pending Copy Recovery in Settings is for interrupted copies."
+  )
 }

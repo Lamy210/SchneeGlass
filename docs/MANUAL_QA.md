@@ -180,6 +180,9 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 - [ ] bookmark/permission failureなどで`unavailable`になったGlassにReconnect controlが表示される
 - [ ] healthyな`ready` / `empty` GlassにはReconnect controlが表示されない
+- [ ] Workspaceのunavailable状態に直接Reconnect Original Folder…を表示する（Glass optionsを開く必要なし）。Tab/VoiceOverから操作できることを確認する。構成変更中・copy/drop中など既存modelの許可条件を満たさない場合は無効化する
+- [ ] 同名Glassが複数あっても、選択したGlass IDだけを再接続する。WorkspaceからCancel・別folder拒否・正常再接続を確認し、Desktop Glass側の状態も追従する
+- [ ] unavailableの案内は再接続を優先し、Glass削除・再作成やPending Copy Recoveryを通常のsource reconnectとして案内しない
 - [ ] pickerをCancelした場合、configuration / runtime / user fileを変更しない
 - [ ] 元の同一folderを選択するとGlass ID/title/placement/show-on-all-spacesを維持したまま復旧する
 - [ ] volume UUIDまたはdocument identifierが異なる別folderは、pathやfolder名が同じでも拒否する
@@ -284,9 +287,12 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Modifiedは更新日時が新しいitemから並び、日時不明itemは末尾へ送られる
 - [ ] Sizeはsizeが大きいitemから並び、size不明itemは末尾へ送られる
 - [ ] sortを切り替えてもdouble-click Open / Reveal in Finder / context menuの対象が変わらない
-- [ ] Desktop Glass optionsのShow as List / Show as Iconsで縦並びとアイコングリッドを往復できる。初期値はIcons、Workspaceは従来のグリッド。表示modeはGlassごとのview-local stateで永続化しない。空/失敗から復旧した際にも同一view内で維持する
+- [ ] Desktop Glass optionsのShow as List / Show as Iconsで縦並びとアイコングリッドを往復できる。初期値はIcons、Workspaceは従来のグリッド。表示modeはGlass ID単位の端末ローカル設定として永続化し、hide/show、panel再生成、再起動、空/失敗からの復旧でも維持する。JSON構成backup/recoveryの対象外であり検索条件は保存しない
 - [ ] Listでも名前・種類のAND検索、folders first、sort順、500件の取得範囲と件数表示、0件表示、正しいFileIdentityを維持する。長い日本語/英語filename、狭いpanel、light/dark、VoiceOver、Tab/Return/Space、double-click/Revealを確認する
-- [ ] Drop/copy中は表示mode変更不可。表示変更前後で原本/設定/配置/権限は不変。グリッドのdensityを変更してListを経由しIconsへ戻してもdensity設定を維持する
+- [ ] Listの補助行に取得済みの通常file size / content modification dateを表示する。0 byteと未取得のsizeを区別し、directory/package/alias/symlink/unsupportedのsizeは表示しない。metadata欠損時は空の補助行を作らず、Icons/Workspaceは従来の表示を維持する
+- [ ] 日本語/英語locale、システムtimezone、狭いGlass、長いfilename、VoiceOverで補助情報と対象fileの関連を確認する。更新後は既存のsnapshot refreshで追従し、容量集計やリンク先の読み取りは行わない
+- [ ] Drop/copy中、構成変更中、非authoritative状態では表示mode変更不可。表示変更前後で原本/JSON構成/配置/権限は不変。グリッドのdensityを変更してListを経由しIconsへ戻してもdensity設定を維持する
+- [ ] 別Glassの表示modeには影響しない。構成が一時的に読めずpanelが消えても保存状態を削除しない。authoritativeな構成でGlass削除を確認したときのみ不要なIDを除去する。再作成された別IDはIconsから開始する
 - [ ] sort状態がGlass単位で独立し、アプリ再起動後も維持される
 - [ ] Compact File Tiles / Opacity / Position Lockなど他のWindow UX preferenceと独立する
 - [ ] Glass削除時にstale sort preferenceをcleanupする
@@ -362,6 +368,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 ## 11. Menu Bar / Global Shortcut
 
 - [ ] Menu BarからAdd / Show All / Hide All / Settings / Quitを実行できる
+- [ ] Show Glass / Hide Glassでは同名Glassに構成順の番号付きlabelを表示する。実名が番号付きlabelやそのfallbackと一致しても表示名が重複せず、対象Glass IDのみ操作する。Glass名の変更・削除後にメニューを開き直して更新を確認し、長い日本語名とVoiceOverでも識別性を確認する
 - [ ] shortcut未設定時に既存global shortcutを占有しない
 - [ ] user-customizable shortcutを設定できる
 - [ ] shortcutでHide Allできる
