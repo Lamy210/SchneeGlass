@@ -91,6 +91,7 @@ public struct SchneeGlassDesktopGlassView: View {
 }
 
 struct DesktopGlassSurface: View {
+  @Environment(\.locale) private var locale
   let entry: GlassWorkspaceEntry
   let fileGridDensity: DesktopGlassFileGridDensity
   let fileSortOrder: DesktopGlassFileSortOrder?
@@ -275,7 +276,9 @@ struct DesktopGlassSurface: View {
 
   @ViewBuilder
   private var statusLabel: some View {
-    if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
+    if let presentation = GlassContentStatusPresentation.make(
+      for: entry.contentState, locale: locale
+    ) {
       Image(systemName: presentation.systemImage)
         .foregroundStyle(.secondary)
         .accessibilityLabel(presentation.label)
@@ -353,7 +356,7 @@ struct DesktopGlassSurface: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .unavailable:
-      let presentation = GlassUnavailablePresentation.current
+      let presentation = GlassUnavailablePresentation.make(locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(
@@ -367,7 +370,7 @@ struct DesktopGlassSurface: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error)
+      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(

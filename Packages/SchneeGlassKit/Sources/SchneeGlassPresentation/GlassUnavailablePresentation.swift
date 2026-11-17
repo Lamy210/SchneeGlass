@@ -1,10 +1,17 @@
+import Foundation
+
 struct GlassUnavailablePresentation: Equatable {
   let title: String
   let detail: String
 
-  static let current = Self(
-    title: "Folder unavailable",
-    detail:
-      "Reconnect the original folder to restore access without removing this Glass. If Reconnect is disabled, wait for the current operation to finish or restart SchneeGlass. Pending Copy Recovery in Settings is for interrupted copies."
-  )
+  static var current: Self {
+    make(locale: Locale(identifier: "en"))
+  }
+
+  static func make(locale: Locale) -> Self {
+    Self(
+      title: GlassLocalizedText.unavailableTitle.resolve(locale: locale),
+      detail: GlassLocalizedText.unavailableDetail.resolve(locale: locale)
+    )
+  }
 }
