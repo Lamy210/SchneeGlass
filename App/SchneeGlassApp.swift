@@ -181,6 +181,8 @@ private struct SchneeGlassMenuBarContent: View {
   let panelCoordinator: DesktopGlassPanelCoordinator
 
   var body: some View {
+    let labels = GlassMenuLabels.make(for: model.glasses)
+
     Button("Add Glass…") {
       Task {
         await model.addGlass()
@@ -202,7 +204,7 @@ private struct SchneeGlassMenuBarContent: View {
 
     Menu("Show Glass") {
       ForEach(model.glasses) { entry in
-        Button(glassMenuTitle(entry)) {
+        Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(true, for: entry.id)
         }
         .disabled(entry.placement == nil)
@@ -212,7 +214,7 @@ private struct SchneeGlassMenuBarContent: View {
 
     Menu("Hide Glass") {
       ForEach(model.glasses) { entry in
-        Button(glassMenuTitle(entry)) {
+        Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(false, for: entry.id)
         }
         .disabled(entry.placement == nil)
@@ -236,16 +238,6 @@ private struct SchneeGlassMenuBarContent: View {
     Button("Quit SchneeGlass") {
       NSApplication.shared.terminate(nil)
     }
-  }
-
-  private func glassMenuTitle(_ entry: GlassWorkspaceEntry) -> String {
-    let sameTitle = model.glasses.filter { $0.title == entry.title }
-    guard sameTitle.count > 1,
-      let index = sameTitle.firstIndex(where: { $0.id == entry.id })
-    else {
-      return entry.title
-    }
-    return "\(entry.title) (\(index + 1) of \(sameTitle.count))"
   }
 }
 
