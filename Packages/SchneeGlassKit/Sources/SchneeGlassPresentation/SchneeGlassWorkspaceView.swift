@@ -682,8 +682,8 @@ private struct GlassPreviewSurface: View {
           GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
           action: onReconnectSource
         )
-          .buttonStyle(.borderedProminent)
-          .disabled(!canReconnectSource)
+        .buttonStyle(.borderedProminent)
+        .disabled(!canReconnectSource)
       }
       .frame(maxWidth: .infinity, minHeight: 100)
 
