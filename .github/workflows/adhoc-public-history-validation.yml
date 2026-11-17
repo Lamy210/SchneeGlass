@@ -5,6 +5,11 @@ on:
     paths:
       - '.github/workflows/adhoc-public-history-validation.yml'
       - 'Scripts/materialize-authenticated-adhoc-release-history.sh'
+      - 'Scripts/materialize-strict-authenticated-release-history.py'
+      - 'Scripts/verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'Scripts/verify-release-evidence.sh'
+      - 'Scripts/verify-release-build-history.sh'
       - 'Scripts/test-materialize-authenticated-adhoc-release-history.sh'
       - 'Scripts/materialize-public-release-build-history.sh'
       - 'Scripts/verify-legacy-release-build-info.sh'
