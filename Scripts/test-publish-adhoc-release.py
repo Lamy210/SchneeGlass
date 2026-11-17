@@ -7,6 +7,7 @@ import importlib.util
 import io
 from pathlib import Path
 import shutil
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +20,11 @@ spec = importlib.util.spec_from_file_location(
 )
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
+spec = importlib.util.spec_from_file_location(
+    "prepare_fixture", ROOT / "test-prepare-verified-adhoc-public-assets.py"
+)
+prepare_fixture = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(prepare_fixture)
 
 ARGS = argparse.Namespace(run_id="12345", artifact_id="777", version="0.2.0",
                           build="3", source_sha=fixture.SHA, comment_id="888",
@@ -211,10 +217,112 @@ class PublisherTests(fixture.ReleaseReaderTests):
             publisher.validate_context(wrong)
 
 
+class PreparedIntegrationTests(prepare_fixture.PreparationTests):
+    """Real local asset preparation, validator, fresh checks and read-back.
+
+    GitHub transport and the already-verified history snapshot boundary are
+    synthetic; the actual history acquisition has its own integration suite.
+    """
+
+    def setUp(self):
+        super().setUp()
+        result = self.run_prepare()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.args = argparse.Namespace(run_id="123", artifact_id="456",
+                                       version=prepare_fixture.VERSION, build="3",
+                                       source_sha=prepare_fixture.SHA, comment_id="789",
+                                       confirm="PUBLISH v0.2.0")
+        self.history_build = "2"
+        self.real_gate = publisher.gate
+
+    def dispatch_gate(self, name, *args, capture=False):
+        if name == "materialize-authenticated-adhoc-release-history.sh":
+            # Simulate the authenticated consumer's normalized output, not
+            # the comparator itself: the real comparator is executed below.
+            history = Path(args[0]) / "history" / "1"
+            history.mkdir(parents=True)
+            (history / "RELEASE_EVIDENCE.txt").write_text(
+                "schema_version=1\nbundle_build=" + self.history_build + "\n"
+            )
+            return None
+        if name == "verify-release-build-history.sh":
+            return self.real_gate(name, *args, capture=capture)
+        if name not in ("verify-adhoc-run-artifact-from-github.sh",
+                        "verify-adhoc-qa-comment-from-github.sh"):
+            raise AssertionError("unexpected live gate: " + name)
+        result = subprocess.run(["bash", str(self.scripts / name), *map(str, args)],
+                                env=self.env, check=True, capture_output=True,
+                                text=True, timeout=10)
+        return result.stdout if capture else None
+
+    def test_integrated_prepared_bytes_fresh_checks_and_readback(self):
+        api = publisher.GitHub()
+        with patch.object(publisher, "gate", side_effect=self.dispatch_gate), \
+                patch.object(api, "verify_authority") as authority:
+            api.fresh_checks(self.args, self.output, self.root)
+            authority.assert_called_once_with(self.args)
+
+        # Replace the reader fixture's assets with the exact OUTPUT of the
+        # real preparer, not separately manufactured matching metadata.
+        remote = fixture.ReleaseReaderTests()
+        self.addCleanup(remote.doCleanups)
+        remote.setUp()
+        for asset in remote.assets:
+            target = remote.root / f"asset-{asset['id']}"
+            shutil.copyfile(self.output / asset["name"], target)
+            asset["size"] = target.stat().st_size
+            asset["digest"] = "sha256:" + remote.digest(target.name)
+        remote.release.update(draft=True, immutable=False, prerelease=False)
+        remote.write_json("release.json", remote.release)
+        with patch.dict(publisher.os.environ, remote.env, clear=True):
+            self.assertEqual(api.readback("draft", self.output, "123",
+                                         fixture.TAG, self.args.source_sha), "3")
+            remote.release.update(draft=False, immutable=True)
+            remote.write_json("release.json", remote.release)
+            self.assertEqual(api.readback("published", self.output, "123",
+                                         fixture.TAG, self.args.source_sha), "3")
+            # Downloaded bytes may change even with stale matching metadata.
+            archive = remote.root / "asset-104"
+            raw = archive.read_bytes()
+            archive.write_bytes(raw[:-1] + bytes([raw[-1] ^ 1]))
+            with self.assertRaisesRegex(ValueError, "digest mismatch"):
+                api.readback("published", self.output, "123", fixture.TAG,
+                             self.args.source_sha)
+
+    def test_integrated_fresh_checks_reject_regression_and_changed_qa(self):
+        api = publisher.GitHub()
+        with patch.object(publisher, "gate", side_effect=self.dispatch_gate), \
+                patch.object(api, "verify_authority") as authority:
+            for build in ("3", "4"):
+                self.history_build = build
+                with self.subTest(build=build):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        api.fresh_checks(self.args, self.output, self.root)
+            self.history_build = "2"
+            self.env["OUTER_DIGEST"] = "b" * 64
+            with self.assertRaisesRegex(ValueError, "artifact identity changed"):
+                api.fresh_checks(self.args, self.output, self.root)
+            self.env["OUTER_DIGEST"] = self.outer_digest
+            self.gate_script_qa_changed()
+            with self.assertRaisesRegex(ValueError, "owner QA identity changed"):
+                api.fresh_checks(self.args, self.output, self.root)
+            authority.assert_not_called()
+
+    def gate_script_qa_changed(self):
+        prepare_fixture.PreparationTests.gate(
+            self, "verify-adhoc-qa-comment-from-github.sh",
+            self.gates["verify-adhoc-qa-comment-from-github.sh"].replace(
+                "2026-01-02", "2026-01-03")
+        )
+
+
 def load_tests(loader, tests, pattern):
     return unittest.TestSuite(
-        PublisherTests(name) for name in loader.getTestCaseNames(PublisherTests)
-        if name.startswith("test_publisher_")
+        cls(name)
+        for cls, prefix in ((PublisherTests, "test_publisher_"),
+                            (PreparedIntegrationTests, "test_integrated_"))
+        for name in loader.getTestCaseNames(cls)
+        if name.startswith(prefix)
     )
 
 
