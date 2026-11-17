@@ -56,6 +56,12 @@ public struct SchneeGlassWorkspaceView: View {
           glassID: glassID,
           sourceURLs: urls
         )
+      },
+      canReconnectSource: { model.canReconnectSource(glassID: $0) },
+      onReconnectSource: { glassID in
+        Task {
+          await model.reconnectGlassSource(glassID: glassID)
+        }
       }
     )
   }
@@ -78,6 +84,8 @@ struct WorkspaceSurface: View {
   let onCancelDrop: @MainActor (GlassID) -> Void
   let onCancelCopy: @MainActor (GlassID) -> Void
   let onPerformDrop: @MainActor (GlassID, [URL]) async -> Void
+  var canReconnectSource: @MainActor (GlassID) -> Bool = { _ in false }
+  var onReconnectSource: @MainActor (GlassID) -> Void = { _ in }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -163,6 +171,10 @@ struct WorkspaceSurface: View {
               },
               onPerformDrop: { urls in
                 await onPerformDrop(entry.id, urls)
+              },
+              canReconnectSource: canReconnectSource(entry.id),
+              onReconnectSource: {
+                onReconnectSource(entry.id)
               }
             )
           }
@@ -270,6 +282,8 @@ private struct GlassPreviewSurface: View {
   let onCancelDrop: @MainActor () -> Void
   let onCancelCopy: @MainActor () -> Void
   let onPerformDrop: @MainActor ([URL]) async -> Void
+  let canReconnectSource: Bool
+  let onReconnectSource: @MainActor () -> Void
 
   @State private var showsRemoveConfirmation = false
 
@@ -285,6 +299,11 @@ private struct GlassPreviewSurface: View {
         statusLabel
 
         Menu {
+          if case .unavailable = entry.contentState {
+            Button("Reconnect Original Folder…", action: onReconnectSource)
+              .disabled(!canReconnectSource)
+          }
+
           Button("Remove Glass…", role: .destructive) {
             showsRemoveConfirmation = true
           }
