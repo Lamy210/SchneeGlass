@@ -109,6 +109,7 @@ struct WorkspaceSurface: View {
 
   @State private var isSearchVisible = false
   @State private var glassQuery = ""
+  @State private var glassStatus: WorkspaceGlassStatusFilter = .all
   @FocusState private var isSearchFocused: Bool
 
   var body: some View {
@@ -132,7 +133,12 @@ struct WorkspaceSurface: View {
   private func closeSearch() {
     isSearchFocused = false
     isSearchVisible = false
+    resetSearchFilters()
+  }
+
+  private func resetSearchFilters() {
     glassQuery = ""
+    glassStatus = .all
   }
 
   private var searchBar: some View {
@@ -143,8 +149,17 @@ struct WorkspaceSurface: View {
         .onAppear { isSearchFocused = true }
         .onExitCommand { closeSearch() }
 
-      Button("Clear", action: { glassQuery = "" })
-        .disabled(glassQuery.isEmpty)
+      Picker("Glass status", selection: $glassStatus) {
+        ForEach(WorkspaceGlassStatusFilter.allCases) { status in
+          Text(status.rawValue).tag(status)
+        }
+      }
+      .labelsHidden()
+      .accessibilityLabel("Glass status")
+      .fixedSize()
+
+      Button("Clear", action: resetSearchFilters)
+        .disabled(glassQuery.isEmpty && glassStatus == .all)
 
       Button("Done", action: closeSearch)
     }
@@ -213,7 +228,10 @@ struct WorkspaceSurface: View {
       emptyWorkspace
     } else {
       let visibleGlasses = WorkspaceGlassSearch.matchingEntries(
-        glasses, query: isSearchVisible ? glassQuery : "")
+        glasses,
+        query: isSearchVisible ? glassQuery : "",
+        status: isSearchVisible ? glassStatus : .all
+      )
       ScrollView {
         LazyVStack(spacing: SchneeGlassSpacing.workspaceSection) {
           if let userMessage {
@@ -232,7 +250,7 @@ struct WorkspaceSurface: View {
               SchneeGlassStateMessage(
                 systemImage: "magnifyingglass",
                 title: "No matching Glasses",
-                detail: "Try another name or clear your search."
+                detail: "Try another name or status, or clear your search."
               )
             }
           }
