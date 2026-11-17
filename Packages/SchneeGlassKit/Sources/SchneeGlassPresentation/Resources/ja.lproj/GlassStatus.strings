@@ -23,3 +23,14 @@
 "removeGlassAction" = "Glassを削除";
 "removeGlassDetail" = "Glassだけを削除します。接続先フォルダやそのファイルは削除・移動されません。";
 "reconnectOriginalFolder" = "元のフォルダを再接続…";
+"findGlass" = "Glassを検索";
+"findGlassByName" = "Glass名で検索";
+"glassStatus" = "Glassの状態";
+"allStates" = "すべての状態";
+"loading" = "読み込み中";
+"failed" = "失敗";
+"clearSearch" = "クリア";
+"doneSearch" = "完了";
+"noMatchingGlasses" = "一致するGlassがありません";
+"noMatchingGlassesDetail" = "別の名前や状態を選ぶか、検索条件をクリアしてください。";
+"workspaceSearchCount" = "%2$lld件中%1$lld件のGlassを表示しています。操作中のGlassは引き続き表示されます。";
