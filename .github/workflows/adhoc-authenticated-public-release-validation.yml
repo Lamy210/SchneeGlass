@@ -1,0 +1,26 @@
+name: Authenticated Ad-Hoc Public Release Validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/adhoc-authenticated-public-release-validation.yml'
+      - 'Scripts/verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/test-verify-authenticated-adhoc-public-release.py'
+      - 'Scripts/verify-adhoc-public-release-evidence.py'
+      - 'Scripts/verify-release-build-history.sh'
+      - 'docs/release-history/legacy-public-releases.tsv'
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    name: Authenticated Ad-Hoc Public Release / Fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Immutable release, tag, exact asset and history fixtures
+        run: python3 Scripts/test-verify-authenticated-adhoc-public-release.py
