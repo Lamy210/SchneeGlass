@@ -198,6 +198,8 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 
 - [ ] active runtimeを持つGlassに`Show connected folder in Finder` controlが表示される
 - [ ] controlからGlass root folderをFinderで表示できる
+- [ ] WorkspaceのGlass optionsからShow Connected Folder in Finderを実行し、選択したGlassの接続先だけをFinderで表示する。同名Glass、再接続後、configuration restore中・終了開始後・接続喪失後のメニュー状態と実行時guardを確認する
+- [ ] WorkspaceのGlass optionsからRefresh Filesを実行できる。ready/empty/再試行可能なfailedのみ許可し、loading/unavailable/unexpected failure、copy/drop、設定変更中、同じGlassの手動更新中は無効化する。対象Glass以外を更新しないこと、更新後のsnapshotとファイル操作対象が正しいことを確認する
 - [ ] item選択ではなくconnected root folder自体を表示する
 - [ ] Finder表示はread-onlyで、user-owned fileを作成・移動・rename・deleteしない
 - [ ] unavailableなどactive runtimeを持たないGlassではstale folder URLを操作authorityとして残さない
