@@ -365,6 +365,7 @@ struct WorkspaceSurface: View {
 }
 
 private struct GlassPreviewSurface: View {
+  @Environment(\.locale) private var locale
   let entry: GlassWorkspaceEntry
   let canRemove: Bool
   let onOpen: (GlassItem) -> Void
@@ -569,7 +570,9 @@ private struct GlassPreviewSurface: View {
       Label("Copying", systemImage: "doc.on.doc")
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
-    } else if let presentation = GlassContentStatusPresentation.make(for: entry.contentState) {
+    } else if let presentation = GlassContentStatusPresentation.make(
+      for: entry.contentState, locale: locale
+    ) {
       Label(presentation.label, systemImage: presentation.systemImage)
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
@@ -607,7 +610,7 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .unavailable:
-      let presentation = GlassUnavailablePresentation.current
+      let presentation = GlassUnavailablePresentation.make(locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         SchneeGlassStateMessage(
           systemImage: "externaldrive.badge.exclamationmark",
@@ -622,7 +625,7 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error)
+      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
       SchneeGlassStateMessage(
         systemImage: "arrow.clockwise.circle",
         title: presentation.title,
