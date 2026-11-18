@@ -468,7 +468,8 @@ struct DesktopGlassSurface: View {
       let presentation = GlassInteractionPresentation.dropInvalid(
         reason: reason,
         glassTitle: entry.title,
-        surface: .desktop
+        surface: .desktop,
+        locale: locale
       )
       overlayCard(
         icon: symbolName(from: presentation) ?? "nosign",
