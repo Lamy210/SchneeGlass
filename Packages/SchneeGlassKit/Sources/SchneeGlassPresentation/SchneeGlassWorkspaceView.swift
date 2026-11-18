@@ -90,6 +90,7 @@ public struct SchneeGlassWorkspaceView: View {
 }
 
 struct WorkspaceSurface: View {
+  @Environment(\.locale) private var locale
   let glasses: [GlassWorkspaceEntry]
   let isCreatingGlass: Bool
   let isRestoring: Bool
@@ -151,25 +152,25 @@ struct WorkspaceSurface: View {
 
   private var searchBar: some View {
     HStack(spacing: SchneeGlassSpacing.surfaceContent) {
-      TextField("Find Glass by name", text: $glassQuery)
+      TextField(GlassLocalizedText.findGlassByName.resolve(locale: locale), text: $glassQuery)
         .textFieldStyle(.roundedBorder)
         .focused($isSearchFocused)
         .onAppear { isSearchFocused = true }
         .onExitCommand { closeSearch() }
 
-      Picker("Glass status", selection: $glassStatus) {
+      Picker(GlassLocalizedText.glassStatus.resolve(locale: locale), selection: $glassStatus) {
         ForEach(WorkspaceGlassStatusFilter.allCases) { status in
-          Text(status.rawValue).tag(status)
+          Text(status.localizedLabel(locale: locale)).tag(status)
         }
       }
       .labelsHidden()
-      .accessibilityLabel("Glass status")
+      .accessibilityLabel(GlassLocalizedText.glassStatus.resolve(locale: locale))
       .fixedSize()
 
-      Button("Clear", action: resetSearchFilters)
+      Button(GlassLocalizedText.clearSearch.resolve(locale: locale), action: resetSearchFilters)
         .disabled(glassQuery.isEmpty && glassStatus == .all)
 
-      Button("Done", action: closeSearch)
+      Button(GlassLocalizedText.doneSearch.resolve(locale: locale), action: closeSearch)
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
@@ -211,8 +212,8 @@ struct WorkspaceSurface: View {
           Image(systemName: "magnifyingglass")
         }
         .keyboardShortcut("f", modifiers: .command)
-        .accessibilityLabel("Find Glass")
-        .help("Find Glass by name")
+        .accessibilityLabel(GlassLocalizedText.findGlass.resolve(locale: locale))
+        .help(GlassLocalizedText.findGlassByName.resolve(locale: locale))
       }
 
       Button(action: onAddGlass) {
@@ -248,7 +249,8 @@ struct WorkspaceSurface: View {
 
           if isSearchVisible {
             Text(
-              "Showing \(visibleGlasses.count) of \(glasses.count) Glasses. Active operations remain visible."
+              WorkspaceGlassSearch.resultSummary(
+                visible: visibleGlasses.count, total: glasses.count, locale: locale)
             )
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
@@ -257,8 +259,8 @@ struct WorkspaceSurface: View {
             if visibleGlasses.isEmpty {
               SchneeGlassStateMessage(
                 systemImage: "magnifyingglass",
-                title: "No matching Glasses",
-                detail: "Try another name or status, or clear your search."
+                title: GlassLocalizedText.noMatchingGlasses.resolve(locale: locale),
+                detail: GlassLocalizedText.noMatchingGlassesDetail.resolve(locale: locale)
               )
             }
           }
@@ -428,22 +430,25 @@ private struct GlassPreviewSurface: View {
         statusLabel
 
         Menu {
-          Button("Rename Glass…") {
+          Button(GlassLocalizedText.renameGlassMenu.resolve(locale: locale)) {
             proposedTitle = entry.title
             showsRenamePrompt = true
           }
           .disabled(!canRename)
 
-          Button("Refresh Files", action: onRefresh)
+          Button(GlassLocalizedText.refreshFiles.resolve(locale: locale), action: onRefresh)
             .disabled(!canRefresh)
 
           if canRevealConnectedFolder {
-            Button("Show Connected Folder in Finder", action: onRevealConnectedFolder)
+            Button(
+              GlassLocalizedText.showConnectedFolder.resolve(locale: locale),
+              action: onRevealConnectedFolder
+            )
           }
 
           Divider()
 
-          Button("Remove Glass…", role: .destructive) {
+          Button(GlassLocalizedText.removeGlassMenu.resolve(locale: locale), role: .destructive) {
             showsRemoveConfirmation = true
           }
           .disabled(!canRemove)
@@ -456,7 +461,7 @@ private struct GlassPreviewSurface: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .accessibilityLabel("Glass options")
+        .accessibilityLabel(GlassLocalizedText.glassOptions.resolve(locale: locale))
       }
 
       stateContent
@@ -488,28 +493,33 @@ private struct GlassPreviewSurface: View {
       .accessibilityHidden(true)
     }
     .accessibilityElement(children: .contain)
-    .alert("Rename Glass", isPresented: $showsRenamePrompt) {
-      TextField("Glass name", text: $proposedTitle)
-      Button("Cancel", role: .cancel) {}
-      Button("Rename") {
+    .alert(
+      GlassLocalizedText.renameGlassTitle.resolve(locale: locale),
+      isPresented: $showsRenamePrompt
+    ) {
+      TextField(GlassLocalizedText.glassName.resolve(locale: locale), text: $proposedTitle)
+      Button(GlassLocalizedText.cancelAction.resolve(locale: locale), role: .cancel) {}
+      Button(GlassLocalizedText.renameAction.resolve(locale: locale)) {
         if canRename {
           onRename(proposedTitle)
         }
       }
       .disabled(!canRename)
     } message: {
-      Text(
-        "This changes only the Glass display name. The connected folder itself will not be renamed."
-      )
+      Text(GlassLocalizedText.renameGlassDetail.resolve(locale: locale))
     }
-    .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
-      Button("Cancel", role: .cancel) {}
-      Button("Remove Glass", role: .destructive, action: onRemove)
-    } message: {
-      Text(
-        "This removes the Glass only. "
-          + "The connected folder and its files will not be deleted or moved."
+    .alert(
+      GlassLocalizedText.removeGlassTitle.resolve(locale: locale),
+      isPresented: $showsRemoveConfirmation
+    ) {
+      Button(GlassLocalizedText.cancelAction.resolve(locale: locale), role: .cancel) {}
+      Button(
+        GlassLocalizedText.removeGlassAction.resolve(locale: locale),
+        role: .destructive,
+        action: onRemove
       )
+    } message: {
+      Text(GlassLocalizedText.removeGlassDetail.resolve(locale: locale))
     }
   }
 
@@ -542,7 +552,7 @@ private struct GlassPreviewSurface: View {
       EmptyView()
 
     case .hovered:
-      let presentation = GlassInteractionPresentation.hovered(surface: .workspace)
+      let presentation = GlassInteractionPresentation.hovered(surface: .workspace, locale: locale)
       DropOverlaySurface {
         ProgressView()
           .controlSize(.small)
@@ -596,7 +606,8 @@ private struct GlassPreviewSurface: View {
       let presentation = GlassInteractionPresentation.copying(
         progress: progress,
         glassTitle: entry.title,
-        surface: .workspace
+        surface: .workspace,
+        locale: locale
       )
       DropOverlaySurface {
         ProgressView()
@@ -608,10 +619,13 @@ private struct GlassPreviewSurface: View {
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
         }
-        Button("Cancel Copy", role: .cancel, action: onCancelCopy)
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .accessibilityLabel("Cancel Copy")
+        Button(
+          GlassLocalizedText.cancelCopy.resolve(locale: locale),
+          role: .cancel, action: onCancelCopy
+        )
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .accessibilityLabel(GlassLocalizedText.cancelCopy.resolve(locale: locale))
       }
     }
   }
@@ -619,7 +633,7 @@ private struct GlassPreviewSurface: View {
   @ViewBuilder
   private var statusLabel: some View {
     if case .copying = entry.interactionState {
-      Label("Copying", systemImage: "doc.on.doc")
+      Label(GlassLocalizedText.copyingStatus.resolve(locale: locale), systemImage: "doc.on.doc")
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
     } else if let presentation = GlassContentStatusPresentation.make(
@@ -670,9 +684,12 @@ private struct GlassPreviewSurface: View {
           detail: presentation.detail
         )
 
-        Button("Reconnect Original Folder…", action: onReconnectSource)
-          .buttonStyle(.borderedProminent)
-          .disabled(!canReconnectSource)
+        Button(
+          GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
+          action: onReconnectSource
+        )
+        .buttonStyle(.borderedProminent)
+        .disabled(!canReconnectSource)
       }
       .frame(maxWidth: .infinity, minHeight: 100)
 

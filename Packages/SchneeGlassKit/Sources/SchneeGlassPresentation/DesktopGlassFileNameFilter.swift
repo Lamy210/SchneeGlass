@@ -12,6 +12,25 @@ enum DesktopGlassFileKindFilter: String, CaseIterable, Identifiable {
 
   var id: Self { self }
 
+  func localizedLabel(locale: Locale) -> String {
+    let key: GlassLocalizedText
+    switch self {
+    case .all:
+      key = .allTypes
+    case .files:
+      key = .files
+    case .folders:
+      key = .folders
+    case .packages:
+      key = .packages
+    case .links:
+      key = .linksAndAliases
+    case .other:
+      key = .otherFileTypes
+    }
+    return key.resolve(locale: locale)
+  }
+
   func includes(_ kind: FileKind) -> Bool {
     switch self {
     case .all:
@@ -50,15 +69,25 @@ enum DesktopGlassFileNameFilter {
     loadedCount: Int,
     matchingCount: Int,
     isTruncated: Bool,
-    kind: DesktopGlassFileKindFilter = .all
+    kind: DesktopGlassFileKindFilter = .all,
+    locale: Locale = Locale(identifier: "en")
   ) -> String? {
     let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     if hasQuery || kind != .all {
-      let count = "\(matchingCount) of \(loadedCount) loaded items match"
-      return isTruncated ? count + ". More items are not searched." : count + "."
+      let key: GlassLocalizedText =
+        isTruncated ? .desktopFilterTruncatedMatchCount : .desktopFilterMatchCount
+      return String(
+        format: key.resolve(locale: locale),
+        locale: locale,
+        Int64(matchingCount), Int64(loadedCount)
+      )
     }
     if isTruncated {
-      return "Showing \(loadedCount) loaded items. More items exist."
+      return String(
+        format: GlassLocalizedText.desktopTruncatedLoadedCount.resolve(locale: locale),
+        locale: locale,
+        Int64(loadedCount)
+      )
     }
     return nil
   }
