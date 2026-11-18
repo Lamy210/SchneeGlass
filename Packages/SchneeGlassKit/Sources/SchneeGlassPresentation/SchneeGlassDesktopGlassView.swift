@@ -444,7 +444,7 @@ struct DesktopGlassSurface: View {
       EmptyView()
 
     case .hovered:
-      let presentation = GlassInteractionPresentation.hovered(surface: .desktop)
+      let presentation = GlassInteractionPresentation.hovered(surface: .desktop, locale: locale)
       overlayCard(
         icon: symbolName(from: presentation) ?? "ellipsis",
         title: presentation.title,
@@ -480,7 +480,8 @@ struct DesktopGlassSurface: View {
       let presentation = GlassInteractionPresentation.copying(
         progress: progress,
         glassTitle: entry.title,
-        surface: .desktop
+        surface: .desktop,
+        locale: locale
       )
       overlayCard(
         icon: "doc.on.doc",
@@ -531,10 +532,13 @@ struct DesktopGlassSurface: View {
         }
 
         if let onCancelCopy {
-          Button("Cancel Copy", role: .cancel, action: onCancelCopy)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityLabel("Cancel Copy")
+          Button(
+            GlassLocalizedText.cancelCopy.resolve(locale: locale),
+            role: .cancel, action: onCancelCopy
+          )
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .accessibilityLabel(GlassLocalizedText.cancelCopy.resolve(locale: locale))
         }
       }
       .padding(SchneeGlassPadding.desktopOverlayContent)
