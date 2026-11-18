@@ -9,6 +9,10 @@ on:
       - 'Scripts/test-verify-adhoc-candidate-artifact.sh'
       - 'Scripts/test-adhoc-release-preupload-gate.sh'
       - 'Scripts/verify-extracted-adhoc-app.sh'
+      - 'Scripts/verify-localization-bundle.py'
+      - 'Scripts/test-verify-localization-bundle.py'
+      - 'Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/Resources/en.lproj/GlassStatus.strings'
+      - 'Packages/SchneeGlassKit/Sources/SchneeGlassPresentation/Resources/ja.lproj/GlassStatus.strings'
       - 'Scripts/test-verify-extracted-adhoc-app.py'
       - 'Scripts/test-adhoc-extracted-app-workflow-gate.sh'
       - 'Scripts/verify-adhoc-signature-details.sh'
@@ -131,6 +135,12 @@ jobs:
       - name: Ad-hoc pre-upload gate wiring fixture
         run: bash Scripts/test-adhoc-release-preupload-gate.sh
 
+      - name: Extracted app workflow gate fixture
+        run: bash Scripts/test-adhoc-extracted-app-workflow-gate.sh
+
+      - name: Localization resource guard fixtures
+        run: python3 Scripts/test-verify-localization-bundle.py
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
@@ -151,6 +161,7 @@ jobs:
           ditto -x -k "adhoc-release-output/SchneeGlass-$RELEASE_VERSION-adhoc-candidate.zip" "$QA_DIR"
           bash Scripts/verify-extracted-adhoc-app.sh \
             "$QA_DIR/SchneeGlass.app" "$RELEASE_VERSION" "$RELEASE_BUILD"
+          python3 Scripts/verify-localization-bundle.py "$QA_DIR/SchneeGlass.app"
 
       - name: Verify candidate artifact set
         run: |

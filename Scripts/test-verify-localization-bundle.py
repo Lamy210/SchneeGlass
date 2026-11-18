@@ -21,8 +21,16 @@ class LocalizationBundleTests(unittest.TestCase):
         self.source = root / "source"
         self.bundle = self.app / "Contents" / "Resources" / BUNDLE
         self.resources = self.bundle / "Contents" / "Resources"
+        self.write_info({"CFBundleLocalizations": ["en", "ja"]})
         self.write(self.source, "en", {"connected": "Connected"})
         self.write(self.source, "ja", {"connected": "接続済み"})
+
+    def write_info(self, values):
+        path = self.app / "Contents" / "Info.plist"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("wb") as file:
+            plistlib.dump(values, file, fmt=plistlib.FMT_BINARY)
+        return path
 
     def write(self, root, language, values):
         path = root / f"{language}.lproj" / TABLE
@@ -66,6 +74,29 @@ class LocalizationBundleTests(unittest.TestCase):
         self.populate(self.resources)
         self.populate(self.bundle)
         with self.assertRaisesRegex(ValueError, "exactly one localization resource root"):
+            VERIFY(self.app, self.source)
+
+    def test_missing_app_language_declaration(self):
+        self.populate(self.resources)
+        self.write_info({})
+        with self.assertRaisesRegex(ValueError, "CFBundleLocalizations"):
+            VERIFY(self.app, self.source)
+
+    def test_invalid_app_language_declaration(self):
+        self.populate(self.resources)
+        for languages in (["en"], ["en", "en"], ["en", "ja", "fr"], "ja", ["en", 1]):
+            with self.subTest(languages=languages):
+                self.write_info({"CFBundleLocalizations": languages})
+                with self.assertRaisesRegex(ValueError, "CFBundleLocalizations"):
+                    VERIFY(self.app, self.source)
+
+    def test_linked_app_info(self):
+        self.populate(self.resources)
+        path = self.app / "Contents" / "Info.plist"
+        target = self.source / "Info.plist"
+        path.rename(target)
+        path.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "Missing or linked app Info.plist"):
             VERIFY(self.app, self.source)
 
     def test_source_key_set_mismatch(self):
