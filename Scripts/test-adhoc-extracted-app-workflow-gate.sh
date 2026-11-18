@@ -26,6 +26,14 @@ verify_gate() {
   printf '%s\n' "$section" | grep -Fq 'bash Scripts/verify-extracted-adhoc-app.sh' || return 1
   printf '%s\n' "$section" | grep -Fq '"$QA_DIR/SchneeGlass.app" "$RELEASE_VERSION" "$RELEASE_BUILD"' || return 1
   printf '%s\n' "$section" | grep -Fxq '          python3 Scripts/verify-localization-bundle.py "$QA_DIR/SchneeGlass.app"' || return 1
+  local strict extract signature localization
+  strict="$(printf '%s\n' "$section" | grep -nFx '          set -euo pipefail' | cut -d: -f1)"
+  extract="$(printf '%s\n' "$section" | grep -nF 'ditto -x -k "adhoc-release-output/SchneeGlass-$RELEASE_VERSION-adhoc-candidate.zip"' | cut -d: -f1)"
+  signature="$(printf '%s\n' "$section" | grep -nF 'bash Scripts/verify-extracted-adhoc-app.sh' | cut -d: -f1)"
+  localization="$(printf '%s\n' "$section" | grep -nFx '          python3 Scripts/verify-localization-bundle.py "$QA_DIR/SchneeGlass.app"' | cut -d: -f1)"
+  [[ "$strict" =~ ^[1-9][0-9]*$ && "$extract" =~ ^[1-9][0-9]*$ &&
+     "$signature" =~ ^[1-9][0-9]*$ && "$localization" =~ ^[1-9][0-9]*$ ]] || return 1
+  (( strict < extract && extract < signature && signature < localization )) || return 1
   if printf '%s\n' "$section" | grep -Eq 'continue-on-error|if:|\|\|[[:space:]]*true'; then return 1; fi
   return 0
 }
@@ -58,5 +66,19 @@ expect_rejected 'missing localization validator' "$FIXTURE/no-localization.yml"
 
 sed 's|python3 Scripts/verify-localization-bundle.py "\$QA_DIR/SchneeGlass.app"|python3 Scripts/verify-localization-bundle.py /tmp/wrong.app|' "$WORKFLOW" > "$FIXTURE/wrong-localization-app.yml"
 expect_rejected 'wrong localization app' "$FIXTURE/wrong-localization-app.yml"
+
+sed '/^      - name: Verify real extracted ad-hoc app$/,/^      - name: Verify candidate artifact set$/{
+  s/^          set -euo pipefail$/          set -uo pipefail/
+}' "$WORKFLOW" > "$FIXTURE/non-strict.yml"
+expect_rejected 'missing strict shell failure handling' "$FIXTURE/non-strict.yml"
+
+awk '
+  /^          python3 Scripts\/verify-localization-bundle.py / { next }
+  /^          ditto -x -k / {
+    print "          python3 Scripts/verify-localization-bundle.py \"$QA_DIR/SchneeGlass.app\""
+  }
+  { print }
+' "$WORKFLOW" > "$FIXTURE/localization-before-extraction.yml"
+expect_rejected 'localization before extraction' "$FIXTURE/localization-before-extraction.yml"
 
 echo 'Extracted app workflow wiring regression fixtures passed'
