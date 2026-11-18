@@ -86,3 +86,6 @@
 "dropUseFinder" = "Open the folder in Finder instead.";
 "dropSourceDetail" = "The source may have moved or become inaccessible.";
 "dropCloudDetail" = "SchneeGlass won't start an unexpected cloud download.";
+"dropCopyToGlass" = "Copy to %@";
+"dropCopyFilename" = "Copy %1$@ to %2$@";
+"dropCopyCount" = "Copy %1$lld files to %2$@";

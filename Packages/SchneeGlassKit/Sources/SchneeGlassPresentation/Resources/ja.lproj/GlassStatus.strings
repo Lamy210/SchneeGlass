@@ -86,3 +86,6 @@
 "dropUseFinder" = "代わりにFinderでフォルダを開いてください。";
 "dropSourceDetail" = "コピー元が移動されたか、アクセスできなくなった可能性があります。";
 "dropCloudDetail" = "SchneeGlassは意図しないクラウドダウンロードを開始しません。";
+"dropCopyToGlass" = "%@にコピー";
+"dropCopyFilename" = "%1$@を%2$@にコピー";
+"dropCopyCount" = "%1$lld件のファイルを%2$@にコピー";
