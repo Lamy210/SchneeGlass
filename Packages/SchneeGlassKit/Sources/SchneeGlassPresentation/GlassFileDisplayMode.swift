@@ -1,4 +1,5 @@
 import FileDomain
+import Foundation
 import SchneeGlassApplication
 
 /// A presentation choice independent of file authority.
@@ -18,6 +19,11 @@ public enum GlassFileDisplayMode: Equatable, Sendable {
     case .grid: return "Show as List"
     case .list: return "Show as Icons"
     }
+  }
+
+  func localizedAlternateMenuTitle(locale: Locale) -> String {
+    let key: GlassLocalizedText = self == .grid ? .showAsList : .showAsIcons
+    return key.resolve(locale: locale)
   }
 
   static func allowsChange(during state: InteractionState) -> Bool {

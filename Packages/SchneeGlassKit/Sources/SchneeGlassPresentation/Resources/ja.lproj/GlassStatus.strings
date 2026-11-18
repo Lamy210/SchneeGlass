@@ -34,3 +34,16 @@
 "noMatchingGlasses" = "一致するGlassがありません";
 "noMatchingGlassesDetail" = "別の名前や状態を選ぶか、検索条件をクリアしてください。";
 "workspaceSearchCount" = "%2$lld件中%1$lld件のGlassを表示しています。操作中のGlassは引き続き表示されます。";
+"hideFileFilter" = "ファイルフィルターを閉じる";
+"filterFiles" = "ファイルを絞り込む…";
+"showAsList" = "リスト表示";
+"showAsIcons" = "アイコン表示";
+"filterFilesByName" = "ファイル名で絞り込む";
+"closeFileFilter" = "絞り込みをクリアして閉じる";
+"fileType" = "ファイルの種類";
+"allTypes" = "すべての種類";
+"files" = "ファイル";
+"folders" = "フォルダ";
+"packages" = "パッケージ";
+"linksAndAliases" = "リンクとエイリアス";
+"otherFileTypes" = "その他";

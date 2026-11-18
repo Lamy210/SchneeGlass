@@ -193,14 +193,18 @@ struct DesktopGlassSurface: View {
           )
         )
     }
-    .alert("Remove Glass?", isPresented: $showsRemoveConfirmation) {
-      Button("Cancel", role: .cancel) {}
-      Button("Remove Glass", role: .destructive, action: onRemove)
-    } message: {
-      Text(
-        "This removes the Glass only. "
-          + "The connected folder and its files will not be deleted or moved."
+    .alert(
+      GlassLocalizedText.removeGlassTitle.resolve(locale: locale),
+      isPresented: $showsRemoveConfirmation
+    ) {
+      Button(GlassLocalizedText.cancelAction.resolve(locale: locale), role: .cancel) {}
+      Button(
+        GlassLocalizedText.removeGlassAction.resolve(locale: locale),
+        role: .destructive,
+        action: onRemove
       )
+    } message: {
+      Text(GlassLocalizedText.removeGlassDetail.resolve(locale: locale))
     }
     .accessibilityElement(children: .contain)
     .onChange(of: supportsFileFilter) { _, supported in
@@ -232,10 +236,13 @@ struct DesktopGlassSurface: View {
       statusLabel
 
       Menu {
-        Button("Refresh Files", action: onRefresh)
+        Button(GlassLocalizedText.refreshFiles.resolve(locale: locale), action: onRefresh)
           .disabled(!canRefresh)
 
-        Button(fileFilter.isVisible ? "Hide File Filter" : "Filter Files…") {
+        Button(
+          (fileFilter.isVisible ? GlassLocalizedText.hideFileFilter : .filterFiles).resolve(
+            locale: locale)
+        ) {
           if fileFilter.isVisible {
             closeFileFilter()
           } else {
@@ -244,7 +251,7 @@ struct DesktopGlassSurface: View {
         }
         .disabled(!supportsFileFilter && !fileFilter.isVisible)
 
-        Button(fileDisplayMode.alternateMenuTitle) {
+        Button(fileDisplayMode.localizedAlternateMenuTitle(locale: locale)) {
           guard allowsDisplayModeChange else { return }
           let next = fileDisplayMode.alternate
           if persistedDisplayMode != nil {
@@ -257,7 +264,7 @@ struct DesktopGlassSurface: View {
 
         Divider()
 
-        Button("Remove Glass…", role: .destructive) {
+        Button(GlassLocalizedText.removeGlassMenu.resolve(locale: locale), role: .destructive) {
           showsRemoveConfirmation = true
         }
         .disabled(!canRemove)
@@ -270,7 +277,7 @@ struct DesktopGlassSurface: View {
       }
       .menuStyle(.borderlessButton)
       .fixedSize()
-      .accessibilityLabel("Glass options")
+      .accessibilityLabel(GlassLocalizedText.glassOptions.resolve(locale: locale))
     }
   }
 
@@ -304,20 +311,22 @@ struct DesktopGlassSurface: View {
       if fileFilter.isVisible {
         VStack(spacing: SchneeGlassSpacing.controlGroup) {
           HStack(spacing: SchneeGlassSpacing.controlGroup) {
-            TextField("Filter files by name", text: $fileFilter.query)
-              .textFieldStyle(.roundedBorder)
-              .accessibilityLabel("Filter files by name")
-              .focused($isFileFilterFocused)
-              .onAppear {
-                if fileFilter.consumeFocusRequest() {
-                  isFileFilterFocused = true
-                }
+            TextField(
+              GlassLocalizedText.filterFilesByName.resolve(locale: locale), text: $fileFilter.query
+            )
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel(GlassLocalizedText.filterFilesByName.resolve(locale: locale))
+            .focused($isFileFilterFocused)
+            .onAppear {
+              if fileFilter.consumeFocusRequest() {
+                isFileFilterFocused = true
               }
-              .onExitCommand {
-                if isFileFilterFocused {
-                  closeFileFilter()
-                }
+            }
+            .onExitCommand {
+              if isFileFilterFocused {
+                closeFileFilter()
               }
+            }
 
             Button {
               closeFileFilter()
@@ -325,12 +334,12 @@ struct DesktopGlassSurface: View {
               Image(systemName: "xmark.circle.fill")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Clear and close file filter")
+            .accessibilityLabel(GlassLocalizedText.closeFileFilter.resolve(locale: locale))
           }
 
-          Picker("File Type", selection: $fileFilter.kind) {
+          Picker(GlassLocalizedText.fileType.resolve(locale: locale), selection: $fileFilter.kind) {
             ForEach(DesktopGlassFileKindFilter.allCases) { kind in
-              Text(kind.rawValue).tag(kind)
+              Text(kind.localizedLabel(locale: locale)).tag(kind)
             }
           }
           .pickerStyle(.menu)

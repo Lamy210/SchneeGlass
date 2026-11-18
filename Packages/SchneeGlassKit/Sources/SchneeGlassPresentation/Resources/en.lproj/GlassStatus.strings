@@ -34,3 +34,16 @@
 "noMatchingGlasses" = "No matching Glasses";
 "noMatchingGlassesDetail" = "Try another name or status, or clear your search.";
 "workspaceSearchCount" = "Showing %1$lld of %2$lld Glasses. Active operations remain visible.";
+"hideFileFilter" = "Hide File Filter";
+"filterFiles" = "Filter Files…";
+"showAsList" = "Show as List";
+"showAsIcons" = "Show as Icons";
+"filterFilesByName" = "Filter files by name";
+"closeFileFilter" = "Clear and close file filter";
+"fileType" = "File Type";
+"allTypes" = "All Types";
+"files" = "Files";
+"folders" = "Folders";
+"packages" = "Packages";
+"linksAndAliases" = "Links and Aliases";
+"otherFileTypes" = "Other";
