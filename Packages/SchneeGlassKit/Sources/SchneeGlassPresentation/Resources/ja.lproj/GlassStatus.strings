@@ -47,3 +47,6 @@
 "packages" = "パッケージ";
 "linksAndAliases" = "リンクとエイリアス";
 "otherFileTypes" = "その他";
+"desktopFilterMatchCount" = "読み込み済み%2$lld件中%1$lld件が一致しました。";
+"desktopFilterTruncatedMatchCount" = "読み込み済み%2$lld件中%1$lld件が一致しました。未読み込みの項目は検索対象外です。";
+"desktopTruncatedLoadedCount" = "読み込み済みの%lld件を表示しています。ほかにも項目があります。";

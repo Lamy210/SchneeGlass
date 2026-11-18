@@ -551,6 +551,7 @@ struct DesktopGlassSurface: View {
 }
 
 private struct DesktopFileContent: View {
+  @Environment(\.locale) private var locale
   let snapshot: FolderSnapshot
   let displayMode: GlassFileDisplayMode
   let density: DesktopGlassFileGridDensity
@@ -588,7 +589,8 @@ private struct DesktopFileContent: View {
       loadedCount: snapshot.items.count,
       matchingCount: items.count,
       isTruncated: snapshot.isTruncated,
-      kind: kindFilter
+      kind: kindFilter,
+      locale: locale
     ) {
       VStack(alignment: .leading, spacing: SchneeGlassSpacing.controlGroup) {
         Label(status, systemImage: "info.circle")

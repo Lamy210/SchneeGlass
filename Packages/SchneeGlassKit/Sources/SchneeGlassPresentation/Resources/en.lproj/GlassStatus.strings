@@ -47,3 +47,6 @@
 "packages" = "Packages";
 "linksAndAliases" = "Links and Aliases";
 "otherFileTypes" = "Other";
+"desktopFilterMatchCount" = "%1$lld of %2$lld loaded items match.";
+"desktopFilterTruncatedMatchCount" = "%1$lld of %2$lld loaded items match. More items are not searched.";
+"desktopTruncatedLoadedCount" = "Showing %lld loaded items. More items exist.";
