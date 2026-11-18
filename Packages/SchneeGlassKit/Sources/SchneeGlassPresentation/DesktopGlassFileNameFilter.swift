@@ -12,6 +12,25 @@ enum DesktopGlassFileKindFilter: String, CaseIterable, Identifiable {
 
   var id: Self { self }
 
+  func localizedLabel(locale: Locale) -> String {
+    let key: GlassLocalizedText
+    switch self {
+    case .all:
+      key = .allTypes
+    case .files:
+      key = .files
+    case .folders:
+      key = .folders
+    case .packages:
+      key = .packages
+    case .links:
+      key = .linksAndAliases
+    case .other:
+      key = .otherFileTypes
+    }
+    return key.resolve(locale: locale)
+  }
+
   func includes(_ kind: FileKind) -> Bool {
     switch self {
     case .all:
