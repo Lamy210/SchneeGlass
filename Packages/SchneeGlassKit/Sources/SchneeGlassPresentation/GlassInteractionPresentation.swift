@@ -1,4 +1,5 @@
 import FileDomain
+import Foundation
 import SchneeGlassApplication
 
 enum GlassInteractionPresentationSurface: Equatable {
@@ -16,10 +17,13 @@ struct GlassInteractionPresentation: Equatable {
   let title: String
   let detail: String?
 
-  static func hovered(surface: GlassInteractionPresentationSurface) -> Self {
+  static func hovered(
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale = Locale(identifier: "en")
+  ) -> Self {
     Self(
       indicator: surface == .workspace ? .progress : .symbol("ellipsis"),
-      title: "Checking files…",
+      title: GlassLocalizedText.checkingFiles.resolve(locale: locale),
       detail: nil
     )
   }
@@ -73,29 +77,50 @@ struct GlassInteractionPresentation: Equatable {
   static func copying(
     progress: CopyProgress,
     glassTitle: String,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale = Locale(identifier: "en")
   ) -> Self {
     switch surface {
     case .workspace:
-      let detail =
-        progress.totalCount <= 1
-        ? progress.currentFilename
-        : "\(progress.currentIndex) of \(progress.totalCount) · \(progress.currentFilename)"
+      let detail: String
+      if progress.totalCount <= 1 {
+        detail = progress.currentFilename
+      } else {
+        detail = String(
+          format: GlassLocalizedText.copyProgressWithFilename.resolve(locale: locale),
+          locale: locale,
+          Int64(progress.currentIndex), Int64(progress.totalCount), progress.currentFilename
+        )
+      }
       return Self(
         indicator: .progress,
-        title: "Copying to \(glassTitle)…",
+        title: String(
+          format: GlassLocalizedText.copyingToGlass.resolve(locale: locale),
+          locale: locale,
+          glassTitle
+        ),
         detail: detail
       )
 
     case .desktop:
-      let title =
-        progress.totalCount == 1
-        ? "Copying \(progress.currentFilename)…"
-        : "Copying \(progress.currentIndex) of \(progress.totalCount)…"
+      let title: String
+      if progress.totalCount == 1 {
+        title = String(
+          format: GlassLocalizedText.copyingFilename.resolve(locale: locale),
+          locale: locale,
+          progress.currentFilename
+        )
+      } else {
+        title = String(
+          format: GlassLocalizedText.copyingCount.resolve(locale: locale),
+          locale: locale,
+          Int64(progress.currentIndex), Int64(progress.totalCount)
+        )
+      }
       return Self(
         indicator: .progress,
         title: title,
-        detail: "Original files stay where they are."
+        detail: GlassLocalizedText.originalFilesStay.resolve(locale: locale)
       )
     }
   }

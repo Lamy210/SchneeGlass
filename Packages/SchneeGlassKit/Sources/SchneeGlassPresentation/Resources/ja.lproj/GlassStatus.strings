@@ -50,3 +50,11 @@
 "desktopFilterMatchCount" = "読み込み済み%2$lld件中%1$lld件が一致しました。";
 "desktopFilterTruncatedMatchCount" = "読み込み済み%2$lld件中%1$lld件が一致しました。未読み込みの項目は検索対象外です。";
 "desktopTruncatedLoadedCount" = "読み込み済みの%lld件を表示しています。ほかにも項目があります。";
+"checkingFiles" = "ファイルを確認中…";
+"copyingToGlass" = "%@にコピー中…";
+"copyProgressWithFilename" = "%2$lld件中%1$lld件目 · %3$@";
+"copyingFilename" = "%@をコピー中…";
+"copyingCount" = "%2$lld件中%1$lld件目をコピー中…";
+"originalFilesStay" = "元のファイルは元の場所に残ります。";
+"cancelCopy" = "コピーをキャンセル";
+"copyingStatus" = "コピー中";

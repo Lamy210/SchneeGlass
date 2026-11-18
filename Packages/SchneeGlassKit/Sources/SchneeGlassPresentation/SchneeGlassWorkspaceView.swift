@@ -552,7 +552,7 @@ private struct GlassPreviewSurface: View {
       EmptyView()
 
     case .hovered:
-      let presentation = GlassInteractionPresentation.hovered(surface: .workspace)
+      let presentation = GlassInteractionPresentation.hovered(surface: .workspace, locale: locale)
       DropOverlaySurface {
         ProgressView()
           .controlSize(.small)
@@ -606,7 +606,8 @@ private struct GlassPreviewSurface: View {
       let presentation = GlassInteractionPresentation.copying(
         progress: progress,
         glassTitle: entry.title,
-        surface: .workspace
+        surface: .workspace,
+        locale: locale
       )
       DropOverlaySurface {
         ProgressView()
@@ -618,10 +619,13 @@ private struct GlassPreviewSurface: View {
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
         }
-        Button("Cancel Copy", role: .cancel, action: onCancelCopy)
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .accessibilityLabel("Cancel Copy")
+        Button(
+          GlassLocalizedText.cancelCopy.resolve(locale: locale),
+          role: .cancel, action: onCancelCopy
+        )
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .accessibilityLabel(GlassLocalizedText.cancelCopy.resolve(locale: locale))
       }
     }
   }
@@ -629,7 +633,7 @@ private struct GlassPreviewSurface: View {
   @ViewBuilder
   private var statusLabel: some View {
     if case .copying = entry.interactionState {
-      Label("Copying", systemImage: "doc.on.doc")
+      Label(GlassLocalizedText.copyingStatus.resolve(locale: locale), systemImage: "doc.on.doc")
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
     } else if let presentation = GlassContentStatusPresentation.make(
