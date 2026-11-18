@@ -94,6 +94,15 @@ enum GlassLocalizedText: String, CaseIterable {
   case dropCopyToGlass
   case dropCopyFilename
   case dropCopyCount
+  case workspaceTagline
+  case restoringStatus
+  case addGlass
+  case restoringGlasses
+  case configurationRecoveryTitle
+  case configurationRecoveryDetail
+  case firstGlassTitle
+  case firstGlassDetail
+  case dismissMessage
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

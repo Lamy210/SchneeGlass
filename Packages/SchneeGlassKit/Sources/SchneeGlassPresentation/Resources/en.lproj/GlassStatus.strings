@@ -89,3 +89,12 @@
 "dropCopyToGlass" = "Copy to %@";
 "dropCopyFilename" = "Copy %1$@ to %2$@";
 "dropCopyCount" = "Copy %1$lld files to %2$@";
+"workspaceTagline" = "Your folders, right where you need them.";
+"restoringStatus" = "Restoring…";
+"addGlass" = "Add Glass";
+"restoringGlasses" = "Restoring your Glasses…";
+"configurationRecoveryTitle" = "Configuration recovery required";
+"configurationRecoveryDetail" = "SchneeGlass couldn't read its saved configuration. Open Settings and restore a valid Configuration Backup before adding or changing a Glass.";
+"firstGlassTitle" = "Put a folder on your desktop";
+"firstGlassDetail" = "Choose a folder to create your first Glass. SchneeGlass stores a reference to the folder; it does not take ownership of your files.";
+"dismissMessage" = "Dismiss";

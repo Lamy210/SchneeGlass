@@ -89,3 +89,12 @@
 "dropCopyToGlass" = "%@にコピー";
 "dropCopyFilename" = "%1$@を%2$@にコピー";
 "dropCopyCount" = "%1$lld件のファイルを%2$@にコピー";
+"workspaceTagline" = "必要なフォルダを、必要な場所に。";
+"restoringStatus" = "復元中…";
+"addGlass" = "Glassを追加";
+"restoringGlasses" = "Glassを復元中…";
+"configurationRecoveryTitle" = "設定の復旧が必要です";
+"configurationRecoveryDetail" = "保存された設定を読み込めませんでした。Glassを追加・変更する前に、設定を開いて有効な設定バックアップを復元してください。";
+"firstGlassTitle" = "デスクトップにフォルダを配置";
+"firstGlassDetail" = "フォルダを選択して最初のGlassを作成します。SchneeGlassはフォルダへの参照を保存するだけで、ファイルの所有権は取得しません。";
+"dismissMessage" = "閉じる";
