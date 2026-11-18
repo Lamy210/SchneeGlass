@@ -52,6 +52,9 @@ enum GlassLocalizedText: String, CaseIterable {
   case packages
   case linksAndAliases
   case otherFileTypes
+  case desktopFilterMatchCount
+  case desktopFilterTruncatedMatchCount
+  case desktopTruncatedLoadedCount
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

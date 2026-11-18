@@ -69,15 +69,25 @@ enum DesktopGlassFileNameFilter {
     loadedCount: Int,
     matchingCount: Int,
     isTruncated: Bool,
-    kind: DesktopGlassFileKindFilter = .all
+    kind: DesktopGlassFileKindFilter = .all,
+    locale: Locale = Locale(identifier: "en")
   ) -> String? {
     let hasQuery = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     if hasQuery || kind != .all {
-      let count = "\(matchingCount) of \(loadedCount) loaded items match"
-      return isTruncated ? count + ". More items are not searched." : count + "."
+      let key: GlassLocalizedText =
+        isTruncated ? .desktopFilterTruncatedMatchCount : .desktopFilterMatchCount
+      return String(
+        format: key.resolve(locale: locale),
+        locale: locale,
+        Int64(matchingCount), Int64(loadedCount)
+      )
     }
     if isTruncated {
-      return "Showing \(loadedCount) loaded items. More items exist."
+      return String(
+        format: GlassLocalizedText.desktopTruncatedLoadedCount.resolve(locale: locale),
+        locale: locale,
+        Int64(loadedCount)
+      )
     }
     return nil
   }
