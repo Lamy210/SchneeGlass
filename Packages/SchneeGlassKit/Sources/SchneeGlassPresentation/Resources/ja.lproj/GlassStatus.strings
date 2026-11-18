@@ -9,3 +9,17 @@
 "refreshFailedDetail" = "フォルダに変更があるとSchneeGlassが再試行します。";
 "unexpectedTitle" = "Glassの処理を続行できません";
 "unexpectedDetail" = "SchneeGlassを再起動して再試行してください。それでも復旧しない場合は、このGlassを削除してフォルダを再登録してください。";
+"renameGlassMenu" = "Glassの名前を変更…";
+"refreshFiles" = "ファイル一覧を更新";
+"showConnectedFolder" = "接続フォルダをFinderで表示";
+"removeGlassMenu" = "Glassを削除…";
+"glassOptions" = "Glassのオプション";
+"renameGlassTitle" = "Glassの名前を変更";
+"glassName" = "Glass名";
+"cancelAction" = "キャンセル";
+"renameAction" = "名前を変更";
+"renameGlassDetail" = "Glassの表示名だけを変更します。接続先フォルダの名前は変更されません。";
+"removeGlassTitle" = "Glassを削除しますか？";
+"removeGlassAction" = "Glassを削除";
+"removeGlassDetail" = "Glassだけを削除します。接続先フォルダやそのファイルは削除・移動されません。";
+"reconnectOriginalFolder" = "元のフォルダを再接続…";
