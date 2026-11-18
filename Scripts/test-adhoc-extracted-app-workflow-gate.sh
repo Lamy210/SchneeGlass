@@ -25,6 +25,7 @@ verify_gate() {
   printf '%s\n' "$section" | grep -Fq 'ditto -x -k "adhoc-release-output/SchneeGlass-$RELEASE_VERSION-adhoc-candidate.zip"' || return 1
   printf '%s\n' "$section" | grep -Fq 'bash Scripts/verify-extracted-adhoc-app.sh' || return 1
   printf '%s\n' "$section" | grep -Fq '"$QA_DIR/SchneeGlass.app" "$RELEASE_VERSION" "$RELEASE_BUILD"' || return 1
+  printf '%s\n' "$section" | grep -Fxq '          python3 Scripts/verify-localization-bundle.py "$QA_DIR/SchneeGlass.app"' || return 1
   if printf '%s\n' "$section" | grep -Eq 'continue-on-error|if:|\|\|[[:space:]]*true'; then return 1; fi
   return 0
 }
@@ -51,5 +52,11 @@ sed '/^      - name: Verify real extracted ad-hoc app$/,/^      - name: Verify c
   s/^        run: |$/        continue-on-error: true\n        run: |/
 }' "$WORKFLOW" > "$FIXTURE/ignored-error.yml"
 expect_rejected 'ignored validator failure' "$FIXTURE/ignored-error.yml"
+
+grep -Fv '          python3 Scripts/verify-localization-bundle.py "$QA_DIR/SchneeGlass.app"' "$WORKFLOW" > "$FIXTURE/no-localization.yml"
+expect_rejected 'missing localization validator' "$FIXTURE/no-localization.yml"
+
+sed 's|python3 Scripts/verify-localization-bundle.py "\$QA_DIR/SchneeGlass.app"|python3 Scripts/verify-localization-bundle.py /tmp/wrong.app|' "$WORKFLOW" > "$FIXTURE/wrong-localization-app.yml"
+expect_rejected 'wrong localization app' "$FIXTURE/wrong-localization-app.yml"
 
 echo 'Extracted app workflow wiring regression fixtures passed'
