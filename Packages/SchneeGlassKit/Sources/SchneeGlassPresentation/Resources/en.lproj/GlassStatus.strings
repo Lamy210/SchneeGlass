@@ -23,3 +23,14 @@
 "removeGlassAction" = "Remove Glass";
 "removeGlassDetail" = "This removes the Glass only. The connected folder and its files will not be deleted or moved.";
 "reconnectOriginalFolder" = "Reconnect Original Folder…";
+"findGlass" = "Find Glass";
+"findGlassByName" = "Find Glass by name";
+"glassStatus" = "Glass status";
+"allStates" = "All States";
+"loading" = "Loading";
+"failed" = "Failed";
+"clearSearch" = "Clear";
+"doneSearch" = "Done";
+"noMatchingGlasses" = "No matching Glasses";
+"noMatchingGlassesDetail" = "Try another name or status, or clear your search.";
+"workspaceSearchCount" = "Showing %1$lld of %2$lld Glasses. Active operations remain visible.";

@@ -90,6 +90,7 @@ public struct SchneeGlassWorkspaceView: View {
 }
 
 struct WorkspaceSurface: View {
+  @Environment(\.locale) private var locale
   let glasses: [GlassWorkspaceEntry]
   let isCreatingGlass: Bool
   let isRestoring: Bool
@@ -151,25 +152,25 @@ struct WorkspaceSurface: View {
 
   private var searchBar: some View {
     HStack(spacing: SchneeGlassSpacing.surfaceContent) {
-      TextField("Find Glass by name", text: $glassQuery)
+      TextField(GlassLocalizedText.findGlassByName.resolve(locale: locale), text: $glassQuery)
         .textFieldStyle(.roundedBorder)
         .focused($isSearchFocused)
         .onAppear { isSearchFocused = true }
         .onExitCommand { closeSearch() }
 
-      Picker("Glass status", selection: $glassStatus) {
+      Picker(GlassLocalizedText.glassStatus.resolve(locale: locale), selection: $glassStatus) {
         ForEach(WorkspaceGlassStatusFilter.allCases) { status in
-          Text(status.rawValue).tag(status)
+          Text(status.localizedLabel(locale: locale)).tag(status)
         }
       }
       .labelsHidden()
-      .accessibilityLabel("Glass status")
+      .accessibilityLabel(GlassLocalizedText.glassStatus.resolve(locale: locale))
       .fixedSize()
 
-      Button("Clear", action: resetSearchFilters)
+      Button(GlassLocalizedText.clearSearch.resolve(locale: locale), action: resetSearchFilters)
         .disabled(glassQuery.isEmpty && glassStatus == .all)
 
-      Button("Done", action: closeSearch)
+      Button(GlassLocalizedText.doneSearch.resolve(locale: locale), action: closeSearch)
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
@@ -211,8 +212,8 @@ struct WorkspaceSurface: View {
           Image(systemName: "magnifyingglass")
         }
         .keyboardShortcut("f", modifiers: .command)
-        .accessibilityLabel("Find Glass")
-        .help("Find Glass by name")
+        .accessibilityLabel(GlassLocalizedText.findGlass.resolve(locale: locale))
+        .help(GlassLocalizedText.findGlassByName.resolve(locale: locale))
       }
 
       Button(action: onAddGlass) {
@@ -248,7 +249,8 @@ struct WorkspaceSurface: View {
 
           if isSearchVisible {
             Text(
-              "Showing \(visibleGlasses.count) of \(glasses.count) Glasses. Active operations remain visible."
+              WorkspaceGlassSearch.resultSummary(
+                visible: visibleGlasses.count, total: glasses.count, locale: locale)
             )
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
@@ -257,8 +259,8 @@ struct WorkspaceSurface: View {
             if visibleGlasses.isEmpty {
               SchneeGlassStateMessage(
                 systemImage: "magnifyingglass",
-                title: "No matching Glasses",
-                detail: "Try another name or status, or clear your search."
+                title: GlassLocalizedText.noMatchingGlasses.resolve(locale: locale),
+                detail: GlassLocalizedText.noMatchingGlassesDetail.resolve(locale: locale)
               )
             }
           }
