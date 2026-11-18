@@ -48,6 +48,20 @@ def verify(app, source=SOURCE):
     for path in (contents, resources, bundle):
         require(real_directory(path), f"Missing or linked directory: {path}")
 
+    info = contents / "Info.plist"
+    require(info.is_file() and not info.is_symlink(), "Missing or linked app Info.plist")
+    with info.open("rb") as file:
+        metadata = plistlib.load(file)
+    require(isinstance(metadata, dict), "Invalid app Info.plist dictionary")
+    languages = metadata.get("CFBundleLocalizations")
+    require(
+        isinstance(languages, list)
+        and len(languages) == len(LANGUAGES)
+        and all(isinstance(language, str) for language in languages)
+        and set(languages) == set(LANGUAGES),
+        "App CFBundleLocalizations must declare exactly en and ja",
+    )
+
     # Xcode may emit a standard macOS resource bundle or a flat bundle.
     candidates = (bundle / "Contents" / "Resources", bundle)
     roots = [
