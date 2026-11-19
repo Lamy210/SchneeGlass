@@ -31,30 +31,44 @@ struct GlassInteractionPresentation: Equatable {
   static func dropValid(
     plan: DropPlan,
     glassTitle: String,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale = Locale(identifier: "en")
   ) -> Self? {
+    let detail = GlassLocalizedText.originalFilesStay.resolve(locale: locale)
     guard case .copy(let batch) = plan else {
       guard surface == .workspace else {
         return nil
       }
       return Self(
         indicator: .symbol("plus.circle.fill"),
-        title: "Copy to \(glassTitle)",
-        detail: "Original files stay where they are."
+        title: String(
+          format: GlassLocalizedText.dropCopyToGlass.resolve(locale: locale),
+          locale: locale,
+          glassTitle
+        ),
+        detail: detail
       )
     }
 
     let title: String
     if batch.items.count == 1, let item = batch.items.first {
-      title = "Copy \(item.destinationFilename) to \(glassTitle)"
+      title = String(
+        format: GlassLocalizedText.dropCopyFilename.resolve(locale: locale),
+        locale: locale,
+        item.destinationFilename, glassTitle
+      )
     } else {
-      title = "Copy \(batch.items.count) files to \(glassTitle)"
+      title = String(
+        format: GlassLocalizedText.dropCopyCount.resolve(locale: locale),
+        locale: locale,
+        Int64(batch.items.count), glassTitle
+      )
     }
 
     return Self(
       indicator: .symbol(surface == .workspace ? "plus.circle.fill" : "doc.on.doc"),
       title: title,
-      detail: "Original files stay where they are."
+      detail: detail
     )
   }
 

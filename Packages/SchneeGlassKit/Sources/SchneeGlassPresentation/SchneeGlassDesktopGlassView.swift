@@ -455,7 +455,8 @@ struct DesktopGlassSurface: View {
       if let presentation = GlassInteractionPresentation.dropValid(
         plan: plan,
         glassTitle: entry.title,
-        surface: .desktop
+        surface: .desktop,
+        locale: locale
       ) {
         overlayCard(
           icon: symbolName(from: presentation) ?? "doc.on.doc",

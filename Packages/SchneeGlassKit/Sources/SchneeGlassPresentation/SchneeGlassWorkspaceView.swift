@@ -564,7 +564,8 @@ private struct GlassPreviewSurface: View {
       if let presentation = GlassInteractionPresentation.dropValid(
         plan: plan,
         glassTitle: entry.title,
-        surface: .workspace
+        surface: .workspace,
+        locale: locale
       ) {
         DropOverlaySurface {
           if case .symbol(let systemImage) = presentation.indicator {
