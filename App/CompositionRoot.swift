@@ -50,7 +50,22 @@ final class SchneeGlassCompositionRoot {
     )
     let dropCopyPipeline = PinnedDropCopyPipeline(recoveryStore: pendingCopyStore)
     let activityGate = FileOperationActivityGate()
-    let folderSelector = NativeFolderSelector()
+    let locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+    let addFolderText = SchneeGlassFolderSelectionText.add
+    let reconnectFolderText = SchneeGlassFolderSelectionText.reconnect
+    let recoveryFolderText = SchneeGlassFolderSelectionText.recoveryDestination
+    let folderSelector = NativeFolderSelector(
+      prompt: addFolderText.prompt(locale: locale),
+      message: addFolderText.message(locale: locale)
+    )
+    let reconnectFolderSelector = NativeFolderReconnectSelector(
+      prompt: reconnectFolderText.prompt(locale: locale),
+      message: reconnectFolderText.message(locale: locale)
+    )
+    let recoveryFolderSelector = NativeFolderReconnectSelector(
+      prompt: recoveryFolderText.prompt(locale: locale),
+      message: recoveryFolderText.message(locale: locale)
+    )
     let sourceCreator = SecurityScopedFolderSourceFactory()
     let fileActor = NSWorkspaceFileActionAdapter()
 
@@ -79,7 +94,7 @@ final class SchneeGlassCompositionRoot {
 
     let reconnectGlassSourceUseCase = ReconnectGlassSourceUseCase(
       configurationStore: configurationStore,
-      folderSelector: NativeFolderReconnectSelector(),
+      folderSelector: reconnectFolderSelector,
       sourceCreator: sourceCreator,
       accessController: accessController,
       eventStreaming: eventHub,
@@ -160,7 +175,7 @@ final class SchneeGlassCompositionRoot {
     let reconnectUseCase = PendingCopyDestinationReconnectUseCase(
       pendingCopyStore: pendingCopyStore,
       configurationStore: configurationStore,
-      folderSelector: folderSelector,
+      folderSelector: recoveryFolderSelector,
       sourceCreator: sourceCreator,
       accessController: accessController,
       activityGate: activityGate

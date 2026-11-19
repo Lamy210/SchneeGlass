@@ -312,3 +312,8 @@
 "loadingFolder" = "フォルダを読み込み中…";
 "workspaceFirst500Items" = "最初の500件を表示しています";
 "menuDuplicateTitle" = "%1$@（全%3$@件中%2$@件目）";
+"folderSelectionAdd" = "Glassを追加";
+"folderSelectionAddDetail" = "デスクトップにSchneeGlassとして配置するフォルダを選んでください。";
+"folderSelectionReconnect" = "再接続";
+"folderSelectionReconnectDetail" = "このGlassの元のフォルダを選んでください。再接続前にフォルダの永続的な同一性を確認します。";
+"folderSelectionRecoveryDetail" = "このGlassの元のコピー先フォルダを選んでください。再接続前にフォルダの永続的な同一性を確認します。";

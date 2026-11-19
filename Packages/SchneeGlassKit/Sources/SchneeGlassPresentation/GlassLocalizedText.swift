@@ -317,6 +317,11 @@ enum GlassLocalizedText: String, CaseIterable {
   case loadingFolder
   case workspaceFirst500Items
   case menuDuplicateTitle
+  case folderSelectionAdd
+  case folderSelectionAddDetail
+  case folderSelectionReconnect
+  case folderSelectionReconnectDetail
+  case folderSelectionRecoveryDetail
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"
@@ -690,5 +695,32 @@ public enum SchneeGlassPanelText: CaseIterable {
       locale: locale,
       percentage
     )
+  }
+}
+
+/// Narrow bridge for native folder panels. Adapters receive resolved strings from the app host.
+public enum SchneeGlassFolderSelectionText {
+  case add
+  case reconnect
+  case recoveryDestination
+
+  public func prompt(locale: Locale) -> String {
+    switch self {
+    case .add:
+      return GlassLocalizedText.folderSelectionAdd.resolve(locale: locale)
+    case .reconnect, .recoveryDestination:
+      return GlassLocalizedText.folderSelectionReconnect.resolve(locale: locale)
+    }
+  }
+
+  public func message(locale: Locale) -> String {
+    switch self {
+    case .add:
+      return GlassLocalizedText.folderSelectionAddDetail.resolve(locale: locale)
+    case .reconnect:
+      return GlassLocalizedText.folderSelectionReconnectDetail.resolve(locale: locale)
+    case .recoveryDestination:
+      return GlassLocalizedText.folderSelectionRecoveryDetail.resolve(locale: locale)
+    }
   }
 }
