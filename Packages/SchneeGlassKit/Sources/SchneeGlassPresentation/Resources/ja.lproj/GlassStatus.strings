@@ -309,3 +309,5 @@
 "workspaceMessageCopyReasonCommitUnknown" = "現在のコピー先ファイルが作成された可能性がありますが、最終状態を確認できませんでした。再試行する前に復旧センターを確認してください。元のファイルは移動・削除されていません。";
 "workspaceMessageCopyReasonCancelled" = "コピーはキャンセルされました。";
 "workspaceMessageCopyReasonUnexpected" = "予期しないコピーエラーが発生しました。";
+"loadingFolder" = "フォルダを読み込み中…";
+"workspaceFirst500Items" = "最初の500件を表示しています";

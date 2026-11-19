@@ -314,6 +314,8 @@ enum GlassLocalizedText: String, CaseIterable {
   case workspaceMessageCopyReasonCommitUnknown
   case workspaceMessageCopyReasonCancelled
   case workspaceMessageCopyReasonUnexpected
+  case loadingFolder
+  case workspaceFirst500Items
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

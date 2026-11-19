@@ -309,3 +309,5 @@
 "workspaceMessageCopyReasonCommitUnknown" = "SchneeGlass may have created the current destination file, but could not verify its final state. Check Recovery before retrying; source files were not moved or deleted.";
 "workspaceMessageCopyReasonCancelled" = "The copy was cancelled.";
 "workspaceMessageCopyReasonUnexpected" = "SchneeGlass encountered an unexpected copy error.";
+"loadingFolder" = "Loading folder…";
+"workspaceFirst500Items" = "Showing the first 500 items";
