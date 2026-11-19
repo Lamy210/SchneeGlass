@@ -253,6 +253,67 @@ enum GlassLocalizedText: String, CaseIterable {
   case tileSymbolicLink
   case tileSize
   case tileModified
+  case workspaceMessageBackupReloadFailed
+  case workspaceMessageBackupRestoreFailed
+  case workspaceMessageRemoveFailed
+  case workspaceMessagePlacementFailed
+  case workspaceMessageResetStale
+  case workspaceMessageResetFailed
+  case workspaceMessageCopyCleanupPending
+  case workspaceMessageCopyDestinationGone
+  case workspaceMessageCopyBusy
+  case workspaceMessageCopyUnauthorized
+  case workspaceMessageCopyFailed
+  case workspaceMessageRenameStale
+  case workspaceMessageRenameEmpty
+  case workspaceMessageRenameTooLong
+  case workspaceMessageRenameInvalid
+  case workspaceMessageRenameSaveFailed
+  case workspaceMessageRenameFailed
+  case workspaceMessageSpacesStale
+  case workspaceMessageSpacesInvalid
+  case workspaceMessageSpacesSaveFailed
+  case workspaceMessageSpacesFailed
+  case workspaceMessageReconnectActivationFailed
+  case workspaceMessageReconnectFailed
+  case workspaceMessageInactiveConnection
+  case workspaceMessageRestorePermissionsPending
+  case workspaceMessageRestorePartial
+  case workspaceMessageReconnectMissing
+  case workspaceMessageReconnectAccessSaveFailed
+  case workspaceMessageReconnectIdentityUnknown
+  case workspaceMessageReconnectWrongFolder
+  case workspaceMessageReconnectOpenFailed
+  case workspaceMessageReconnectDenied
+  case workspaceMessageReconnectReplaced
+  case workspaceMessageReconnectWatchFailed
+  case workspaceMessageReconnectReadFailed
+  case workspaceMessageReconnectInvalid
+  case workspaceMessageReconnectStale
+  case workspaceMessageReconnectSaveFailed
+  case workspaceMessageRecoveryRequired
+  case workspaceMessageAddFailed
+  case workspaceMessageAddAccessSaveFailed
+  case workspaceMessageAddIdentityUnknown
+  case workspaceMessageAddPlacementFailed
+  case workspaceMessageAddInvalid
+  case workspaceMessageAddAccessFailed
+  case workspaceMessageAddWatchFailed
+  case workspaceMessageAddReadFailed
+  case workspaceMessageAddSaveFailed
+  case workspaceMessageOpenFailed
+  case workspaceMessageCopyCompletedPrefix
+  case workspaceMessageCopyNothingPrefix
+  case workspaceMessageCopyReasonSourceUnavailable
+  case workspaceMessageCopyReasonUnsupportedItem
+  case workspaceMessageCopyReasonDestinationUnavailable
+  case workspaceMessageCopyReasonPermissionDenied
+  case workspaceMessageCopyReasonInsufficientSpace
+  case workspaceMessageCopyReasonCollision
+  case workspaceMessageCopyReasonVerificationFailed
+  case workspaceMessageCopyReasonCommitUnknown
+  case workspaceMessageCopyReasonCancelled
+  case workspaceMessageCopyReasonUnexpected
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

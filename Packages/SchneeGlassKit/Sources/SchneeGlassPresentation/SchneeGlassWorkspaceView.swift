@@ -5,6 +5,7 @@ import SchneeGlassDomain
 import SwiftUI
 
 public struct SchneeGlassWorkspaceView: View {
+  @Environment(\.locale) private var locale
   @Bindable private var model: SchneeGlassWorkspaceModel
 
   public init(model: SchneeGlassWorkspaceModel) {
@@ -19,7 +20,7 @@ public struct SchneeGlassWorkspaceView: View {
       isMutatingConfiguration: model.isMutatingConfiguration,
       canAddGlass: model.canAddGlass,
       requiresConfigurationRecovery: model.requiresConfigurationRecovery,
-      userMessage: model.userMessage,
+      userMessage: model.localizedUserMessage(locale: locale),
       onAddGlass: {
         Task {
           await model.addGlass()
