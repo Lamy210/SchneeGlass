@@ -445,8 +445,8 @@ private struct SchneeGlassSettingsView: View {
                   let unknownGlass = SchneeGlassCopyRecoveryText.unknownGlass.resolve(
                     locale: locale)
                   Text(item.glassTitle ?? unknownGlass)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 Spacer()
