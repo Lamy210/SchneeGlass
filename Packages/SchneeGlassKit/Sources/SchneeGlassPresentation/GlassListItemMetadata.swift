@@ -26,12 +26,18 @@ struct GlassListItemMetadata: Equatable {
   }
 
   var accessibilityText: String {
+    accessibilityText(locale: Locale(identifier: "en"))
+  }
+
+  func accessibilityText(locale: Locale) -> String {
     var parts: [String] = []
     if let size {
-      parts.append("Size: \(size)")
+      let format = GlassLocalizedText.tileSize.resolve(locale: locale)
+      parts.append(String(format: format, locale: locale, size))
     }
     if let modified {
-      parts.append("Modified: \(modified)")
+      let format = GlassLocalizedText.tileModified.resolve(locale: locale)
+      parts.append(String(format: format, locale: locale, modified))
     }
     return parts.joined(separator: ", ")
   }

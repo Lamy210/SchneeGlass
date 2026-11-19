@@ -10,6 +10,8 @@ MODULE = runpy.run_path(str(pathlib.Path(__file__).with_name("verify-localizatio
 VERIFY = MODULE["verify"]
 BUNDLE = MODULE["BUNDLE"]
 TABLE = MODULE["TABLE"]
+SIGNATURE = MODULE["format_signature"]
+VERIFY_FORMATS = MODULE["verify_format_signatures"]
 
 
 class LocalizationBundleTests(unittest.TestCase):
@@ -106,6 +108,48 @@ class LocalizationBundleTests(unittest.TestCase):
         self.write(self.resources, "ja", values)
         with self.assertRaisesRegex(ValueError, "Source key sets differ"):
             VERIFY(self.app, self.source)
+
+    def test_packaged_format_mismatch_even_when_source_matches(self):
+        for root in (self.source, self.resources):
+            self.write(root, "en", {"count": "%lld files"})
+            self.write(root, "ja", {"count": "%@件"})
+        with self.assertRaisesRegex(ValueError, "Format argument mismatch: count"):
+            VERIFY(self.app, self.source)
+
+    def test_compatible_reordered_formats_and_escaped_percent(self):
+        VERIFY_FORMATS(
+            {"count": "%lld of %lld: %@ (100%%)"},
+            {"count": "%2$lld件中%1$lld件：%3$@（100%%）"},
+        )
+        VERIFY_FORMATS({"name": "%@"}, {"name": "%1$@"})
+        VERIFY_FORMATS({"label": "100%%"}, {"label": "100%%"})
+
+    def test_argument_mismatch_variants(self):
+        for english, japanese in (
+            ("%lld", "%@"),
+            ("%@", "名前"),
+            ("Name", "%@"),
+            ("%1$@ %2$lld", "%1$lld %2$@"),
+            ("%1$@ %1$@", "%@"),
+            ("%@", "%1$@ %1$@"),
+        ):
+            with self.subTest(english=english, japanese=japanese):
+                with self.assertRaisesRegex(ValueError, "Format argument mismatch"):
+                    VERIFY_FORMATS({"key": english}, {"key": japanese})
+
+    def test_invalid_format_syntax(self):
+        for value in ("%n", "%d", "%s", "%", "%0$@", "%01$@", "%*lld", "%2$@", "%@ %2$@"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    SIGNATURE(value, "key", "ja")
+
+    def test_conflicting_argument_types(self):
+        with self.assertRaisesRegex(ValueError, "Conflicting format types"):
+            SIGNATURE("%1$@ %1$lld", "key", "ja")
+
+    def test_large_sparse_index_rejected_without_allocating_index_range(self):
+        with self.assertRaisesRegex(ValueError, "Non-contiguous"):
+            SIGNATURE("%999999999$@", "key", "ja")
 
 
 if __name__ == "__main__":

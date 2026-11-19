@@ -98,7 +98,15 @@ public final class SchneeGlassWorkspaceModel {
   public private(set) var isRestoring = false
   public private(set) var isMutatingConfiguration = false
   public private(set) var requiresConfigurationRecovery = false
-  public private(set) var userMessage: String?
+  private var notification: WorkspaceNotification?
+
+  public var userMessage: String? {
+    localizedUserMessage(locale: Locale(identifier: "en"))
+  }
+
+  public func localizedUserMessage(locale: Locale) -> String? {
+    notification?.resolve(locale: locale)
+  }
 
   public var canMutateConfiguration: Bool {
     !isShuttingDown && hasAuthoritativeConfigurationSnapshot
@@ -180,7 +188,7 @@ public final class SchneeGlassWorkspaceModel {
     didAttemptInitialRestore = true
     isMutatingConfiguration = true
     isRestoring = true
-    userMessage = nil
+    notification = nil
     defer {
       isRestoring = false
       isMutatingConfiguration = false
@@ -233,7 +241,7 @@ public final class SchneeGlassWorkspaceModel {
 
     isMutatingConfiguration = true
     isRestoring = true
-    userMessage = nil
+    notification = nil
     defer {
       isRestoring = false
       isMutatingConfiguration = false
@@ -260,8 +268,7 @@ public final class SchneeGlassWorkspaceModel {
       } catch is CancellationError {
         if backupWasRestored {
           requiresConfigurationRecovery = true
-          userMessage =
-            "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
+          notification = .text(.workspaceMessageBackupReloadFailed)
           return .restoredNeedsRestart
         }
 
@@ -269,13 +276,11 @@ public final class SchneeGlassWorkspaceModel {
       } catch {
         if backupWasRestored {
           requiresConfigurationRecovery = true
-          userMessage =
-            "The configuration backup was restored, but SchneeGlass couldn't reload it. Restart SchneeGlass to retry the restored configuration."
+          notification = .text(.workspaceMessageBackupReloadFailed)
           return .restoredNeedsRestart
         }
 
-        userMessage =
-          "SchneeGlass couldn't restore that configuration backup. The current configuration was left unchanged."
+        notification = .text(.workspaceMessageBackupRestoreFailed)
         return .failed
       }
     }
@@ -289,7 +294,7 @@ public final class SchneeGlassWorkspaceModel {
 
     isMutatingConfiguration = true
     isCreatingGlass = true
-    userMessage = nil
+    notification = nil
     defer {
       isCreatingGlass = false
       isMutatingConfiguration = false
@@ -313,7 +318,7 @@ public final class SchneeGlassWorkspaceModel {
         {
           enterConfigurationRecoveryRequiredState()
         } else {
-          userMessage = Self.userFacingMessage(for: error)
+          notification = Self.userFacingMessage(for: error)
         }
       }
     }
@@ -356,19 +361,17 @@ public final class SchneeGlassWorkspaceModel {
         connectedFolderURLs[id] = nil
 
         glasses.removeAll { $0.id == id }
-        userMessage = nil
+        notification = nil
       } catch is CancellationError {
         return
       } catch let error as RemoveGlassError {
         if case .configurationLoadFailed = error {
           enterConfigurationRecoveryRequiredState()
         } else {
-          userMessage =
-            "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+          notification = .text(.workspaceMessageRemoveFailed)
         }
       } catch {
-        userMessage =
-          "SchneeGlass couldn't remove this Glass from its configuration. The folder and its files were not changed."
+        notification = .text(.workspaceMessageRemoveFailed)
       }
     }
   }
@@ -412,13 +415,11 @@ public final class SchneeGlassWorkspaceModel {
         if case .configurationLoadFailed = error {
           enterConfigurationRecoveryRequiredState()
         } else {
-          userMessage =
-            "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+          notification = .text(.workspaceMessagePlacementFailed)
         }
         return .failed
       } catch {
-        userMessage =
-          "SchneeGlass couldn't save the new Glass position. Files and folders were not changed."
+        notification = .text(.workspaceMessagePlacementFailed)
         return .failed
       }
     }
@@ -441,8 +442,7 @@ public final class SchneeGlassWorkspaceModel {
       return .busy
     }
     guard Set(placements.keys) == Set(glasses.map(\.id)) else {
-      userMessage =
-        "SchneeGlass couldn't reset positions because the workspace changed. No files or folders were changed."
+      notification = .text(.workspaceMessageResetStale)
       return .failed
     }
 
@@ -461,7 +461,7 @@ public final class SchneeGlassWorkspaceModel {
             glasses[index].placement = placement
           }
         }
-        userMessage = nil
+        notification = nil
         return .updated
       } catch is CancellationError {
         return .failed
@@ -469,13 +469,11 @@ public final class SchneeGlassWorkspaceModel {
         if case .configurationLoadFailed = error {
           enterConfigurationRecoveryRequiredState()
         } else {
-          userMessage =
-            "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
+          notification = .text(.workspaceMessageResetFailed)
         }
         return .failed
       } catch {
-        userMessage =
-          "SchneeGlass couldn't reset Glass positions. Files and folders were not changed."
+        notification = .text(.workspaceMessageResetFailed)
         return .failed
       }
     }
@@ -575,35 +573,30 @@ public final class SchneeGlassWorkspaceModel {
       updateInteraction(.idle, for: glassID)
 
       if let failure = result.failed {
-        userMessage = Self.copyFailureMessage(
-          failure,
-          succeededCount: result.succeeded.count
-        )
+        notification = .copyFailure(failure.reason, succeededCount: result.succeeded.count)
         return !result.succeeded.isEmpty
       }
 
       if result.succeeded.contains(where: { $0.recoveryMetadataCleanupPending }) {
-        userMessage =
-          "The files were copied, but SchneeGlass still has recovery metadata to clean up. Your copied files were not changed."
+        notification = .text(.workspaceMessageCopyCleanupPending)
       } else {
-        userMessage = nil
+        notification = nil
       }
       return true
     } catch let error as GlassCopyExecutionError {
       updateInteraction(.idle, for: glassID)
       switch error {
       case .sessionNotRunning, .destinationMismatch:
-        userMessage = "This Glass is no longer available as a copy destination. Nothing was copied."
+        notification = .text(.workspaceMessageCopyDestinationGone)
       case .copyInProgress:
-        userMessage = "A copy is already running for this Glass."
+        notification = .text(.workspaceMessageCopyBusy)
       case .planNotPending:
-        userMessage =
-          "This Drop is no longer authorized for copying. Nothing was copied; try again."
+        notification = .text(.workspaceMessageCopyUnauthorized)
       }
       return false
     } catch {
       updateInteraction(.idle, for: glassID)
-      userMessage = "SchneeGlass couldn't copy these files. Source files were not moved or deleted."
+      notification = .text(.workspaceMessageCopyFailed)
       return false
     }
   }
@@ -645,7 +638,7 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     isMutatingConfiguration = true
-    userMessage = nil
+    notification = nil
     defer { isMutatingConfiguration = false }
 
     await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
@@ -672,19 +665,18 @@ public final class SchneeGlassWorkspaceModel {
         case .configurationLoadFailed:
           enterConfigurationRecoveryRequiredState()
         case .configurationChanged:
-          userMessage =
-            "The Glass configuration changed while renaming. Nothing was overwritten; try again."
+          notification = .text(.workspaceMessageRenameStale)
         case .emptyTitle:
-          userMessage = "Glass name cannot be empty."
+          notification = .text(.workspaceMessageRenameEmpty)
         case .titleTooLong:
-          userMessage = "Glass name must be 100 characters or fewer."
+          notification = .text(.workspaceMessageRenameTooLong)
         case .invalidConfiguration:
-          userMessage = "SchneeGlass couldn't build a valid renamed Glass. Nothing was saved."
+          notification = .text(.workspaceMessageRenameInvalid)
         case .configurationSaveFailed:
-          userMessage = "SchneeGlass couldn't save the new Glass name. Nothing was changed."
+          notification = .text(.workspaceMessageRenameSaveFailed)
         }
       } catch {
-        userMessage = "SchneeGlass couldn't rename this Glass. Nothing was changed."
+        notification = .text(.workspaceMessageRenameFailed)
       }
     }
   }
@@ -708,7 +700,7 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     isMutatingConfiguration = true
-    userMessage = nil
+    notification = nil
     defer { isMutatingConfiguration = false }
 
     await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
@@ -735,18 +727,14 @@ public final class SchneeGlassWorkspaceModel {
         case .configurationLoadFailed:
           enterConfigurationRecoveryRequiredState()
         case .configurationChanged:
-          userMessage =
-            "The Glass configuration changed while updating Spaces behavior. Nothing was overwritten; try again."
+          notification = .text(.workspaceMessageSpacesStale)
         case .invalidConfiguration:
-          userMessage =
-            "SchneeGlass couldn't build a valid Spaces configuration. Nothing was saved."
+          notification = .text(.workspaceMessageSpacesInvalid)
         case .configurationSaveFailed:
-          userMessage =
-            "SchneeGlass couldn't save the Spaces behavior. Nothing was changed."
+          notification = .text(.workspaceMessageSpacesSaveFailed)
         }
       } catch {
-        userMessage =
-          "SchneeGlass couldn't update this Glass's Spaces behavior. Nothing was changed."
+        notification = .text(.workspaceMessageSpacesFailed)
       }
     }
   }
@@ -803,7 +791,7 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     isMutatingConfiguration = true
-    userMessage = nil
+    notification = nil
     defer { isMutatingConfiguration = false }
 
     await configurationMutationTaskCoordinator.run(ifBusy: ()) { [weak self] in
@@ -826,20 +814,18 @@ public final class SchneeGlassWorkspaceModel {
 
         do {
           try await activate(seed)
-          userMessage = nil
+          notification = nil
         } catch is CancellationError {
           return
         } catch {
-          userMessage =
-            "The folder reconnect was saved, but SchneeGlass couldn't start this Glass. Try reconnecting again or restart SchneeGlass."
+          notification = .text(.workspaceMessageReconnectActivationFailed)
         }
       } catch is CancellationError {
         return
       } catch let error as ReconnectGlassSourceError {
         handleReconnectError(error)
       } catch {
-        userMessage =
-          "SchneeGlass couldn't reconnect this Glass. The saved folder connection was left unchanged."
+        notification = .text(.workspaceMessageReconnectFailed)
       }
     }
   }
@@ -848,7 +834,7 @@ public final class SchneeGlassWorkspaceModel {
     do {
       try fileActionUseCase.open(item)
     } catch {
-      userMessage = "macOS couldn't open \(item.displayName)."
+      notification = .openFailed(item.displayName)
     }
   }
 
@@ -862,14 +848,14 @@ public final class SchneeGlassWorkspaceModel {
 
   public func revealConnectedFolder(glassID: GlassID) {
     guard let url = connectedFolderURLs[glassID] else {
-      userMessage = "This Glass does not currently have an active folder connection."
+      notification = .text(.workspaceMessageInactiveConnection)
       return
     }
     folderActionUseCase.revealConnectedFolder(url: url)
   }
 
   public func dismissMessage() {
-    userMessage = nil
+    notification = nil
   }
 
   public func prepareForTermination() {
@@ -943,12 +929,11 @@ public final class SchneeGlassWorkspaceModel {
     }
 
     if result.refreshedConfigurationSavePending {
-      userMessage =
-        "Some refreshed folder permissions could not be saved. Your current Glasses remain available for this session."
+      notification = .text(.workspaceMessageRestorePermissionsPending)
     } else if !result.failures.isEmpty {
-      userMessage = "Some Glasses couldn't reconnect. Other Glasses were restored normally."
+      notification = .text(.workspaceMessageRestorePartial)
     } else {
-      userMessage = nil
+      notification = nil
     }
   }
 
@@ -1042,53 +1027,42 @@ public final class SchneeGlassWorkspaceModel {
     case .configurationLoadFailed:
       enterConfigurationRecoveryRequiredState()
     case .configurationMissing:
-      userMessage = "This Glass is no longer present in the saved configuration."
+      notification = .text(.workspaceMessageReconnectMissing)
     case .sourceCreationFailed:
-      userMessage =
-        "SchneeGlass couldn't remember access to the selected folder. The previous connection was left unchanged."
+      notification = .text(.workspaceMessageReconnectAccessSaveFailed)
     case .selectedSourceIdentityUnavailable:
-      userMessage =
-        "SchneeGlass couldn't prove that the selected folder is the original folder. The previous connection was left unchanged."
+      notification = .text(.workspaceMessageReconnectIdentityUnknown)
     case .selectedSourceMismatch:
-      userMessage =
-        "That is a different folder. Choose the original folder that this Glass was connected to."
+      notification = .text(.workspaceMessageReconnectWrongFolder)
     case .folderAccess(.bookmarkResolutionFailed), .folderAccessFailed:
-      userMessage =
-        "macOS couldn't reopen the selected folder. The previous connection was left unchanged."
+      notification = .text(.workspaceMessageReconnectOpenFailed)
     case .folderAccess(.accessDenied):
-      userMessage =
-        "macOS denied access to the selected folder. The previous connection was left unchanged."
+      notification = .text(.workspaceMessageReconnectDenied)
     case .folderAccess(.resourceReplacementDetected):
-      userMessage =
-        "The selected folder changed while reconnecting. Nothing was saved."
+      notification = .text(.workspaceMessageReconnectReplaced)
     case .eventStreamFailed:
-      userMessage =
-        "SchneeGlass could access the folder but couldn't watch it for changes. Nothing was saved."
+      notification = .text(.workspaceMessageReconnectWatchFailed)
     case .snapshotFailed:
-      userMessage =
-        "SchneeGlass could access the folder but couldn't read it safely. Nothing was saved."
+      notification = .text(.workspaceMessageReconnectReadFailed)
     case .invalidConfiguration:
-      userMessage =
-        "SchneeGlass couldn't build a valid reconnect configuration. Nothing was saved."
+      notification = .text(.workspaceMessageReconnectInvalid)
     case .staleConfiguration:
-      userMessage =
-        "The Glass configuration changed while reconnecting. Nothing was overwritten; try again."
+      notification = .text(.workspaceMessageReconnectStale)
     case .configurationSaveFailed:
-      userMessage =
-        "SchneeGlass couldn't save the reconnected folder. The previous connection was left unchanged."
+      notification = .text(.workspaceMessageReconnectSaveFailed)
     }
   }
 
   private func enterConfigurationRecoveryRequiredState() {
     requiresConfigurationRecovery = true
-    userMessage = Self.configurationRecoveryRequiredMessage
+    notification = .text(.workspaceMessageRecoveryRequired)
   }
 
   private func presentConfigurationRecoveryRequirementIfNeeded() {
     guard requiresConfigurationRecovery else {
       return
     }
-    userMessage = Self.configurationRecoveryRequiredMessage
+    notification = .text(.workspaceMessageRecoveryRequired)
   }
 
   private var hasActiveCopy: Bool {
@@ -1150,70 +1124,38 @@ public final class SchneeGlassWorkspaceModel {
     }
   }
 
-  private static let configurationRecoveryRequiredMessage =
-    "SchneeGlass couldn't read its saved configuration. Use Recovery before making changes."
-
   static func copyFailureMessage(
     _ failure: CopyItemFailure,
     succeededCount: Int
   ) -> String {
-    let prefix =
-      succeededCount > 0
-      ? "\(succeededCount) file(s) were copied before the operation stopped. "
-      : "Nothing was copied. "
-
-    switch failure.reason {
-    case .sourceUnavailable:
-      return prefix + "A source file became unavailable."
-    case .unsupportedItem:
-      return prefix + "One of the dropped items is not supported."
-    case .destinationUnavailable:
-      return prefix + "The destination folder became unavailable."
-    case .permissionDenied:
-      return prefix + "macOS denied file access."
-    case .insufficientSpace:
-      return prefix + "There is not enough free space at the destination."
-    case .collision:
-      return prefix + "A file with the same name already exists. Nothing was overwritten."
-    case .verificationFailed:
-      return prefix + "SchneeGlass could not verify a copied file safely."
-    case .commitStateUnknown:
-      let completedPrefix = succeededCount > 0 ? prefix : ""
-      return
-        completedPrefix
-        + "SchneeGlass may have created the current destination file, but could not verify its final state. "
-        + "Check Recovery before retrying; source files were not moved or deleted."
-    case .cancelled:
-      return prefix + "The copy was cancelled."
-    case .unexpected:
-      return prefix + "SchneeGlass encountered an unexpected copy error."
-    }
+    WorkspaceNotification.copyFailure(failure.reason, succeededCount: succeededCount)
+      .resolve(locale: Locale(identifier: "en"))
   }
 
-  private static func userFacingMessage(for error: Error) -> String {
+  private static func userFacingMessage(for error: Error) -> WorkspaceNotification {
     guard let createError = error as? CreateGlassError else {
-      return "SchneeGlass couldn't add this folder. Nothing was changed."
+      return .text(.workspaceMessageAddFailed)
     }
 
     switch createError {
     case .sourceCreationFailed:
-      return "SchneeGlass couldn't remember access to this folder."
+      return .text(.workspaceMessageAddAccessSaveFailed)
     case .sourceIdentityUnavailable:
-      return "SchneeGlass couldn't safely verify this folder's identity. Nothing was added."
+      return .text(.workspaceMessageAddIdentityUnknown)
     case .placementUnavailable:
-      return "SchneeGlass couldn't find a usable screen position."
+      return .text(.workspaceMessageAddPlacementFailed)
     case .invalidConfiguration:
-      return "SchneeGlass couldn't create a valid Glass for this folder."
+      return .text(.workspaceMessageAddInvalid)
     case .configurationLoadFailed:
-      return configurationRecoveryRequiredMessage
+      return .text(.workspaceMessageRecoveryRequired)
     case .folderAccess:
-      return "SchneeGlass couldn't access this folder. Choose it again to reconnect."
+      return .text(.workspaceMessageAddAccessFailed)
     case .eventStreamFailed:
-      return "SchneeGlass couldn't watch this folder for changes."
+      return .text(.workspaceMessageAddWatchFailed)
     case .snapshotFailed:
-      return "SchneeGlass couldn't read this folder."
+      return .text(.workspaceMessageAddReadFailed)
     case .configurationSaveFailed:
-      return "SchneeGlass couldn't save this Glass. Nothing was added."
+      return .text(.workspaceMessageAddSaveFailed)
     }
   }
 }

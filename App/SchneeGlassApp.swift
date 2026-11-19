@@ -67,9 +67,10 @@ struct SchneeGlassApp: App {
     .commands {
       if case .ready(let root) = bootstrapState {
         let model = root.workspaceModel
+        let locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
 
         CommandGroup(after: .newItem) {
-          Button("Add Glass") {
+          Button(SchneeGlassMenuText.addGlassCommand.resolve(locale: locale)) {
             Task {
               await model.addGlass()
             }
@@ -78,22 +79,22 @@ struct SchneeGlassApp: App {
           .disabled(!model.canAddGlass)
         }
 
-        CommandMenu("Glasses") {
-          Button("Show All Glasses") {
+        CommandMenu(SchneeGlassMenuText.glasses.resolve(locale: locale)) {
+          Button(SchneeGlassMenuText.showAll.resolve(locale: locale)) {
             panelCoordinator?.showAll()
           }
           .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-          Button("Hide All Glasses") {
+          Button(SchneeGlassMenuText.hideAll.resolve(locale: locale)) {
             panelCoordinator?.hideAll()
           }
           .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
           Divider()
 
-          Button("Reset Glass Positions…") {
+          Button(SchneeGlassMenuText.resetPositions.resolve(locale: locale)) {
             if let panelCoordinator {
-              requestGlassPositionReset(coordinator: panelCoordinator)
+              requestGlassPositionReset(coordinator: panelCoordinator, locale: locale)
             }
           }
           .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
@@ -147,6 +148,7 @@ final class SchneeGlassApplicationDelegate: NSObject, NSApplicationDelegate {
 }
 
 private struct SchneeGlassMenuBarBootstrapContent: View {
+  @Environment(\.locale) private var locale
   let bootstrapState: SchneeGlassBootstrapState
   let panelCoordinator: DesktopGlassPanelCoordinator?
 
@@ -160,16 +162,16 @@ private struct SchneeGlassMenuBarBootstrapContent: View {
         panelCoordinator: panelCoordinator
       )
     } else {
-      Text("SchneeGlass couldn't start")
+      Text(SchneeGlassMenuText.startupFailed.resolve(locale: locale))
         .disabled(true)
 
       Divider()
 
       SettingsLink {
-        Text("Settings…")
+        Text(SchneeGlassMenuText.settings.resolve(locale: locale))
       }
 
-      Button("Quit SchneeGlass") {
+      Button(SchneeGlassMenuText.quit.resolve(locale: locale)) {
         NSApplication.shared.terminate(nil)
       }
     }
@@ -177,13 +179,14 @@ private struct SchneeGlassMenuBarBootstrapContent: View {
 }
 
 private struct SchneeGlassMenuBarContent: View {
+  @Environment(\.locale) private var locale
   let model: SchneeGlassWorkspaceModel
   let panelCoordinator: DesktopGlassPanelCoordinator
 
   var body: some View {
-    let labels = GlassMenuLabels.make(for: model.glasses)
+    let labels = GlassMenuLabels.make(for: model.glasses, locale: locale)
 
-    Button("Add Glass…") {
+    Button(SchneeGlassMenuText.addGlass.resolve(locale: locale)) {
       Task {
         await model.addGlass()
       }
@@ -192,17 +195,17 @@ private struct SchneeGlassMenuBarContent: View {
 
     Divider()
 
-    Button("Show All Glasses") {
+    Button(SchneeGlassMenuText.showAll.resolve(locale: locale)) {
       panelCoordinator.showAll()
     }
     .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-    Button("Hide All Glasses") {
+    Button(SchneeGlassMenuText.hideAll.resolve(locale: locale)) {
       panelCoordinator.hideAll()
     }
     .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-    Menu("Show Glass") {
+    Menu(SchneeGlassMenuText.showGlass.resolve(locale: locale)) {
       ForEach(model.glasses) { entry in
         Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(true, for: entry.id)
@@ -212,7 +215,7 @@ private struct SchneeGlassMenuBarContent: View {
     }
     .disabled(model.glasses.isEmpty || !panelCoordinator.canChangeIndividualVisibility)
 
-    Menu("Hide Glass") {
+    Menu(SchneeGlassMenuText.hideGlass.resolve(locale: locale)) {
       ForEach(model.glasses) { entry in
         Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(false, for: entry.id)
@@ -224,32 +227,33 @@ private struct SchneeGlassMenuBarContent: View {
 
     Divider()
 
-    Button("Reset Glass Positions…") {
-      requestGlassPositionReset(coordinator: panelCoordinator)
+    Button(SchneeGlassMenuText.resetPositions.resolve(locale: locale)) {
+      requestGlassPositionReset(coordinator: panelCoordinator, locale: locale)
     }
     .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
 
     Divider()
 
     SettingsLink {
-      Text("Settings…")
+      Text(SchneeGlassMenuText.settings.resolve(locale: locale))
     }
 
-    Button("Quit SchneeGlass") {
+    Button(SchneeGlassMenuText.quit.resolve(locale: locale)) {
       NSApplication.shared.terminate(nil)
     }
   }
 }
 
 @MainActor
-private func requestGlassPositionReset(coordinator: DesktopGlassPanelCoordinator) {
+private func requestGlassPositionReset(
+  coordinator: DesktopGlassPanelCoordinator, locale: Locale
+) {
   let confirmation = NSAlert()
-  confirmation.messageText = "Reset Glass Positions?"
-  confirmation.informativeText =
-    "All Glass panels will be moved onto the current main display. Connected folders and their files will not be moved, renamed, or deleted."
+  confirmation.messageText = SchneeGlassMenuText.resetTitle.resolve(locale: locale)
+  confirmation.informativeText = SchneeGlassMenuText.resetDetail.resolve(locale: locale)
   confirmation.alertStyle = .informational
-  confirmation.addButton(withTitle: "Reset Positions")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(withTitle: SchneeGlassMenuText.resetAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassMenuText.cancel.resolve(locale: locale))
 
   guard confirmation.runModal() == .alertFirstButtonReturn else {
     return
@@ -262,25 +266,27 @@ private func requestGlassPositionReset(coordinator: DesktopGlassPanelCoordinator
       return
     case .busy:
       presentResetFailure(
-        message:
-          "SchneeGlass is already updating its configuration. Try Reset Positions again after the current operation finishes."
+        message: SchneeGlassMenuText.resetBusy.resolve(locale: locale),
+        locale: locale
       )
     case .noAvailableScreen:
       presentResetFailure(
-        message: "SchneeGlass could not find an available display. No Glass positions were changed."
+        message: SchneeGlassMenuText.resetNoDisplay.resolve(locale: locale),
+        locale: locale
       )
     case .failed:
       presentResetFailure(
-        message: "SchneeGlass could not reset Glass positions. No files or folders were changed."
+        message: SchneeGlassMenuText.resetFailed.resolve(locale: locale),
+        locale: locale
       )
     }
   }
 }
 
 @MainActor
-private func presentResetFailure(message: String) {
+private func presentResetFailure(message: String, locale: Locale) {
   let alert = NSAlert()
-  alert.messageText = "Couldn’t Reset Glass Positions"
+  alert.messageText = SchneeGlassMenuText.resetFailureTitle.resolve(locale: locale)
   alert.informativeText = message
   alert.alertStyle = .warning
   alert.addButton(withTitle: "OK")
@@ -288,6 +294,7 @@ private func presentResetFailure(message: String) {
 }
 
 private struct SchneeGlassBootstrapFailureView: View {
+  @Environment(\.locale) private var locale
   var body: some View {
     VStack(spacing: 14) {
       Image(systemName: "exclamationmark.triangle")
@@ -295,16 +302,14 @@ private struct SchneeGlassBootstrapFailureView: View {
         .foregroundStyle(.secondary)
         .accessibilityHidden(true)
 
-      Text("SchneeGlass couldn't start")
+      Text(SchneeGlassMenuText.startupFailed.resolve(locale: locale))
         .font(.title3.weight(.semibold))
 
-      Text(
-        "The application support location could not be prepared. No folders or files were changed."
-      )
-      .font(.callout)
-      .foregroundStyle(.secondary)
-      .multilineTextAlignment(.center)
-      .frame(maxWidth: 420)
+      Text(SchneeGlassMenuText.startupFailedDetail.resolve(locale: locale))
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: 420)
     }
     .frame(minWidth: 520, minHeight: 360)
     .padding(24)
@@ -312,6 +317,7 @@ private struct SchneeGlassBootstrapFailureView: View {
 }
 
 private struct SchneeGlassSettingsBootstrapView: View {
+  @Environment(\.locale) private var locale
   let bootstrapState: SchneeGlassBootstrapState
   let panelCoordinator: DesktopGlassPanelCoordinator?
 
@@ -327,13 +333,11 @@ private struct SchneeGlassSettingsBootstrapView: View {
       )
     } else {
       Form {
-        Section("Recovery") {
-          Text(
-            "Recovery is unavailable because SchneeGlass could not prepare its application support location."
-          )
-          .foregroundStyle(.secondary)
+        Section(SchneeGlassSettingsText.recovery.resolve(locale: locale)) {
+          Text(SchneeGlassSettingsText.recoveryUnavailable.resolve(locale: locale))
+            .foregroundStyle(.secondary)
 
-          Text("No folders or files were changed.")
+          Text(SchneeGlassSettingsText.filesUnchanged.resolve(locale: locale))
             .foregroundStyle(.secondary)
         }
       }
@@ -345,6 +349,7 @@ private struct SchneeGlassSettingsBootstrapView: View {
 }
 
 private struct SchneeGlassSettingsView: View {
+  @Environment(\.locale) private var locale
   let model: SchneeGlassWorkspaceModel
   let pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
   let panelCoordinator: DesktopGlassPanelCoordinator
@@ -352,49 +357,46 @@ private struct SchneeGlassSettingsView: View {
   @State private var backups: [ConfigurationBackupDescriptor] = []
   @State private var isLoadingBackups = false
   @State private var isRestoringBackup = false
-  @State private var recoveryMessage: String?
+  @State private var recoveryMessage: SchneeGlassSettingsText?
 
   var body: some View {
     Form {
-      Section("Global Shortcut") {
+      Section(SchneeGlassSettingsText.globalShortcut.resolve(locale: locale)) {
         HStack(spacing: 16) {
-          Text("Show / Hide All Glasses")
+          Text(SchneeGlassSettingsText.showHideAll.resolve(locale: locale))
           Spacer()
           SchneeGlassGlobalShortcutRecorderView()
         }
 
-        Text(
-          "No shortcut is assigned by default. Choose a shortcut to toggle all Desktop Glasses from anywhere without granting Accessibility permission."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        Text(SchneeGlassSettingsText.shortcutDetail.resolve(locale: locale))
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
 
-      Section("Configuration Recovery") {
-        Text(
-          "Restore an earlier SchneeGlass configuration without moving, renaming, deleting, or replacing files in connected folders."
-        )
-        .foregroundStyle(.secondary)
+      Section(SchneeGlassSettingsText.configurationRecovery.resolve(locale: locale)) {
+        Text(SchneeGlassSettingsText.configurationRecoveryDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
 
         if isLoadingBackups {
-          ProgressView("Loading configuration backups…")
+          ProgressView(SchneeGlassSettingsText.loadingBackups.resolve(locale: locale))
         } else if backups.isEmpty {
-          Text("No valid configuration backups are available.")
+          Text(SchneeGlassSettingsText.noBackups.resolve(locale: locale))
             .foregroundStyle(.secondary)
         } else {
           ForEach(backups) { backup in
             HStack(spacing: 12) {
               VStack(alignment: .leading, spacing: 3) {
                 Text(backup.createdAt.formatted(date: .abbreviated, time: .standard))
-                Text("Configuration backup")
+                Text(SchneeGlassSettingsText.backup.resolve(locale: locale))
                   .font(.caption)
                   .foregroundStyle(.secondary)
               }
 
               Spacer()
 
-              Button("Restore…") {
-                guard confirmConfigurationBackupRestore(createdAt: backup.createdAt) else {
+              Button(SchneeGlassSettingsText.restore.resolve(locale: locale)) {
+                guard confirmConfigurationBackupRestore(createdAt: backup.createdAt, locale: locale)
+                else {
                   return
                 }
 
@@ -408,7 +410,7 @@ private struct SchneeGlassSettingsView: View {
         }
 
         HStack {
-          Button("Refresh Backups") {
+          Button(SchneeGlassSettingsText.refreshBackups.resolve(locale: locale)) {
             Task { @MainActor in
               await refreshBackups()
             }
@@ -418,27 +420,25 @@ private struct SchneeGlassSettingsView: View {
           if isRestoringBackup {
             ProgressView()
               .controlSize(.small)
-            Text("Restoring configuration…")
+            Text(SchneeGlassSettingsText.restoring.resolve(locale: locale))
               .foregroundStyle(.secondary)
           }
         }
 
         if let recoveryMessage {
-          Text(recoveryMessage)
+          Text(recoveryMessage.resolve(locale: locale))
             .foregroundStyle(.secondary)
         }
       }
 
-      Section("Pending Copy Recovery") {
-        Text(
-          "Review interrupted or incompletely finalized copy operations. SchneeGlass never deletes or overwrites a final user-visible file from this Recovery Center."
-        )
-        .foregroundStyle(.secondary)
+      Section(SchneeGlassCopyRecoveryText.pendingRecovery.resolve(locale: locale)) {
+        Text(SchneeGlassCopyRecoveryText.pendingRecoveryDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
 
         if pendingCopyRecoveryModel.isLoading {
-          ProgressView("Inspecting pending copies…")
+          ProgressView(SchneeGlassCopyRecoveryText.inspectingPending.resolve(locale: locale))
         } else if pendingCopyRecoveryModel.items.isEmpty {
-          Text("No pending copy recovery items are available.")
+          Text(SchneeGlassCopyRecoveryText.noPending.resolve(locale: locale))
             .foregroundStyle(.secondary)
         } else {
           ForEach(pendingCopyRecoveryModel.items) { item in
@@ -447,7 +447,9 @@ private struct SchneeGlassSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(item.record.finalFilename)
                     .font(.body.weight(.medium))
-                  Text(item.glassTitle ?? "Unknown Glass")
+                  let unknownGlass = SchneeGlassCopyRecoveryText.unknownGlass.resolve(
+                    locale: locale)
+                  Text(item.glassTitle ?? unknownGlass)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
@@ -460,17 +462,19 @@ private struct SchneeGlassSettingsView: View {
                 }
               }
 
-              Text(pendingCopyRecoveryDescription(for: item))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              Text(
+                CopyRecoveryStatePresentation.description(for: item.state, locale: locale)
+              )
+              .font(.caption)
+              .foregroundStyle(.secondary)
 
               HStack(spacing: 8) {
                 if item.actions.contains(.revealStaging)
                   || item.actions.contains(.revealFinal)
                 {
-                  Menu("Inspect in Finder") {
+                  Menu(SchneeGlassCopyRecoveryText.inspectFinder.resolve(locale: locale)) {
                     if item.actions.contains(.revealStaging) {
-                      Button("Show Incomplete Copy") {
+                      Button(SchneeGlassCopyRecoveryText.showIncomplete.resolve(locale: locale)) {
                         Task { @MainActor in
                           _ = await pendingCopyRecoveryModel.reveal(
                             action: .revealStaging,
@@ -481,7 +485,7 @@ private struct SchneeGlassSettingsView: View {
                     }
 
                     if item.actions.contains(.revealFinal) {
-                      Button("Show Final File") {
+                      Button(SchneeGlassCopyRecoveryText.showFinal.resolve(locale: locale)) {
                         Task { @MainActor in
                           _ = await pendingCopyRecoveryModel.reveal(
                             action: .revealFinal,
@@ -494,8 +498,10 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.discardMetadata) {
-                  Button("Discard Metadata…") {
-                    guard confirmPendingCopyMetadataDiscard(filename: item.record.finalFilename)
+                  Button(SchneeGlassCopyRecoveryText.discardMetadataMenu.resolve(locale: locale)) {
+                    guard
+                      confirmPendingCopyMetadataDiscard(
+                        filename: item.record.finalFilename, locale: locale)
                     else {
                       return
                     }
@@ -509,8 +515,11 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.removeOwnedStaging) {
-                  Button("Remove Incomplete Copy…") {
-                    guard confirmOwnedStagingRemoval(filename: item.record.finalFilename) else {
+                  Button(SchneeGlassCopyRecoveryText.removeIncompleteMenu.resolve(locale: locale)) {
+                    guard
+                      confirmOwnedStagingRemoval(
+                        filename: item.record.finalFilename, locale: locale)
+                    else {
                       return
                     }
                     Task { @MainActor in
@@ -523,7 +532,7 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.reconnectDestination) {
-                  Button("Reconnect Destination…") {
+                  Button(SchneeGlassCopyRecoveryText.reconnectDestination.resolve(locale: locale)) {
                     Task { @MainActor in
                       _ = await pendingCopyRecoveryModel.reconnectDestination(
                         operationID: item.id
@@ -541,7 +550,7 @@ private struct SchneeGlassSettingsView: View {
           }
         }
 
-        Button("Refresh Pending Copies") {
+        Button(SchneeGlassCopyRecoveryText.refreshPending.resolve(locale: locale)) {
           Task { @MainActor in
             await pendingCopyRecoveryModel.refresh()
           }
@@ -551,18 +560,16 @@ private struct SchneeGlassSettingsView: View {
             || pendingCopyRecoveryModel.activeOperationID != nil
         )
 
-        if let message = pendingCopyRecoveryModel.message {
+        if let message = pendingCopyRecoveryModel.localizedMessage(locale: locale) {
           Text(message)
             .font(.caption)
             .foregroundStyle(.secondary)
         }
       }
 
-      Section("Safety") {
-        Text(
-          "Configuration Recovery changes SchneeGlass configuration only. Reconnect Destination updates the saved security-scoped folder access after identity checks; it does not move, rename, delete, or overwrite folder contents. Inspect in Finder is read-only and revalidates the current recovery state before opening an item. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery."
-        )
-        .foregroundStyle(.secondary)
+      Section(SchneeGlassCopyRecoveryText.safety.resolve(locale: locale)) {
+        Text(SchneeGlassCopyRecoveryText.safetyDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
       }
     }
     .formStyle(.grouped)
@@ -586,15 +593,12 @@ private struct SchneeGlassSettingsView: View {
     switch await model.loadConfigurationBackups() {
     case .loaded(let loadedBackups):
       backups = loadedBackups
-      if recoveryMessage
-        == "SchneeGlass couldn't read its configuration backups. No configuration was changed."
-      {
+      if recoveryMessage == .backupReadFailed {
         recoveryMessage = nil
       }
     case .failed:
       backups = []
-      recoveryMessage =
-        "SchneeGlass couldn't read its configuration backups. No configuration was changed."
+      recoveryMessage = .backupReadFailed
     }
   }
 
@@ -604,8 +608,7 @@ private struct SchneeGlassSettingsView: View {
       return
     }
     guard !model.isMutatingConfiguration else {
-      recoveryMessage =
-        "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+      recoveryMessage = .configurationBusy
       return
     }
 
@@ -618,119 +621,83 @@ private struct SchneeGlassSettingsView: View {
     switch result {
     case .restored:
       panelCoordinator.showAll()
-      recoveryMessage = "Configuration restored. Connected folders and files were not changed."
+      recoveryMessage = .configurationRestored
       await refreshBackups()
       await pendingCopyRecoveryModel.refresh()
 
     case .restoredNeedsRestart:
-      recoveryMessage =
-        "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
+      recoveryMessage = .restoredNeedsRestart
       await refreshBackups()
 
     case .busy:
       panelCoordinator.showAll()
-      recoveryMessage =
-        "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+      recoveryMessage = .configurationBusy
 
     case .copyInProgress:
       panelCoordinator.showAll()
-      recoveryMessage = "Wait for the current file copy to finish before restoring configuration."
+      recoveryMessage = .waitForCopy
 
     case .failed:
       panelCoordinator.showAll()
-      recoveryMessage =
-        "SchneeGlass couldn't restore that backup. The current configuration was left unchanged."
+      recoveryMessage = .restoreFailed
     }
   }
 }
 
 private struct SchneeGlassGlobalShortcutRecorderView: NSViewRepresentable {
+  @Environment(\.locale) private var locale
+
   func makeNSView(context: Context) -> NSView {
-    SchneeGlassGlobalVisibilityShortcutController.makeRecorderView()
+    SchneeGlassGlobalVisibilityShortcutController.makeRecorderView(
+      accessibilityLabel: SchneeGlassSettingsText.shortcutRecorder.resolve(locale: locale)
+    )
   }
 
-  func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private func pendingCopyRecoveryDescription(
-  for item: PendingCopyRecoveryCenterItem
-) -> String {
-  switch item.state {
-  case .configurationMissing:
-    return
-      "The original Glass configuration is missing. SchneeGlass will keep the recovery metadata and will not guess where the file belongs."
-
-  case .destinationUnavailable:
-    return
-      "The destination folder cannot currently be accessed. Reconnect it before attempting cleanup."
-
-  case .assessed(let disposition):
-    switch disposition {
-    case .metadataOnly:
-      return "Only recovery metadata remains. Discarding it does not modify a connected folder."
-    case .stagingPresent(let verification):
-      if verification.resourceIdentity == .matchesRecordedIdentity {
-        return
-          "An incomplete SchneeGlass-owned staging file remains and its resource identity still matches the recorded operation."
-      }
-      return
-        "A staging-like item remains, but ownership cannot be proven. SchneeGlass will not delete it."
-    case .finalPresent:
-      return
-        "A final user-visible file exists. It is preserved; only recovery metadata may be discarded explicitly."
-    case .stagingAndFinalPresent(let staging, _):
-      if staging.resourceIdentity == .matchesRecordedIdentity {
-        return
-          "Both staging and final files exist. The final file is preserved; only the proven app-owned staging file may be removed explicitly."
-      }
-      return
-        "Both staging and final files exist, but staging ownership cannot be proven. SchneeGlass will not delete either file."
-    case .invalidRecord:
-      return "Recovery metadata is invalid. No mutation action is offered."
-    case .destinationMismatch:
-      return
-        "The recovery record does not match the destination Glass. No mutation action is offered."
-    case .destinationUnavailable:
-      return "The destination folder cannot currently be inspected."
-    case .unexpectedFileType:
-      return
-        "An unexpected filesystem item exists at a recovery path. SchneeGlass will not mutate it."
-    }
+  func updateNSView(_ nsView: NSView, context: Context) {
+    nsView.setAccessibilityLabel(SchneeGlassSettingsText.shortcutRecorder.resolve(locale: locale))
   }
 }
 
 @MainActor
-private func confirmConfigurationBackupRestore(createdAt: Date) -> Bool {
+private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Restore Configuration Backup?"
-  confirmation.informativeText =
-    "Restore the SchneeGlass configuration from \(createdAt.formatted(date: .abbreviated, time: .standard)). SchneeGlass will preserve the current configuration before replacing it. Connected folders and their files will not be moved, renamed, deleted, or replaced."
+  confirmation.messageText = SchneeGlassSettingsText.confirmRestoreTitle.resolve(locale: locale)
+  let dateStyle = Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)
+  confirmation.informativeText = SchneeGlassSettingsText.restoreConfirmation(
+    date: createdAt.formatted(dateStyle),
+    locale: locale
+  )
   confirmation.alertStyle = .warning
-  confirmation.addButton(withTitle: "Restore Configuration")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassSettingsText.confirmRestoreAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
 
 @MainActor
-private func confirmPendingCopyMetadataDiscard(filename: String) -> Bool {
+private func confirmPendingCopyMetadataDiscard(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Discard Recovery Metadata?"
-  confirmation.informativeText =
-    "Discard SchneeGlass recovery metadata for \(filename). This action does not delete, rename, move, or overwrite the final file or any incomplete staging file."
+  confirmation.messageText = SchneeGlassCopyRecoveryText.discardMetadataTitle.resolve(
+    locale: locale)
+  confirmation.informativeText = SchneeGlassCopyRecoveryText.discardConfirmation(
+    filename: filename, locale: locale)
   confirmation.alertStyle = .informational
-  confirmation.addButton(withTitle: "Discard Metadata")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassCopyRecoveryText.discardMetadataAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
 
 @MainActor
-private func confirmOwnedStagingRemoval(filename: String) -> Bool {
+private func confirmOwnedStagingRemoval(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Remove Incomplete Copy?"
-  confirmation.informativeText =
-    "Remove only the SchneeGlass-owned incomplete staging file associated with \(filename). SchneeGlass will revalidate the operation ID, file type, destination, and filesystem resource identity immediately before deletion. The final user-visible file will not be deleted or overwritten."
+  confirmation.messageText = SchneeGlassCopyRecoveryText.removeIncompleteTitle.resolve(
+    locale: locale)
+  confirmation.informativeText = SchneeGlassCopyRecoveryText.removeConfirmation(
+    filename: filename, locale: locale)
   confirmation.alertStyle = .warning
-  confirmation.addButton(withTitle: "Remove Incomplete Copy")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassCopyRecoveryText.removeIncompleteAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }

@@ -31,46 +31,62 @@ struct GlassInteractionPresentation: Equatable {
   static func dropValid(
     plan: DropPlan,
     glassTitle: String,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale = Locale(identifier: "en")
   ) -> Self? {
+    let detail = GlassLocalizedText.originalFilesStay.resolve(locale: locale)
     guard case .copy(let batch) = plan else {
       guard surface == .workspace else {
         return nil
       }
       return Self(
         indicator: .symbol("plus.circle.fill"),
-        title: "Copy to \(glassTitle)",
-        detail: "Original files stay where they are."
+        title: String(
+          format: GlassLocalizedText.dropCopyToGlass.resolve(locale: locale),
+          locale: locale,
+          glassTitle
+        ),
+        detail: detail
       )
     }
 
     let title: String
     if batch.items.count == 1, let item = batch.items.first {
-      title = "Copy \(item.destinationFilename) to \(glassTitle)"
+      title = String(
+        format: GlassLocalizedText.dropCopyFilename.resolve(locale: locale),
+        locale: locale,
+        item.destinationFilename, glassTitle
+      )
     } else {
-      title = "Copy \(batch.items.count) files to \(glassTitle)"
+      title = String(
+        format: GlassLocalizedText.dropCopyCount.resolve(locale: locale),
+        locale: locale,
+        Int64(batch.items.count), glassTitle
+      )
     }
 
     return Self(
       indicator: .symbol(surface == .workspace ? "plus.circle.fill" : "doc.on.doc"),
       title: title,
-      detail: "Original files stay where they are."
+      detail: detail
     )
   }
 
   static func dropInvalid(
     reason: DropRejection,
     glassTitle: String,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale = Locale(identifier: "en")
   ) -> Self {
     Self(
       indicator: .symbol("nosign"),
       title: rejectionTitle(
         reason,
         glassTitle: glassTitle,
-        surface: surface
+        surface: surface,
+        locale: locale
       ),
-      detail: rejectionDetail(reason, surface: surface)
+      detail: rejectionDetail(reason, surface: surface, locale: locale)
     )
   }
 
@@ -128,83 +144,87 @@ struct GlassInteractionPresentation: Equatable {
   private static func rejectionTitle(
     _ reason: DropRejection,
     glassTitle: String,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale
   ) -> String {
+    let key: GlassLocalizedText
     switch reason {
     case .unsupportedFolder:
-      return "Folders aren't supported yet"
+      key = .dropUnsupportedFolder
     case .unsupportedPackage:
-      return "Packages aren't supported yet"
+      key = .dropUnsupportedPackage
     case .unsupportedSymbolicLink:
-      return "Symbolic links aren't supported"
+      key = .dropUnsupportedLink
     case .unsupportedItem:
-      return surface == .workspace
-        ? "This item can't be copied"
-        : "This item can't be copied by SchneeGlass"
+      key = surface == .workspace ? .dropUnsupportedItem : .dropUnsupportedItemDesktop
     case .tooManyItems:
-      return "Too many files to copy at once"
+      key = .dropTooMany
     case .collision:
-      return "A file with this name already exists"
+      key = .dropCollision
     case .containsSameDirectoryItem:
-      return "Already in \(glassTitle)"
+      return String(
+        format: GlassLocalizedText.dropAlreadyInGlass.resolve(locale: locale),
+        locale: locale,
+        glassTitle
+      )
     case .destinationUnavailable:
-      return "Folder unavailable"
+      key = .unavailableTitle
     case .destinationReadOnly:
-      return "Folder is read-only"
+      key = .dropReadOnly
     case .destinationCopySafetyUnsupported:
-      return "Copy isn't supported for this folder"
+      key = .dropUnsafeDestination
     case .networkDestinationUnsupported:
-      return surface == .workspace
-        ? "Network folders aren't supported for copy yet"
-        : "Network destinations aren't supported yet"
+      key = surface == .workspace ? .dropNetworkWorkspace : .dropNetworkDesktop
     case .sourceUnavailable:
-      return "A source file is unavailable"
+      key = .dropSourceUnavailable
     case .sourceCapacityReached:
-      return "Copy capacity is busy"
+      key = .dropCapacityBusy
     case .cloudPlaceholderUnavailable:
-      return "Download the cloud file first"
+      key = .dropCloudPlaceholder
     }
+    return key.resolve(locale: locale)
   }
 
   private static func rejectionDetail(
     _ reason: DropRejection,
-    surface: GlassInteractionPresentationSurface
+    surface: GlassInteractionPresentationSurface,
+    locale: Locale
   ) -> String? {
+    let key: GlassLocalizedText?
     switch reason {
     case .tooManyItems(let maximum):
-      return
-        "SchneeGlass copies up to \(maximum) files per drop. Split this selection into smaller drops."
+      return String(
+        format: GlassLocalizedText.dropTooManyDetail.resolve(locale: locale),
+        locale: locale,
+        Int64(maximum)
+      )
     case .sourceCapacityReached(let maximum):
-      return
-        "SchneeGlass keeps up to \(maximum) source files ready across active drops. Finish another copy and try again."
+      return String(
+        format: GlassLocalizedText.dropCapacityDetail.resolve(locale: locale),
+        locale: locale,
+        Int64(maximum)
+      )
     case .collision:
-      return "Nothing will be overwritten."
+      key = .dropNoOverwrite
     case .unsupportedFolder:
-      return surface == .workspace
-        ? "v0.1 accepts regular files only."
-        : "v0.1 copies regular files only."
+      key = surface == .workspace ? .dropRegularOnlyWorkspace : .dropRegularOnlyDesktop
     case .unsupportedPackage, .unsupportedSymbolicLink, .unsupportedItem:
-      return surface == .workspace ? "The dropped item was not changed." : nil
+      key = surface == .workspace ? .dropItemUnchanged : nil
     case .containsSameDirectoryItem:
-      return surface == .workspace ? "No copy is needed." : nil
+      key = surface == .workspace ? .dropNoCopyNeeded : nil
     case .destinationUnavailable:
-      return surface == .workspace
-        ? "End this drop. If the Glass shows Folder unavailable, reconnect the original folder. Otherwise, refresh the files and try again."
-        : nil
+      key = surface == .workspace ? .dropUnavailableDetail : nil
     case .destinationReadOnly:
-      return surface == .workspace
-        ? "SchneeGlass can't write to this folder."
-        : nil
+      key = surface == .workspace ? .dropReadOnlyDetail : nil
     case .destinationCopySafetyUnsupported:
-      return "This filesystem doesn't provide the no-overwrite guarantees SchneeGlass requires."
+      key = .dropUnsafeDetail
     case .networkDestinationUnsupported:
-      return surface == .workspace ? "Open the folder in Finder instead." : nil
+      key = surface == .workspace ? .dropUseFinder : nil
     case .sourceUnavailable:
-      return surface == .workspace
-        ? "The source may have moved or become inaccessible."
-        : nil
+      key = surface == .workspace ? .dropSourceDetail : nil
     case .cloudPlaceholderUnavailable:
-      return "SchneeGlass won't start an unexpected cloud download."
+      key = .dropCloudDetail
     }
+    return key?.resolve(locale: locale)
   }
 }

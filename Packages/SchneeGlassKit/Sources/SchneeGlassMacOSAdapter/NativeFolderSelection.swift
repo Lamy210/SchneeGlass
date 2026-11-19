@@ -4,7 +4,18 @@ import SchneeGlassDomain
 
 @MainActor
 public final class NativeFolderSelector: FolderSelecting {
-  public init() {}
+  private let prompt: String
+  private let message: String
+
+  public init() {
+    prompt = "Add Glass"
+    message = "Choose a folder to place on your desktop as a SchneeGlass."
+  }
+
+  public init(prompt: String, message: String) {
+    self.prompt = prompt
+    self.message = message
+  }
 
   public func selectFolder() async -> URL? {
     let panel = NSOpenPanel()
@@ -13,8 +24,8 @@ public final class NativeFolderSelector: FolderSelecting {
     panel.allowsMultipleSelection = false
     panel.canCreateDirectories = false
     panel.resolvesAliases = true
-    panel.prompt = "Add Glass"
-    panel.message = "Choose a folder to place on your desktop as a SchneeGlass."
+    panel.prompt = prompt
+    panel.message = message
 
     return await awaitNativeFolderSelection(using: panel)
   }

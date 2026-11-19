@@ -1,3 +1,4 @@
+import Foundation
 import SchneeGlassDomain
 import Testing
 
@@ -44,6 +45,39 @@ func glassMenuLabelsNeverCollideWithActualTitlesOrFallbackTitles() {
   #expect(labels[fallback.id] == fallback.title)
   #expect(labels.count == entries.count)
   #expect(Set(labels.values).count == entries.count)
+}
+
+@Test
+func localizedMenuLabelsPreserveOriginalTitlesAndDisambiguateJapaneseCollisions() {
+  let ja = Locale(identifier: "ja_JP")
+  let title = "資料 %1$@"
+  let first = menuLabelEntry(title)
+  let second = menuLabelEntry(title)
+  let actual = menuLabelEntry(title + "（全2件中1件目）")
+  let fallback = menuLabelEntry(actual.title + " [2]")
+  let entries = [first, second, actual, fallback]
+  let labels = GlassMenuLabels.make(for: entries, locale: ja)
+  #expect(labels[first.id] == actual.title + " [3]")
+  #expect(labels[second.id] == title + "（全2件中2件目）")
+  #expect(labels[actual.id] == actual.title)
+  #expect(labels[fallback.id] == fallback.title)
+  #expect(labels.count == entries.count)
+  #expect(Set(labels.values).count == entries.count)
+  #expect(GlassMenuLabels.make(for: entries, locale: ja) == labels)
+
+  let remaining = GlassMenuLabels.make(for: [second], locale: ja)
+  #expect(remaining[second.id] == title)
+}
+
+@Test
+func localizedMenuLabelsKeepLegacyEnglishAndUnsupportedLocaleFallback() {
+  let first = menuLabelEntry("Projects")
+  let second = menuLabelEntry("Projects")
+  let entries = [first, second]
+  let english = GlassMenuLabels.make(for: entries)
+  #expect(english[first.id] == "Projects (1 of 2)")
+  #expect(GlassMenuLabels.make(for: entries, locale: Locale(identifier: "en_US")) == english)
+  #expect(GlassMenuLabels.make(for: entries, locale: Locale(identifier: "fr_FR")) == english)
 }
 
 private func menuLabelEntry(_ title: String) -> GlassWorkspaceEntry {

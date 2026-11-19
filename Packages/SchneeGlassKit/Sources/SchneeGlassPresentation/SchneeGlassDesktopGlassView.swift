@@ -302,7 +302,7 @@ struct DesktopGlassSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
-        Text("Loading folder…")
+        Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -455,7 +455,8 @@ struct DesktopGlassSurface: View {
       if let presentation = GlassInteractionPresentation.dropValid(
         plan: plan,
         glassTitle: entry.title,
-        surface: .desktop
+        surface: .desktop,
+        locale: locale
       ) {
         overlayCard(
           icon: symbolName(from: presentation) ?? "doc.on.doc",
@@ -468,7 +469,8 @@ struct DesktopGlassSurface: View {
       let presentation = GlassInteractionPresentation.dropInvalid(
         reason: reason,
         glassTitle: entry.title,
-        surface: .desktop
+        surface: .desktop,
+        locale: locale
       )
       overlayCard(
         icon: symbolName(from: presentation) ?? "nosign",

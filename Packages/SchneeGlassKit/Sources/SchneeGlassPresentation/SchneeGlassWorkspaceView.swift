@@ -5,6 +5,7 @@ import SchneeGlassDomain
 import SwiftUI
 
 public struct SchneeGlassWorkspaceView: View {
+  @Environment(\.locale) private var locale
   @Bindable private var model: SchneeGlassWorkspaceModel
 
   public init(model: SchneeGlassWorkspaceModel) {
@@ -19,7 +20,7 @@ public struct SchneeGlassWorkspaceView: View {
       isMutatingConfiguration: model.isMutatingConfiguration,
       canAddGlass: model.canAddGlass,
       requiresConfigurationRecovery: model.requiresConfigurationRecovery,
-      userMessage: model.userMessage,
+      userMessage: model.localizedUserMessage(locale: locale),
       onAddGlass: {
         Task {
           await model.addGlass()
@@ -184,7 +185,7 @@ struct WorkspaceSurface: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("SchneeGlass")
           .font(SchneeGlassTypography.surfaceTitle)
-        Text("Your folders, right where you need them.")
+        Text(GlassLocalizedText.workspaceTagline.resolve(locale: locale))
           .font(SchneeGlassTypography.supporting)
           .foregroundStyle(.secondary)
       }
@@ -195,7 +196,7 @@ struct WorkspaceSurface: View {
         HStack(spacing: 7) {
           ProgressView()
             .controlSize(.small)
-          Text("Restoring…")
+          Text(GlassLocalizedText.restoringStatus.resolve(locale: locale))
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
         }
@@ -221,12 +222,12 @@ struct WorkspaceSurface: View {
           ProgressView()
             .controlSize(.small)
         } else {
-          Label("Add Glass", systemImage: "plus")
+          Label(GlassLocalizedText.addGlass.resolve(locale: locale), systemImage: "plus")
         }
       }
       .disabled(!canAddGlass)
       .keyboardShortcut("n", modifiers: .command)
-      .accessibilityLabel("Add Glass")
+      .accessibilityLabel(GlassLocalizedText.addGlass.resolve(locale: locale))
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
@@ -313,7 +314,7 @@ struct WorkspaceSurface: View {
       if isRestoring {
         ProgressView()
           .controlSize(.regular)
-        Text("Restoring your Glasses…")
+        Text(GlassLocalizedText.restoringGlasses.resolve(locale: locale))
           .font(SchneeGlassTypography.body)
           .foregroundStyle(.secondary)
       } else if requiresConfigurationRecovery {
@@ -323,17 +324,13 @@ struct WorkspaceSurface: View {
           .accessibilityHidden(true)
 
         VStack(spacing: SchneeGlassSpacing.compactContent) {
-          Text("Configuration recovery required")
+          Text(GlassLocalizedText.configurationRecoveryTitle.resolve(locale: locale))
             .font(SchneeGlassTypography.emptyStateTitle)
-          Text(
-            "SchneeGlass couldn't read its saved configuration. "
-              + "Open Settings and restore a valid Configuration Backup "
-              + "before adding or changing a Glass."
-          )
-          .font(SchneeGlassTypography.body)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: 440)
+          Text(GlassLocalizedText.configurationRecoveryDetail.resolve(locale: locale))
+            .font(SchneeGlassTypography.body)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 440)
         }
       } else {
         Image(systemName: "rectangle.stack.badge.plus")
@@ -342,20 +339,16 @@ struct WorkspaceSurface: View {
           .accessibilityHidden(true)
 
         VStack(spacing: SchneeGlassSpacing.compactContent) {
-          Text("Put a folder on your desktop")
+          Text(GlassLocalizedText.firstGlassTitle.resolve(locale: locale))
             .font(SchneeGlassTypography.emptyStateTitle)
-          Text(
-            "Choose a folder to create your first Glass. "
-              + "SchneeGlass stores a reference to the folder; "
-              + "it does not take ownership of your files."
-          )
-          .font(SchneeGlassTypography.body)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: 420)
+          Text(GlassLocalizedText.firstGlassDetail.resolve(locale: locale))
+            .font(SchneeGlassTypography.body)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 420)
         }
 
-        Button("Add Glass", action: onAddGlass)
+        Button(GlassLocalizedText.addGlass.resolve(locale: locale), action: onAddGlass)
           .buttonStyle(.borderedProminent)
           .disabled(!canAddGlass)
       }
@@ -384,7 +377,7 @@ struct WorkspaceSurface: View {
         Image(systemName: "xmark")
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("Dismiss")
+      .accessibilityLabel(GlassLocalizedText.dismissMessage.resolve(locale: locale))
     }
     .padding(SchneeGlassPadding.messageBanner)
     .background(
@@ -564,7 +557,8 @@ private struct GlassPreviewSurface: View {
       if let presentation = GlassInteractionPresentation.dropValid(
         plan: plan,
         glassTitle: entry.title,
-        surface: .workspace
+        surface: .workspace,
+        locale: locale
       ) {
         DropOverlaySurface {
           if case .symbol(let systemImage) = presentation.indicator {
@@ -585,7 +579,8 @@ private struct GlassPreviewSurface: View {
       let presentation = GlassInteractionPresentation.dropInvalid(
         reason: reason,
         glassTitle: entry.title,
-        surface: .workspace
+        surface: .workspace,
+        locale: locale
       )
       DropOverlaySurface {
         if case .symbol(let systemImage) = presentation.indicator {
@@ -655,7 +650,7 @@ private struct GlassPreviewSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
-        Text("Loading folder…")
+        Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
       .frame(minHeight: 84)
@@ -727,6 +722,7 @@ private struct DropOverlaySurface<Content: View>: View {
 }
 
 private struct FilePreviewGrid: View {
+  @Environment(\.locale) private var locale
   let snapshot: FolderSnapshot
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -751,9 +747,12 @@ private struct FilePreviewGrid: View {
       }
 
       if snapshot.isTruncated {
-        Label("Showing the first 500 items", systemImage: "ellipsis.circle")
-          .font(SchneeGlassTypography.supporting)
-          .foregroundStyle(.secondary)
+        Label(
+          GlassLocalizedText.workspaceFirst500Items.resolve(locale: locale),
+          systemImage: "ellipsis.circle"
+        )
+        .font(SchneeGlassTypography.supporting)
+        .foregroundStyle(.secondary)
       }
     }
   }
