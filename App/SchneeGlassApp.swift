@@ -693,8 +693,9 @@ private func pendingCopyRecoveryDescription(
 private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) -> Bool {
   let confirmation = NSAlert()
   confirmation.messageText = SchneeGlassSettingsText.confirmRestoreTitle.resolve(locale: locale)
+  let dateStyle = Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)
   confirmation.informativeText = SchneeGlassSettingsText.restoreConfirmation(
-    date: createdAt.formatted(Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)),
+    date: createdAt.formatted(dateStyle),
     locale: locale
   )
   confirmation.alertStyle = .warning
