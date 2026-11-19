@@ -442,9 +442,9 @@ private struct SchneeGlassSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(item.record.finalFilename)
                     .font(.body.weight(.medium))
-                  Text(
-                    item.glassTitle ?? SchneeGlassCopyRecoveryText.unknownGlass.resolve(locale: locale)
-                  )
+                  let unknownGlass = SchneeGlassCopyRecoveryText.unknownGlass.resolve(
+                    locale: locale)
+                  Text(item.glassTitle ?? unknownGlass)
                   .font(.caption)
                   .foregroundStyle(.secondary)
                 }
@@ -492,8 +492,9 @@ private struct SchneeGlassSettingsView: View {
 
                 if item.actions.contains(.discardMetadata) {
                   Button(SchneeGlassCopyRecoveryText.discardMetadataMenu.resolve(locale: locale)) {
-                    guard confirmPendingCopyMetadataDiscard(
-                    filename: item.record.finalFilename, locale: locale)
+                    guard
+                      confirmPendingCopyMetadataDiscard(
+                        filename: item.record.finalFilename, locale: locale)
                     else {
                       return
                     }
@@ -508,9 +509,10 @@ private struct SchneeGlassSettingsView: View {
 
                 if item.actions.contains(.removeOwnedStaging) {
                   Button(SchneeGlassCopyRecoveryText.removeIncompleteMenu.resolve(locale: locale)) {
-                    guard confirmOwnedStagingRemoval(
-                    filename: item.record.finalFilename, locale: locale)
-                  else {
+                    guard
+                      confirmOwnedStagingRemoval(
+                        filename: item.record.finalFilename, locale: locale)
+                    else {
                       return
                     }
                     Task { @MainActor in
@@ -694,8 +696,9 @@ private func pendingCopyRecoveryDescription(
 private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) -> Bool {
   let confirmation = NSAlert()
   confirmation.messageText = SchneeGlassSettingsText.confirmRestoreTitle.resolve(locale: locale)
+  let dateStyle = Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)
   confirmation.informativeText = SchneeGlassSettingsText.restoreConfirmation(
-    date: createdAt.formatted(Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)),
+    date: createdAt.formatted(dateStyle),
     locale: locale
   )
   confirmation.alertStyle = .warning
