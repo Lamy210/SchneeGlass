@@ -457,9 +457,11 @@ private struct SchneeGlassSettingsView: View {
                 }
               }
 
-              Text(pendingCopyRecoveryDescription(for: item))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+              Text(
+                CopyRecoveryStatePresentation.description(for: item.state, locale: locale)
+              )
+              .font(.caption)
+              .foregroundStyle(.secondary)
 
               HStack(spacing: 8) {
                 if item.actions.contains(.revealStaging)
@@ -643,53 +645,6 @@ private struct SchneeGlassGlobalShortcutRecorderView: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-private func pendingCopyRecoveryDescription(
-  for item: PendingCopyRecoveryCenterItem
-) -> String {
-  switch item.state {
-  case .configurationMissing:
-    return
-      "The original Glass configuration is missing. SchneeGlass will keep the recovery metadata and will not guess where the file belongs."
-
-  case .destinationUnavailable:
-    return
-      "The destination folder cannot currently be accessed. Reconnect it before attempting cleanup."
-
-  case .assessed(let disposition):
-    switch disposition {
-    case .metadataOnly:
-      return "Only recovery metadata remains. Discarding it does not modify a connected folder."
-    case .stagingPresent(let verification):
-      if verification.resourceIdentity == .matchesRecordedIdentity {
-        return
-          "An incomplete SchneeGlass-owned staging file remains and its resource identity still matches the recorded operation."
-      }
-      return
-        "A staging-like item remains, but ownership cannot be proven. SchneeGlass will not delete it."
-    case .finalPresent:
-      return
-        "A final user-visible file exists. It is preserved; only recovery metadata may be discarded explicitly."
-    case .stagingAndFinalPresent(let staging, _):
-      if staging.resourceIdentity == .matchesRecordedIdentity {
-        return
-          "Both staging and final files exist. The final file is preserved; only the proven app-owned staging file may be removed explicitly."
-      }
-      return
-        "Both staging and final files exist, but staging ownership cannot be proven. SchneeGlass will not delete either file."
-    case .invalidRecord:
-      return "Recovery metadata is invalid. No mutation action is offered."
-    case .destinationMismatch:
-      return
-        "The recovery record does not match the destination Glass. No mutation action is offered."
-    case .destinationUnavailable:
-      return "The destination folder cannot currently be inspected."
-    case .unexpectedFileType:
-      return
-        "An unexpected filesystem item exists at a recovery path. SchneeGlass will not mutate it."
-    }
-  }
 }
 
 @MainActor

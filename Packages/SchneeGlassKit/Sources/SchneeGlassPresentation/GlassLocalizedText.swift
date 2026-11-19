@@ -146,6 +146,18 @@ enum GlassLocalizedText: String, CaseIterable {
   case recoveryRemoveIncompleteTitle
   case recoveryRemoveIncompleteDetail
   case recoveryRemoveIncompleteAction
+  case recoveryConfigurationMissing
+  case recoveryDestinationReconnect
+  case recoveryMetadataOnly
+  case recoveryOwnedStaging
+  case recoveryUnprovenStaging
+  case recoveryFinalPresent
+  case recoveryOwnedStagingAndFinal
+  case recoveryUnprovenStagingAndFinal
+  case recoveryInvalidRecord
+  case recoveryDestinationMismatch
+  case recoveryCannotInspect
+  case recoveryUnexpectedFileType
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

@@ -141,3 +141,15 @@
 "recoveryRemoveIncompleteTitle" = "Remove Incomplete Copy?";
 "recoveryRemoveIncompleteDetail" = "Remove only the SchneeGlass-owned incomplete staging file associated with %@. SchneeGlass will revalidate the operation ID, file type, destination, and filesystem resource identity immediately before deletion. The final user-visible file will not be deleted or overwritten.";
 "recoveryRemoveIncompleteAction" = "Remove Incomplete Copy";
+"recoveryConfigurationMissing" = "The original Glass configuration is missing. SchneeGlass will keep the recovery metadata and will not guess where the file belongs.";
+"recoveryDestinationReconnect" = "The destination folder cannot currently be accessed. Reconnect it before attempting cleanup.";
+"recoveryMetadataOnly" = "Only recovery metadata remains. Discarding it does not modify a connected folder.";
+"recoveryOwnedStaging" = "An incomplete SchneeGlass-owned staging file remains and its resource identity still matches the recorded operation.";
+"recoveryUnprovenStaging" = "A staging-like item remains, but ownership cannot be proven. SchneeGlass will not delete it.";
+"recoveryFinalPresent" = "A final user-visible file exists. It is preserved; only recovery metadata may be discarded explicitly.";
+"recoveryOwnedStagingAndFinal" = "Both staging and final files exist. The final file is preserved; only the proven app-owned staging file may be removed explicitly.";
+"recoveryUnprovenStagingAndFinal" = "Both staging and final files exist, but staging ownership cannot be proven. SchneeGlass will not delete either file.";
+"recoveryInvalidRecord" = "Recovery metadata is invalid. No mutation action is offered.";
+"recoveryDestinationMismatch" = "The recovery record does not match the destination Glass. No mutation action is offered.";
+"recoveryCannotInspect" = "The destination folder cannot currently be inspected.";
+"recoveryUnexpectedFileType" = "An unexpected filesystem item exists at a recovery path. SchneeGlass will not mutate it.";
