@@ -239,3 +239,12 @@
 "panelSnapGlass" = "Snap Glass";
 "panelWindowOptions" = "Glass window options";
 "panelReconnectFolder" = "Reconnect original folder";
+"tileOpen" = "Open";
+"tileReveal" = "Reveal in Finder";
+"tileOpenHint" = "Opens the item";
+"tileFolder" = "Folder, %@";
+"tilePackage" = "Package, %@";
+"tileAlias" = "Alias, %@";
+"tileSymbolicLink" = "Symbolic link, %@";
+"tileSize" = "Size: %@";
+"tileModified" = "Modified: %@";
