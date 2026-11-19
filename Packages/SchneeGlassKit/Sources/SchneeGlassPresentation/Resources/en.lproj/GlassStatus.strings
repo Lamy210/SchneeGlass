@@ -311,3 +311,4 @@
 "workspaceMessageCopyReasonUnexpected" = "SchneeGlass encountered an unexpected copy error.";
 "loadingFolder" = "Loading folder…";
 "workspaceFirst500Items" = "Showing the first 500 items";
+"menuDuplicateTitle" = "%1$@ (%2$@ of %3$@)";

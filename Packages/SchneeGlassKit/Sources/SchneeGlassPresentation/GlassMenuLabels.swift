@@ -1,8 +1,15 @@
+import Foundation
 import SchneeGlassDomain
 
 /// Menu labels are presentation-only; all commands still target the original Glass ID.
 public enum GlassMenuLabels {
   public static func make(for entries: [GlassWorkspaceEntry]) -> [GlassID: String] {
+    make(for: entries, locale: Locale(identifier: "en"))
+  }
+
+  public static func make(
+    for entries: [GlassWorkspaceEntry], locale: Locale
+  ) -> [GlassID: String] {
     var counts: [String: Int] = [:]
     for entry in entries {
       counts[entry.title, default: 0] += 1
@@ -22,7 +29,8 @@ public enum GlassMenuLabels {
 
       occurrences[title, default: 0] += 1
       let ordinal = occurrences[title, default: 0]
-      let base = "\(title) (\(ordinal) of \(count))"
+      let format = GlassLocalizedText.menuDuplicateTitle.resolve(locale: locale)
+      let base = String(format: format, locale: locale, title, String(ordinal), String(count))
       var label = base
       var suffix = 2
       while !reserved.insert(label).inserted {

@@ -184,7 +184,7 @@ private struct SchneeGlassMenuBarContent: View {
   let panelCoordinator: DesktopGlassPanelCoordinator
 
   var body: some View {
-    let labels = GlassMenuLabels.make(for: model.glasses)
+    let labels = GlassMenuLabels.make(for: model.glasses, locale: locale)
 
     Button(SchneeGlassMenuText.addGlass.resolve(locale: locale)) {
       Task {
