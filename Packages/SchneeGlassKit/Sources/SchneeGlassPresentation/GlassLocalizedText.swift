@@ -126,6 +126,26 @@ enum GlassLocalizedText: String, CaseIterable {
   case settingsConfirmRestoreTitle
   case settingsConfirmRestoreDetail
   case settingsConfirmRestoreAction
+  case recoveryPendingRecovery
+  case recoveryPendingRecoveryDetail
+  case recoveryInspectingPending
+  case recoveryNoPending
+  case recoveryUnknownGlass
+  case recoveryInspectFinder
+  case recoveryShowIncomplete
+  case recoveryShowFinal
+  case recoveryDiscardMetadataMenu
+  case recoveryRemoveIncompleteMenu
+  case recoveryReconnectDestination
+  case recoveryRefreshPending
+  case recoverySafety
+  case recoverySafetyDetail
+  case recoveryDiscardMetadataTitle
+  case recoveryDiscardMetadataDetail
+  case recoveryDiscardMetadataAction
+  case recoveryRemoveIncompleteTitle
+  case recoveryRemoveIncompleteDetail
+  case recoveryRemoveIncompleteAction
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"
@@ -234,6 +254,87 @@ public enum SchneeGlassSettingsText: CaseIterable, Equatable {
       format: GlassLocalizedText.settingsConfirmRestoreDetail.resolve(locale: locale),
       locale: locale,
       date
+    )
+  }
+}
+
+/// App-host copy recovery labels; confirmation text takes filenames as data.
+public enum SchneeGlassCopyRecoveryText: CaseIterable {
+  case pendingRecovery
+  case pendingRecoveryDetail
+  case inspectingPending
+  case noPending
+  case unknownGlass
+  case inspectFinder
+  case showIncomplete
+  case showFinal
+  case discardMetadataMenu
+  case removeIncompleteMenu
+  case reconnectDestination
+  case refreshPending
+  case safety
+  case safetyDetail
+  case discardMetadataTitle
+  case discardMetadataAction
+  case removeIncompleteTitle
+  case removeIncompleteAction
+
+  public func resolve(locale: Locale) -> String {
+    let key: GlassLocalizedText
+    switch self {
+    case .pendingRecovery:
+      key = .recoveryPendingRecovery
+    case .pendingRecoveryDetail:
+      key = .recoveryPendingRecoveryDetail
+    case .inspectingPending:
+      key = .recoveryInspectingPending
+    case .noPending:
+      key = .recoveryNoPending
+    case .unknownGlass:
+      key = .recoveryUnknownGlass
+    case .inspectFinder:
+      key = .recoveryInspectFinder
+    case .showIncomplete:
+      key = .recoveryShowIncomplete
+    case .showFinal:
+      key = .recoveryShowFinal
+    case .discardMetadataMenu:
+      key = .recoveryDiscardMetadataMenu
+    case .removeIncompleteMenu:
+      key = .recoveryRemoveIncompleteMenu
+    case .reconnectDestination:
+      key = .recoveryReconnectDestination
+    case .refreshPending:
+      key = .recoveryRefreshPending
+    case .safety:
+      key = .recoverySafety
+    case .safetyDetail:
+      key = .recoverySafetyDetail
+    case .discardMetadataTitle:
+      key = .recoveryDiscardMetadataTitle
+    case .discardMetadataAction:
+      key = .recoveryDiscardMetadataAction
+    case .removeIncompleteTitle:
+      key = .recoveryRemoveIncompleteTitle
+    case .removeIncompleteAction:
+      key = .recoveryRemoveIncompleteAction
+    }
+    return key.resolve(locale: locale)
+  }
+
+  public static func discardConfirmation(filename: String, locale: Locale) -> String {
+    String(
+      format: GlassLocalizedText.recoveryDiscardMetadataDetail.resolve(locale: locale),
+      locale: locale,
+      filename
+    )
+  }
+
+  public static func removeConfirmation(filename: String, locale: Locale) -> String {
+    String(
+      format: GlassLocalizedText.recoveryRemoveIncompleteDetail.resolve(locale: locale),
+      locale: locale,
+      filename
     )
   }
 }
