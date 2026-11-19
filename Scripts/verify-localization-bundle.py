@@ -2,6 +2,8 @@
 """Read-only check of the Presentation localization resources in a built app."""
 import pathlib
 import plistlib
+import re
+from collections import Counter
 import subprocess
 import sys
 
@@ -17,6 +19,57 @@ SOURCE = (
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+# The Presentation resource table uses only NSString %@ and Swift Int64 %lld.
+# Literal percent signs are escaped as %%. Positional references may reorder
+# arguments, but changing types, multiplicity or the set of indices is unsafe.
+FORMAT_TOKEN = re.compile(r"%(?:(?P<index>[1-9][0-9]*)\$)?(?P<kind>@|lld)")
+
+
+def format_signature(value, key, language):
+    arguments = Counter()
+    cursor = 0
+    sequential_index = 0
+    mode = None
+    while (position := value.find("%", cursor)) != -1:
+        if value.startswith("%%", position):
+            cursor = position + 2
+            continue
+        match = FORMAT_TOKEN.match(value, position)
+        require(match is not None, f"Unsupported format token: {language}/{key}")
+        index = match.group("index")
+        current_mode = "positional" if index is not None else "sequential"
+        require(mode is None or mode == current_mode, f"Mixed format modes: {language}/{key}")
+        mode = current_mode
+        if index is None:
+            sequential_index += 1
+            argument = sequential_index
+        else:
+            argument = int(index)
+        arguments[(argument, match.group("kind"))] += 1
+        cursor = match.end()
+
+    kinds = {}
+    for argument, kind in arguments:
+        require(
+            argument not in kinds or kinds[argument] == kind,
+            f"Conflicting format types: {language}/{key}",
+        )
+        kinds[argument] = kind
+    require(
+        not kinds or min(kinds) == 1 and max(kinds) == len(kinds),
+        f"Non-contiguous format indices: {language}/{key}",
+    )
+    return arguments
+
+
+def verify_format_signatures(english, japanese):
+    for key, value in english.items():
+        require(
+            format_signature(value, key, "en") == format_signature(japanese[key], key, "ja"),
+            f"Format argument mismatch: {key}",
+        )
 
 
 def real_directory(path):
@@ -83,6 +136,7 @@ def verify(app, source=SOURCE):
         require(actual == expected[language], f"Packaged translation mismatch: {language}")
 
     require(expected["en"].keys() == expected["ja"].keys(), "Source key sets differ")
+    verify_format_signatures(expected["en"], expected["ja"])
     print(f"Verified packaged localization: {len(expected['en'])} keys x 2 languages")
 
 
