@@ -751,8 +751,8 @@ private struct FilePreviewGrid: View {
           GlassLocalizedText.workspaceFirst500Items.resolve(locale: locale),
           systemImage: "ellipsis.circle"
         )
-          .font(SchneeGlassTypography.supporting)
-          .foregroundStyle(.secondary)
+        .font(SchneeGlassTypography.supporting)
+        .foregroundStyle(.secondary)
       }
     }
   }
