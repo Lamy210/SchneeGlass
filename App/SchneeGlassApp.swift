@@ -312,6 +312,7 @@ private struct SchneeGlassBootstrapFailureView: View {
 }
 
 private struct SchneeGlassSettingsBootstrapView: View {
+  @Environment(\.locale) private var locale
   let bootstrapState: SchneeGlassBootstrapState
   let panelCoordinator: DesktopGlassPanelCoordinator?
 
@@ -327,13 +328,11 @@ private struct SchneeGlassSettingsBootstrapView: View {
       )
     } else {
       Form {
-        Section("Recovery") {
-          Text(
-            "Recovery is unavailable because SchneeGlass could not prepare its application support location."
-          )
-          .foregroundStyle(.secondary)
+        Section(SchneeGlassSettingsText.recovery.resolve(locale: locale)) {
+          Text(SchneeGlassSettingsText.recoveryUnavailable.resolve(locale: locale))
+            .foregroundStyle(.secondary)
 
-          Text("No folders or files were changed.")
+          Text(SchneeGlassSettingsText.filesUnchanged.resolve(locale: locale))
             .foregroundStyle(.secondary)
         }
       }
@@ -345,6 +344,7 @@ private struct SchneeGlassSettingsBootstrapView: View {
 }
 
 private struct SchneeGlassSettingsView: View {
+  @Environment(\.locale) private var locale
   let model: SchneeGlassWorkspaceModel
   let pendingCopyRecoveryModel: PendingCopyRecoveryCenterModel
   let panelCoordinator: DesktopGlassPanelCoordinator
@@ -352,49 +352,46 @@ private struct SchneeGlassSettingsView: View {
   @State private var backups: [ConfigurationBackupDescriptor] = []
   @State private var isLoadingBackups = false
   @State private var isRestoringBackup = false
-  @State private var recoveryMessage: String?
+  @State private var recoveryMessage: SchneeGlassSettingsText?
 
   var body: some View {
     Form {
-      Section("Global Shortcut") {
+      Section(SchneeGlassSettingsText.globalShortcut.resolve(locale: locale)) {
         HStack(spacing: 16) {
-          Text("Show / Hide All Glasses")
+          Text(SchneeGlassSettingsText.showHideAll.resolve(locale: locale))
           Spacer()
           SchneeGlassGlobalShortcutRecorderView()
         }
 
-        Text(
-          "No shortcut is assigned by default. Choose a shortcut to toggle all Desktop Glasses from anywhere without granting Accessibility permission."
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        Text(SchneeGlassSettingsText.shortcutDetail.resolve(locale: locale))
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
 
-      Section("Configuration Recovery") {
-        Text(
-          "Restore an earlier SchneeGlass configuration without moving, renaming, deleting, or replacing files in connected folders."
-        )
-        .foregroundStyle(.secondary)
+      Section(SchneeGlassSettingsText.configurationRecovery.resolve(locale: locale)) {
+        Text(SchneeGlassSettingsText.configurationRecoveryDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
 
         if isLoadingBackups {
-          ProgressView("Loading configuration backups…")
+          ProgressView(SchneeGlassSettingsText.loadingBackups.resolve(locale: locale))
         } else if backups.isEmpty {
-          Text("No valid configuration backups are available.")
+          Text(SchneeGlassSettingsText.noBackups.resolve(locale: locale))
             .foregroundStyle(.secondary)
         } else {
           ForEach(backups) { backup in
             HStack(spacing: 12) {
               VStack(alignment: .leading, spacing: 3) {
                 Text(backup.createdAt.formatted(date: .abbreviated, time: .standard))
-                Text("Configuration backup")
+                Text(SchneeGlassSettingsText.backup.resolve(locale: locale))
                   .font(.caption)
                   .foregroundStyle(.secondary)
               }
 
               Spacer()
 
-              Button("Restore…") {
-                guard confirmConfigurationBackupRestore(createdAt: backup.createdAt) else {
+              Button(SchneeGlassSettingsText.restore.resolve(locale: locale)) {
+                guard confirmConfigurationBackupRestore(createdAt: backup.createdAt, locale: locale)
+                else {
                   return
                 }
 
@@ -408,7 +405,7 @@ private struct SchneeGlassSettingsView: View {
         }
 
         HStack {
-          Button("Refresh Backups") {
+          Button(SchneeGlassSettingsText.refreshBackups.resolve(locale: locale)) {
             Task { @MainActor in
               await refreshBackups()
             }
@@ -418,13 +415,13 @@ private struct SchneeGlassSettingsView: View {
           if isRestoringBackup {
             ProgressView()
               .controlSize(.small)
-            Text("Restoring configuration…")
+            Text(SchneeGlassSettingsText.restoring.resolve(locale: locale))
               .foregroundStyle(.secondary)
           }
         }
 
         if let recoveryMessage {
-          Text(recoveryMessage)
+          Text(recoveryMessage.resolve(locale: locale))
             .foregroundStyle(.secondary)
         }
       }
@@ -586,15 +583,12 @@ private struct SchneeGlassSettingsView: View {
     switch await model.loadConfigurationBackups() {
     case .loaded(let loadedBackups):
       backups = loadedBackups
-      if recoveryMessage
-        == "SchneeGlass couldn't read its configuration backups. No configuration was changed."
-      {
+      if recoveryMessage == .backupReadFailed {
         recoveryMessage = nil
       }
     case .failed:
       backups = []
-      recoveryMessage =
-        "SchneeGlass couldn't read its configuration backups. No configuration was changed."
+      recoveryMessage = .backupReadFailed
     }
   }
 
@@ -604,8 +598,7 @@ private struct SchneeGlassSettingsView: View {
       return
     }
     guard !model.isMutatingConfiguration else {
-      recoveryMessage =
-        "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+      recoveryMessage = .configurationBusy
       return
     }
 
@@ -618,28 +611,25 @@ private struct SchneeGlassSettingsView: View {
     switch result {
     case .restored:
       panelCoordinator.showAll()
-      recoveryMessage = "Configuration restored. Connected folders and files were not changed."
+      recoveryMessage = .configurationRestored
       await refreshBackups()
       await pendingCopyRecoveryModel.refresh()
 
     case .restoredNeedsRestart:
-      recoveryMessage =
-        "The backup was restored, but the workspace could not reload it. Restart SchneeGlass to retry the restored configuration."
+      recoveryMessage = .restoredNeedsRestart
       await refreshBackups()
 
     case .busy:
       panelCoordinator.showAll()
-      recoveryMessage =
-        "SchneeGlass is already updating its configuration. Try again after the current operation finishes."
+      recoveryMessage = .configurationBusy
 
     case .copyInProgress:
       panelCoordinator.showAll()
-      recoveryMessage = "Wait for the current file copy to finish before restoring configuration."
+      recoveryMessage = .waitForCopy
 
     case .failed:
       panelCoordinator.showAll()
-      recoveryMessage =
-        "SchneeGlass couldn't restore that backup. The current configuration was left unchanged."
+      recoveryMessage = .restoreFailed
     }
   }
 }
@@ -700,14 +690,18 @@ private func pendingCopyRecoveryDescription(
 }
 
 @MainActor
-private func confirmConfigurationBackupRestore(createdAt: Date) -> Bool {
+private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Restore Configuration Backup?"
-  confirmation.informativeText =
-    "Restore the SchneeGlass configuration from \(createdAt.formatted(date: .abbreviated, time: .standard)). SchneeGlass will preserve the current configuration before replacing it. Connected folders and their files will not be moved, renamed, deleted, or replaced."
+  confirmation.messageText = SchneeGlassSettingsText.confirmRestoreTitle.resolve(locale: locale)
+  let dateStyle = Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)
+  confirmation.informativeText = SchneeGlassSettingsText.restoreConfirmation(
+    date: createdAt.formatted(dateStyle),
+    locale: locale
+  )
   confirmation.alertStyle = .warning
-  confirmation.addButton(withTitle: "Restore Configuration")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassSettingsText.confirmRestoreAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
 
