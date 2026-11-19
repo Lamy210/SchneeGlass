@@ -317,3 +317,4 @@
 "folderSelectionReconnect" = "再接続";
 "folderSelectionReconnectDetail" = "このGlassの元のフォルダを選んでください。再接続前にフォルダの永続的な同一性を確認します。";
 "folderSelectionRecoveryDetail" = "このGlassの元のコピー先フォルダを選んでください。再接続前にフォルダの永続的な同一性を確認します。";
+"settingsShortcutRecorder" = "すべてのGlassを表示・非表示にするグローバルショートカット";

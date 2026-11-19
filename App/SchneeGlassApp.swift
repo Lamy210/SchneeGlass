@@ -645,11 +645,17 @@ private struct SchneeGlassSettingsView: View {
 }
 
 private struct SchneeGlassGlobalShortcutRecorderView: NSViewRepresentable {
+  @Environment(\.locale) private var locale
+
   func makeNSView(context: Context) -> NSView {
-    SchneeGlassGlobalVisibilityShortcutController.makeRecorderView()
+    SchneeGlassGlobalVisibilityShortcutController.makeRecorderView(
+      accessibilityLabel: SchneeGlassSettingsText.shortcutRecorder.resolve(locale: locale)
+    )
   }
 
-  func updateNSView(_ nsView: NSView, context: Context) {}
+  func updateNSView(_ nsView: NSView, context: Context) {
+    nsView.setAccessibilityLabel(SchneeGlassSettingsText.shortcutRecorder.resolve(locale: locale))
+  }
 }
 
 @MainActor

@@ -108,6 +108,7 @@ enum GlassLocalizedText: String, CaseIterable {
   case settingsFilesUnchanged
   case settingsGlobalShortcut
   case settingsShowHideAll
+  case settingsShortcutRecorder
   case settingsShortcutDetail
   case settingsConfigurationRecovery
   case settingsConfigurationRecoveryDetail
@@ -350,6 +351,7 @@ public enum SchneeGlassSettingsText: CaseIterable, Equatable {
   case filesUnchanged
   case globalShortcut
   case showHideAll
+  case shortcutRecorder
   case shortcutDetail
   case configurationRecovery
   case configurationRecoveryDetail
@@ -383,6 +385,8 @@ public enum SchneeGlassSettingsText: CaseIterable, Equatable {
       key = .settingsGlobalShortcut
     case .showHideAll:
       key = .settingsShowHideAll
+    case .shortcutRecorder:
+      key = .settingsShortcutRecorder
     case .shortcutDetail:
       key = .settingsShortcutDetail
     case .configurationRecovery:
