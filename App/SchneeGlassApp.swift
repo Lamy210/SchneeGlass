@@ -555,7 +555,7 @@ private struct SchneeGlassSettingsView: View {
             || pendingCopyRecoveryModel.activeOperationID != nil
         )
 
-        if let message = pendingCopyRecoveryModel.message {
+        if let message = pendingCopyRecoveryModel.localizedMessage(locale: locale) {
           Text(message)
             .font(.caption)
             .foregroundStyle(.secondary)
