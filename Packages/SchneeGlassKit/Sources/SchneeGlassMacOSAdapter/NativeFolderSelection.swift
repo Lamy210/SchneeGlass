@@ -9,8 +9,7 @@ public final class NativeFolderSelector: FolderSelecting {
 
   public init() {
     prompt = "Add Glass"
-    message =
-      "Choose a folder to place on your desktop as a SchneeGlass."
+    message = "Choose a folder to place on your desktop as a SchneeGlass."
   }
 
   public init(prompt: String, message: String) {
