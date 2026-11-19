@@ -219,6 +219,31 @@ enum GlassLocalizedText: String, CaseIterable {
   case menuResetNoDisplay
   case menuResetFailed
   case menuResetFailureTitle
+  case panelUnlockPosition
+  case panelLockPosition
+  case panelStopKeepOnTop
+  case panelKeepOnTop
+  case panelStopAllSpaces
+  case panelShowAllSpaces
+  case panelOpacity
+  case panelCompactTiles
+  case panelDisableCompactTiles
+  case panelEnableCompactTiles
+  case panelSortName
+  case panelSortModified
+  case panelSortSize
+  case panelSortFiles
+  case panelFoldersFirst
+  case panelDisableFoldersFirst
+  case panelEnableFoldersFirst
+  case panelTopLeft
+  case panelTopRight
+  case panelBottomLeft
+  case panelBottomRight
+  case panelCenter
+  case panelSnapGlass
+  case panelWindowOptions
+  case panelReconnectFolder
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"
@@ -480,5 +505,117 @@ public enum SchneeGlassMenuText: CaseIterable {
       key = .cancelAction
     }
     return key.resolve(locale: locale)
+  }
+}
+
+/// Desktop panel window controls and rename confirmation.
+public enum SchneeGlassPanelText: CaseIterable {
+  case unlockPosition
+  case lockPosition
+  case stopKeepOnTop
+  case keepOnTop
+  case stopAllSpaces
+  case showAllSpaces
+  case compactTiles
+  case disableCompactTiles
+  case enableCompactTiles
+  case sortName
+  case sortModified
+  case sortSize
+  case sortFiles
+  case foldersFirst
+  case disableFoldersFirst
+  case enableFoldersFirst
+  case topLeft
+  case topRight
+  case bottomLeft
+  case bottomRight
+  case center
+  case snapGlass
+  case windowOptions
+  case reconnectFolder
+  case renameMenu
+  case revealFolder
+  case renameTitle
+  case renameDetail
+  case renameAction
+  case cancel
+  case glassName
+
+  public func resolve(locale: Locale) -> String {
+    let key: GlassLocalizedText
+    switch self {
+    case .unlockPosition:
+      key = .panelUnlockPosition
+    case .lockPosition:
+      key = .panelLockPosition
+    case .stopKeepOnTop:
+      key = .panelStopKeepOnTop
+    case .keepOnTop:
+      key = .panelKeepOnTop
+    case .stopAllSpaces:
+      key = .panelStopAllSpaces
+    case .showAllSpaces:
+      key = .panelShowAllSpaces
+    case .compactTiles:
+      key = .panelCompactTiles
+    case .disableCompactTiles:
+      key = .panelDisableCompactTiles
+    case .enableCompactTiles:
+      key = .panelEnableCompactTiles
+    case .sortName:
+      key = .panelSortName
+    case .sortModified:
+      key = .panelSortModified
+    case .sortSize:
+      key = .panelSortSize
+    case .sortFiles:
+      key = .panelSortFiles
+    case .foldersFirst:
+      key = .panelFoldersFirst
+    case .disableFoldersFirst:
+      key = .panelDisableFoldersFirst
+    case .enableFoldersFirst:
+      key = .panelEnableFoldersFirst
+    case .topLeft:
+      key = .panelTopLeft
+    case .topRight:
+      key = .panelTopRight
+    case .bottomLeft:
+      key = .panelBottomLeft
+    case .bottomRight:
+      key = .panelBottomRight
+    case .center:
+      key = .panelCenter
+    case .snapGlass:
+      key = .panelSnapGlass
+    case .windowOptions:
+      key = .panelWindowOptions
+    case .reconnectFolder:
+      key = .panelReconnectFolder
+    case .renameMenu:
+      key = .renameGlassMenu
+    case .revealFolder:
+      key = .showConnectedFolder
+    case .renameTitle:
+      key = .renameGlassTitle
+    case .renameDetail:
+      key = .renameGlassDetail
+    case .renameAction:
+      key = .renameAction
+    case .cancel:
+      key = .cancelAction
+    case .glassName:
+      key = .glassName
+    }
+    return key.resolve(locale: locale)
+  }
+
+  public static func opacity(percentage: String, locale: Locale) -> String {
+    String(
+      format: GlassLocalizedText.panelOpacity.resolve(locale: locale),
+      locale: locale,
+      percentage
+    )
   }
 }

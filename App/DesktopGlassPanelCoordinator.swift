@@ -5,6 +5,7 @@ import SchneeGlassPresentation
 import SwiftUI
 
 private struct DesktopGlassWindowControls: View {
+  @Environment(\.locale) private var locale
   let isPositionLocked: Bool
   let keepsOnTop: Bool
   let showsOnAllSpaces: Bool
@@ -30,26 +31,28 @@ private struct DesktopGlassWindowControls: View {
   let onRename: @MainActor () -> Void
   let onSnap: @MainActor (DesktopGlassSnapPreset) -> Void
 
+  private func text(_ key: SchneeGlassPanelText) -> String {
+    key.resolve(locale: locale)
+  }
+
   var body: some View {
     HStack(spacing: 6) {
       Button(action: onTogglePositionLock) {
         Image(systemName: isPositionLocked ? "lock.fill" : "lock.open")
           .frame(width: 20, height: 20)
       }
-      .help(isPositionLocked ? "Unlock Glass position" : "Lock Glass position")
-      .accessibilityLabel(
-        isPositionLocked ? "Unlock Glass position" : "Lock Glass position"
-      )
+      .help(text(isPositionLocked ? .unlockPosition : .lockPosition))
+      .accessibilityLabel(text(isPositionLocked ? .unlockPosition : .lockPosition))
 
       Menu {
         Button(action: onRename) {
-          Label("Rename Glass…", systemImage: "pencil")
+          Label(text(.renameMenu), systemImage: "pencil")
         }
         .disabled(!canRename)
 
         if canRevealConnectedFolder {
           Button(action: onRevealConnectedFolder) {
-            Label("Show Connected Folder in Finder", systemImage: "folder")
+            Label(text(.revealFolder), systemImage: "folder")
           }
         }
 
@@ -57,14 +60,14 @@ private struct DesktopGlassWindowControls: View {
 
         Button(action: onToggleKeepOnTop) {
           Label(
-            keepsOnTop ? "Stop Keeping on Top" : "Keep on Top",
+            text(keepsOnTop ? .stopKeepOnTop : .keepOnTop),
             systemImage: keepsOnTop ? "checkmark.circle.fill" : "circle"
           )
         }
 
         Button(action: onToggleSpacesBehavior) {
           Label(
-            showsOnAllSpaces ? "Stop Showing on All Spaces" : "Show on All Spaces",
+            text(showsOnAllSpaces ? .stopAllSpaces : .showAllSpaces),
             systemImage: showsOnAllSpaces ? "checkmark.circle.fill" : "circle"
           )
         }
@@ -105,27 +108,25 @@ private struct DesktopGlassWindowControls: View {
           }
         } label: {
           Label(
-            "Opacity \(opacityPreset.percentageLabel)",
+            SchneeGlassPanelText.opacity(percentage: opacityPreset.percentageLabel, locale: locale),
             systemImage: "circle.lefthalf.filled"
           )
         }
 
         Button(action: onToggleCompactFileTiles) {
           Label(
-            "Compact File Tiles",
+            text(.compactTiles),
             systemImage: usesCompactFileTiles ? "checkmark.circle.fill" : "circle"
           )
         }
-        .accessibilityLabel(
-          usesCompactFileTiles ? "Disable Compact File Tiles" : "Enable Compact File Tiles"
-        )
+        .accessibilityLabel(text(usesCompactFileTiles ? .disableCompactTiles : .enableCompactTiles))
 
         Menu {
           Button {
             onSetFileSort(.nameAscending)
           } label: {
             Label(
-              "Name",
+              text(.sortName),
               systemImage: fileSortPreference == .nameAscending ? "checkmark" : "circle"
             )
           }
@@ -133,7 +134,7 @@ private struct DesktopGlassWindowControls: View {
             onSetFileSort(.modifiedNewest)
           } label: {
             Label(
-              "Modified",
+              text(.sortModified),
               systemImage: fileSortPreference == .modifiedNewest ? "checkmark" : "circle"
             )
           }
@@ -141,43 +142,41 @@ private struct DesktopGlassWindowControls: View {
             onSetFileSort(.sizeLargest)
           } label: {
             Label(
-              "Size",
+              text(.sortSize),
               systemImage: fileSortPreference == .sizeLargest ? "checkmark" : "circle"
             )
           }
         } label: {
-          Label("Sort Displayed Files", systemImage: "arrow.up.arrow.down")
+          Label(text(.sortFiles), systemImage: "arrow.up.arrow.down")
         }
 
         Button(action: onToggleFoldersFirst) {
           Label(
-            "Folders First",
+            text(.foldersFirst),
             systemImage: putsFoldersFirst ? "checkmark.circle.fill" : "circle"
           )
         }
-        .accessibilityLabel(
-          putsFoldersFirst ? "Disable Folders First" : "Enable Folders First"
-        )
+        .accessibilityLabel(text(putsFoldersFirst ? .disableFoldersFirst : .enableFoldersFirst))
 
         Menu {
-          Button("Top Left") {
+          Button(text(.topLeft)) {
             onSnap(.topLeft)
           }
-          Button("Top Right") {
+          Button(text(.topRight)) {
             onSnap(.topRight)
           }
-          Button("Bottom Left") {
+          Button(text(.bottomLeft)) {
             onSnap(.bottomLeft)
           }
-          Button("Bottom Right") {
+          Button(text(.bottomRight)) {
             onSnap(.bottomRight)
           }
           Divider()
-          Button("Center") {
+          Button(text(.center)) {
             onSnap(.center)
           }
         } label: {
-          Label("Snap Glass", systemImage: "rectangle.split.2x2")
+          Label(text(.snapGlass), systemImage: "rectangle.split.2x2")
         }
         .disabled(!canSnap)
       } label: {
@@ -186,8 +185,8 @@ private struct DesktopGlassWindowControls: View {
       }
       .menuStyle(.borderlessButton)
       .fixedSize()
-      .help("Glass window options")
-      .accessibilityLabel("Glass window options")
+      .help(text(.windowOptions))
+      .accessibilityLabel(text(.windowOptions))
 
       if showsReconnect {
         Button(action: onReconnect) {
@@ -195,8 +194,8 @@ private struct DesktopGlassWindowControls: View {
             .frame(width: 20, height: 20)
         }
         .disabled(!canReconnect)
-        .help("Reconnect original folder")
-        .accessibilityLabel("Reconnect original folder")
+        .help(text(.reconnectFolder))
+        .accessibilityLabel(text(.reconnectFolder))
       }
     }
     .buttonStyle(.plain)
@@ -781,16 +780,17 @@ final class DesktopGlassPanelCoordinator: NSObject, NSWindowDelegate {
       return
     }
 
+    let locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
     let textField = NSTextField(string: entry.title)
+    textField.setAccessibilityLabel(SchneeGlassPanelText.glassName.resolve(locale: locale))
     textField.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
 
     let alert = NSAlert()
-    alert.messageText = "Rename Glass"
-    alert.informativeText =
-      "This changes only the Glass display name. The connected folder itself will not be renamed."
+    alert.messageText = SchneeGlassPanelText.renameTitle.resolve(locale: locale)
+    alert.informativeText = SchneeGlassPanelText.renameDetail.resolve(locale: locale)
     alert.accessoryView = textField
-    alert.addButton(withTitle: "Rename")
-    alert.addButton(withTitle: "Cancel")
+    alert.addButton(withTitle: SchneeGlassPanelText.renameAction.resolve(locale: locale))
+    alert.addButton(withTitle: SchneeGlassPanelText.cancel.resolve(locale: locale))
 
     guard alert.runModal() == .alertFirstButtonReturn else {
       return
