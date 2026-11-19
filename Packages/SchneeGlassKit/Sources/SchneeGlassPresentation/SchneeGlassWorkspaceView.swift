@@ -184,7 +184,7 @@ struct WorkspaceSurface: View {
       VStack(alignment: .leading, spacing: 2) {
         Text("SchneeGlass")
           .font(SchneeGlassTypography.surfaceTitle)
-        Text("Your folders, right where you need them.")
+        Text(GlassLocalizedText.workspaceTagline.resolve(locale: locale))
           .font(SchneeGlassTypography.supporting)
           .foregroundStyle(.secondary)
       }
@@ -195,7 +195,7 @@ struct WorkspaceSurface: View {
         HStack(spacing: 7) {
           ProgressView()
             .controlSize(.small)
-          Text("Restoring…")
+          Text(GlassLocalizedText.restoringStatus.resolve(locale: locale))
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
         }
@@ -221,12 +221,12 @@ struct WorkspaceSurface: View {
           ProgressView()
             .controlSize(.small)
         } else {
-          Label("Add Glass", systemImage: "plus")
+          Label(GlassLocalizedText.addGlass.resolve(locale: locale), systemImage: "plus")
         }
       }
       .disabled(!canAddGlass)
       .keyboardShortcut("n", modifiers: .command)
-      .accessibilityLabel("Add Glass")
+      .accessibilityLabel(GlassLocalizedText.addGlass.resolve(locale: locale))
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
@@ -313,7 +313,7 @@ struct WorkspaceSurface: View {
       if isRestoring {
         ProgressView()
           .controlSize(.regular)
-        Text("Restoring your Glasses…")
+        Text(GlassLocalizedText.restoringGlasses.resolve(locale: locale))
           .font(SchneeGlassTypography.body)
           .foregroundStyle(.secondary)
       } else if requiresConfigurationRecovery {
@@ -323,17 +323,13 @@ struct WorkspaceSurface: View {
           .accessibilityHidden(true)
 
         VStack(spacing: SchneeGlassSpacing.compactContent) {
-          Text("Configuration recovery required")
+          Text(GlassLocalizedText.configurationRecoveryTitle.resolve(locale: locale))
             .font(SchneeGlassTypography.emptyStateTitle)
-          Text(
-            "SchneeGlass couldn't read its saved configuration. "
-              + "Open Settings and restore a valid Configuration Backup "
-              + "before adding or changing a Glass."
-          )
-          .font(SchneeGlassTypography.body)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: 440)
+          Text(GlassLocalizedText.configurationRecoveryDetail.resolve(locale: locale))
+            .font(SchneeGlassTypography.body)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 440)
         }
       } else {
         Image(systemName: "rectangle.stack.badge.plus")
@@ -342,20 +338,16 @@ struct WorkspaceSurface: View {
           .accessibilityHidden(true)
 
         VStack(spacing: SchneeGlassSpacing.compactContent) {
-          Text("Put a folder on your desktop")
+          Text(GlassLocalizedText.firstGlassTitle.resolve(locale: locale))
             .font(SchneeGlassTypography.emptyStateTitle)
-          Text(
-            "Choose a folder to create your first Glass. "
-              + "SchneeGlass stores a reference to the folder; "
-              + "it does not take ownership of your files."
-          )
-          .font(SchneeGlassTypography.body)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .frame(maxWidth: 420)
+          Text(GlassLocalizedText.firstGlassDetail.resolve(locale: locale))
+            .font(SchneeGlassTypography.body)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 420)
         }
 
-        Button("Add Glass", action: onAddGlass)
+        Button(GlassLocalizedText.addGlass.resolve(locale: locale), action: onAddGlass)
           .buttonStyle(.borderedProminent)
           .disabled(!canAddGlass)
       }
@@ -384,7 +376,7 @@ struct WorkspaceSurface: View {
         Image(systemName: "xmark")
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("Dismiss")
+      .accessibilityLabel(GlassLocalizedText.dismissMessage.resolve(locale: locale))
     }
     .padding(SchneeGlassPadding.messageBanner)
     .background(
