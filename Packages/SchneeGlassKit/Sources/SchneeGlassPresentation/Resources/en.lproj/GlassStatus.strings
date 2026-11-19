@@ -317,3 +317,4 @@
 "folderSelectionReconnect" = "Reconnect";
 "folderSelectionReconnectDetail" = "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting.";
 "folderSelectionRecoveryDetail" = "Choose the original copy destination for this Glass. SchneeGlass will verify its persistent identity before reconnecting.";
+"settingsShortcutRecorder" = "Show or hide all Glasses global shortcut";
