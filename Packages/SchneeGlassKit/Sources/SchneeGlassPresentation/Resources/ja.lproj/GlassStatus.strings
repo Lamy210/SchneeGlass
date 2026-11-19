@@ -141,3 +141,15 @@
 "recoveryRemoveIncompleteTitle" = "未完了コピーを削除しますか？";
 "recoveryRemoveIncompleteDetail" = "%@に関連するSchneeGlass所有の未完了ステージングファイルだけを削除します。削除の直前に操作ID・ファイル種別・コピー先・ファイルシステム上のリソースの同一性を再検証します。ユーザーに見える最終ファイルは削除・上書きされません。";
 "recoveryRemoveIncompleteAction" = "未完了コピーを削除";
+"recoveryConfigurationMissing" = "元のGlass設定が見つかりません。復旧メタデータを保持し、ファイルの所属先を推測することはありません。";
+"recoveryDestinationReconnect" = "現在コピー先フォルダにアクセスできません。クリーンアップの前に再接続してください。";
+"recoveryMetadataOnly" = "復旧メタデータだけが残っています。破棄しても接続先フォルダは変更されません。";
+"recoveryOwnedStaging" = "SchneeGlass所有の未完了ステージングファイルが残っており、リソースの同一性は記録された操作と一致しています。";
+"recoveryUnprovenStaging" = "ステージングファイルに似た項目が残っていますが、所有権を証明できません。SchneeGlassは削除しません。";
+"recoveryFinalPresent" = "ユーザーに見える最終ファイルが存在します。最終ファイルは保持し、明示的に破棄できるのは復旧メタデータだけです。";
+"recoveryOwnedStagingAndFinal" = "ステージングファイルと最終ファイルの両方が存在します。最終ファイルは保持し、アプリの所有が証明されたステージングファイルだけを明示的に削除できます。";
+"recoveryUnprovenStagingAndFinal" = "ステージングファイルと最終ファイルの両方が存在しますが、ステージングファイルの所有権を証明できません。SchneeGlassはいずれも削除しません。";
+"recoveryInvalidRecord" = "復旧メタデータが無効です。変更操作は提供されません。";
+"recoveryDestinationMismatch" = "復旧記録とコピー先のGlassが一致しません。変更操作は提供されません。";
+"recoveryCannotInspect" = "現在コピー先フォルダを検査できません。";
+"recoveryUnexpectedFileType" = "復旧対象のパスに予期しないファイルシステム項目が存在します。SchneeGlassは変更しません。";
