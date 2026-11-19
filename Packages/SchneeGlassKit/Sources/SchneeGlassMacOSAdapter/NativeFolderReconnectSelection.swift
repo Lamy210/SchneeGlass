@@ -9,7 +9,8 @@ public final class NativeFolderReconnectSelector: FolderSelecting {
   public init() {
     prompt = "Reconnect"
     message =
-      "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting."
+      "Choose the original folder for this Glass. "
+      + "SchneeGlass will verify its persistent identity before reconnecting."
   }
 
   public init(prompt: String, message: String) {
