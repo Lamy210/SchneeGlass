@@ -426,16 +426,16 @@ private struct SchneeGlassSettingsView: View {
         }
       }
 
-      Section("Pending Copy Recovery") {
+      Section(SchneeGlassCopyRecoveryText.pendingRecovery.resolve(locale: locale)) {
         Text(
-          "Review interrupted or incompletely finalized copy operations. SchneeGlass never deletes or overwrites a final user-visible file from this Recovery Center."
+          SchneeGlassCopyRecoveryText.pendingRecoveryDetail.resolve(locale: locale)
         )
         .foregroundStyle(.secondary)
 
         if pendingCopyRecoveryModel.isLoading {
-          ProgressView("Inspecting pending copies…")
+          ProgressView(SchneeGlassCopyRecoveryText.inspectingPending.resolve(locale: locale))
         } else if pendingCopyRecoveryModel.items.isEmpty {
-          Text("No pending copy recovery items are available.")
+          Text(SchneeGlassCopyRecoveryText.noPending.resolve(locale: locale))
             .foregroundStyle(.secondary)
         } else {
           ForEach(pendingCopyRecoveryModel.items) { item in
@@ -444,7 +444,7 @@ private struct SchneeGlassSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(item.record.finalFilename)
                     .font(.body.weight(.medium))
-                  Text(item.glassTitle ?? "Unknown Glass")
+                  Text(item.glassTitle ?? SchneeGlassCopyRecoveryText.unknownGlass.resolve(locale: locale))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
@@ -465,9 +465,9 @@ private struct SchneeGlassSettingsView: View {
                 if item.actions.contains(.revealStaging)
                   || item.actions.contains(.revealFinal)
                 {
-                  Menu("Inspect in Finder") {
+                  Menu(SchneeGlassCopyRecoveryText.inspectFinder.resolve(locale: locale)) {
                     if item.actions.contains(.revealStaging) {
-                      Button("Show Incomplete Copy") {
+                      Button(SchneeGlassCopyRecoveryText.showIncomplete.resolve(locale: locale)) {
                         Task { @MainActor in
                           _ = await pendingCopyRecoveryModel.reveal(
                             action: .revealStaging,
@@ -478,7 +478,7 @@ private struct SchneeGlassSettingsView: View {
                     }
 
                     if item.actions.contains(.revealFinal) {
-                      Button("Show Final File") {
+                      Button(SchneeGlassCopyRecoveryText.showFinal.resolve(locale: locale)) {
                         Task { @MainActor in
                           _ = await pendingCopyRecoveryModel.reveal(
                             action: .revealFinal,
@@ -491,8 +491,9 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.discardMetadata) {
-                  Button("Discard Metadata…") {
-                    guard confirmPendingCopyMetadataDiscard(filename: item.record.finalFilename)
+                  Button(SchneeGlassCopyRecoveryText.discardMetadataMenu.resolve(locale: locale)) {
+                    guard confirmPendingCopyMetadataDiscard(
+                    filename: item.record.finalFilename, locale: locale)
                     else {
                       return
                     }
@@ -506,8 +507,10 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.removeOwnedStaging) {
-                  Button("Remove Incomplete Copy…") {
-                    guard confirmOwnedStagingRemoval(filename: item.record.finalFilename) else {
+                  Button(SchneeGlassCopyRecoveryText.removeIncompleteMenu.resolve(locale: locale)) {
+                    guard confirmOwnedStagingRemoval(
+                    filename: item.record.finalFilename, locale: locale)
+                  else {
                       return
                     }
                     Task { @MainActor in
@@ -520,7 +523,7 @@ private struct SchneeGlassSettingsView: View {
                 }
 
                 if item.actions.contains(.reconnectDestination) {
-                  Button("Reconnect Destination…") {
+                  Button(SchneeGlassCopyRecoveryText.reconnectDestination.resolve(locale: locale)) {
                     Task { @MainActor in
                       _ = await pendingCopyRecoveryModel.reconnectDestination(
                         operationID: item.id
@@ -538,7 +541,7 @@ private struct SchneeGlassSettingsView: View {
           }
         }
 
-        Button("Refresh Pending Copies") {
+        Button(SchneeGlassCopyRecoveryText.refreshPending.resolve(locale: locale)) {
           Task { @MainActor in
             await pendingCopyRecoveryModel.refresh()
           }
@@ -555,9 +558,9 @@ private struct SchneeGlassSettingsView: View {
         }
       }
 
-      Section("Safety") {
+      Section(SchneeGlassCopyRecoveryText.safety.resolve(locale: locale)) {
         Text(
-          "Configuration Recovery changes SchneeGlass configuration only. Reconnect Destination updates the saved security-scoped folder access after identity checks; it does not move, rename, delete, or overwrite folder contents. Inspect in Finder is read-only and revalidates the current recovery state before opening an item. Pending Copy Recovery may remove only a SchneeGlass-owned incomplete staging file after exact operation metadata and filesystem resource identity are revalidated. Final user-visible files are never deleted or overwritten by Recovery."
+          SchneeGlassCopyRecoveryText.safetyDetail.resolve(locale: locale)
         )
         .foregroundStyle(.secondary)
       }
@@ -705,25 +708,27 @@ private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) 
 }
 
 @MainActor
-private func confirmPendingCopyMetadataDiscard(filename: String) -> Bool {
+private func confirmPendingCopyMetadataDiscard(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Discard Recovery Metadata?"
-  confirmation.informativeText =
-    "Discard SchneeGlass recovery metadata for \(filename). This action does not delete, rename, move, or overwrite the final file or any incomplete staging file."
+  confirmation.messageText = SchneeGlassCopyRecoveryText.discardMetadataTitle.resolve(locale: locale)
+  confirmation.informativeText = SchneeGlassCopyRecoveryText.discardConfirmation(
+    filename: filename, locale: locale)
   confirmation.alertStyle = .informational
-  confirmation.addButton(withTitle: "Discard Metadata")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassCopyRecoveryText.discardMetadataAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
 
 @MainActor
-private func confirmOwnedStagingRemoval(filename: String) -> Bool {
+private func confirmOwnedStagingRemoval(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = "Remove Incomplete Copy?"
-  confirmation.informativeText =
-    "Remove only the SchneeGlass-owned incomplete staging file associated with \(filename). SchneeGlass will revalidate the operation ID, file type, destination, and filesystem resource identity immediately before deletion. The final user-visible file will not be deleted or overwritten."
+  confirmation.messageText = SchneeGlassCopyRecoveryText.removeIncompleteTitle.resolve(locale: locale)
+  confirmation.informativeText = SchneeGlassCopyRecoveryText.removeConfirmation(
+    filename: filename, locale: locale)
   confirmation.alertStyle = .warning
-  confirmation.addButton(withTitle: "Remove Incomplete Copy")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(
+    withTitle: SchneeGlassCopyRecoveryText.removeIncompleteAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
