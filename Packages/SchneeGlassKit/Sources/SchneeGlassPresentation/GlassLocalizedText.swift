@@ -201,6 +201,24 @@ enum GlassLocalizedText: String, CaseIterable {
   case recoveryMessageCopyStarted
   case recoveryMessageInvalidConfiguration
   case recoveryMessageConfigurationSaveFailed
+  case menuGlasses
+  case menuAddGlass
+  case menuShowAll
+  case menuHideAll
+  case menuShowGlass
+  case menuHideGlass
+  case menuResetPositions
+  case menuSettings
+  case menuQuit
+  case menuStartupFailed
+  case menuStartupFailedDetail
+  case menuResetTitle
+  case menuResetDetail
+  case menuResetAction
+  case menuResetBusy
+  case menuResetNoDisplay
+  case menuResetFailed
+  case menuResetFailureTitle
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"
@@ -391,5 +409,76 @@ public enum SchneeGlassCopyRecoveryText: CaseIterable {
       locale: locale,
       filename
     )
+  }
+}
+
+/// App-host commands and position-reset notifications.
+public enum SchneeGlassMenuText: CaseIterable {
+  case glasses
+  case addGlass
+  case showAll
+  case hideAll
+  case showGlass
+  case hideGlass
+  case resetPositions
+  case settings
+  case quit
+  case startupFailed
+  case startupFailedDetail
+  case resetTitle
+  case resetDetail
+  case resetAction
+  case resetBusy
+  case resetNoDisplay
+  case resetFailed
+  case resetFailureTitle
+  case addGlassCommand
+  case cancel
+
+  public func resolve(locale: Locale) -> String {
+    let key: GlassLocalizedText
+    switch self {
+    case .glasses:
+      key = .menuGlasses
+    case .addGlass:
+      key = .menuAddGlass
+    case .showAll:
+      key = .menuShowAll
+    case .hideAll:
+      key = .menuHideAll
+    case .showGlass:
+      key = .menuShowGlass
+    case .hideGlass:
+      key = .menuHideGlass
+    case .resetPositions:
+      key = .menuResetPositions
+    case .settings:
+      key = .menuSettings
+    case .quit:
+      key = .menuQuit
+    case .startupFailed:
+      key = .menuStartupFailed
+    case .startupFailedDetail:
+      key = .menuStartupFailedDetail
+    case .resetTitle:
+      key = .menuResetTitle
+    case .resetDetail:
+      key = .menuResetDetail
+    case .resetAction:
+      key = .menuResetAction
+    case .resetBusy:
+      key = .menuResetBusy
+    case .resetNoDisplay:
+      key = .menuResetNoDisplay
+    case .resetFailed:
+      key = .menuResetFailed
+    case .resetFailureTitle:
+      key = .menuResetFailureTitle
+    case .addGlassCommand:
+      key = .addGlass
+    case .cancel:
+      key = .cancelAction
+    }
+    return key.resolve(locale: locale)
   }
 }

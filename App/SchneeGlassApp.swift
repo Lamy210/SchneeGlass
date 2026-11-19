@@ -67,9 +67,10 @@ struct SchneeGlassApp: App {
     .commands {
       if case .ready(let root) = bootstrapState {
         let model = root.workspaceModel
+        let locale = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
 
         CommandGroup(after: .newItem) {
-          Button("Add Glass") {
+          Button(SchneeGlassMenuText.addGlassCommand.resolve(locale: locale)) {
             Task {
               await model.addGlass()
             }
@@ -78,22 +79,22 @@ struct SchneeGlassApp: App {
           .disabled(!model.canAddGlass)
         }
 
-        CommandMenu("Glasses") {
-          Button("Show All Glasses") {
+        CommandMenu(SchneeGlassMenuText.glasses.resolve(locale: locale)) {
+          Button(SchneeGlassMenuText.showAll.resolve(locale: locale)) {
             panelCoordinator?.showAll()
           }
           .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-          Button("Hide All Glasses") {
+          Button(SchneeGlassMenuText.hideAll.resolve(locale: locale)) {
             panelCoordinator?.hideAll()
           }
           .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
           Divider()
 
-          Button("Reset Glass Positions…") {
+          Button(SchneeGlassMenuText.resetPositions.resolve(locale: locale)) {
             if let panelCoordinator {
-              requestGlassPositionReset(coordinator: panelCoordinator)
+              requestGlassPositionReset(coordinator: panelCoordinator, locale: locale)
             }
           }
           .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
@@ -147,6 +148,7 @@ final class SchneeGlassApplicationDelegate: NSObject, NSApplicationDelegate {
 }
 
 private struct SchneeGlassMenuBarBootstrapContent: View {
+  @Environment(\.locale) private var locale
   let bootstrapState: SchneeGlassBootstrapState
   let panelCoordinator: DesktopGlassPanelCoordinator?
 
@@ -160,16 +162,16 @@ private struct SchneeGlassMenuBarBootstrapContent: View {
         panelCoordinator: panelCoordinator
       )
     } else {
-      Text("SchneeGlass couldn't start")
+      Text(SchneeGlassMenuText.startupFailed.resolve(locale: locale))
         .disabled(true)
 
       Divider()
 
       SettingsLink {
-        Text("Settings…")
+        Text(SchneeGlassMenuText.settings.resolve(locale: locale))
       }
 
-      Button("Quit SchneeGlass") {
+      Button(SchneeGlassMenuText.quit.resolve(locale: locale)) {
         NSApplication.shared.terminate(nil)
       }
     }
@@ -177,13 +179,14 @@ private struct SchneeGlassMenuBarBootstrapContent: View {
 }
 
 private struct SchneeGlassMenuBarContent: View {
+  @Environment(\.locale) private var locale
   let model: SchneeGlassWorkspaceModel
   let panelCoordinator: DesktopGlassPanelCoordinator
 
   var body: some View {
     let labels = GlassMenuLabels.make(for: model.glasses)
 
-    Button("Add Glass…") {
+    Button(SchneeGlassMenuText.addGlass.resolve(locale: locale)) {
       Task {
         await model.addGlass()
       }
@@ -192,17 +195,17 @@ private struct SchneeGlassMenuBarContent: View {
 
     Divider()
 
-    Button("Show All Glasses") {
+    Button(SchneeGlassMenuText.showAll.resolve(locale: locale)) {
       panelCoordinator.showAll()
     }
     .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-    Button("Hide All Glasses") {
+    Button(SchneeGlassMenuText.hideAll.resolve(locale: locale)) {
       panelCoordinator.hideAll()
     }
     .disabled(model.glasses.isEmpty || model.isMutatingConfiguration)
 
-    Menu("Show Glass") {
+    Menu(SchneeGlassMenuText.showGlass.resolve(locale: locale)) {
       ForEach(model.glasses) { entry in
         Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(true, for: entry.id)
@@ -212,7 +215,7 @@ private struct SchneeGlassMenuBarContent: View {
     }
     .disabled(model.glasses.isEmpty || !panelCoordinator.canChangeIndividualVisibility)
 
-    Menu("Hide Glass") {
+    Menu(SchneeGlassMenuText.hideGlass.resolve(locale: locale)) {
       ForEach(model.glasses) { entry in
         Button(labels[entry.id] ?? entry.title) {
           panelCoordinator.setIndividualVisibility(false, for: entry.id)
@@ -224,32 +227,33 @@ private struct SchneeGlassMenuBarContent: View {
 
     Divider()
 
-    Button("Reset Glass Positions…") {
-      requestGlassPositionReset(coordinator: panelCoordinator)
+    Button(SchneeGlassMenuText.resetPositions.resolve(locale: locale)) {
+      requestGlassPositionReset(coordinator: panelCoordinator, locale: locale)
     }
     .disabled(model.glasses.isEmpty || !model.canMutateConfiguration)
 
     Divider()
 
     SettingsLink {
-      Text("Settings…")
+      Text(SchneeGlassMenuText.settings.resolve(locale: locale))
     }
 
-    Button("Quit SchneeGlass") {
+    Button(SchneeGlassMenuText.quit.resolve(locale: locale)) {
       NSApplication.shared.terminate(nil)
     }
   }
 }
 
 @MainActor
-private func requestGlassPositionReset(coordinator: DesktopGlassPanelCoordinator) {
+private func requestGlassPositionReset(
+  coordinator: DesktopGlassPanelCoordinator, locale: Locale
+) {
   let confirmation = NSAlert()
-  confirmation.messageText = "Reset Glass Positions?"
-  confirmation.informativeText =
-    "All Glass panels will be moved onto the current main display. Connected folders and their files will not be moved, renamed, or deleted."
+  confirmation.messageText = SchneeGlassMenuText.resetTitle.resolve(locale: locale)
+  confirmation.informativeText = SchneeGlassMenuText.resetDetail.resolve(locale: locale)
   confirmation.alertStyle = .informational
-  confirmation.addButton(withTitle: "Reset Positions")
-  confirmation.addButton(withTitle: "Cancel")
+  confirmation.addButton(withTitle: SchneeGlassMenuText.resetAction.resolve(locale: locale))
+  confirmation.addButton(withTitle: SchneeGlassMenuText.cancel.resolve(locale: locale))
 
   guard confirmation.runModal() == .alertFirstButtonReturn else {
     return
@@ -262,25 +266,27 @@ private func requestGlassPositionReset(coordinator: DesktopGlassPanelCoordinator
       return
     case .busy:
       presentResetFailure(
-        message:
-          "SchneeGlass is already updating its configuration. Try Reset Positions again after the current operation finishes."
+        message: SchneeGlassMenuText.resetBusy.resolve(locale: locale),
+        locale: locale
       )
     case .noAvailableScreen:
       presentResetFailure(
-        message: "SchneeGlass could not find an available display. No Glass positions were changed."
+        message: SchneeGlassMenuText.resetNoDisplay.resolve(locale: locale),
+        locale: locale
       )
     case .failed:
       presentResetFailure(
-        message: "SchneeGlass could not reset Glass positions. No files or folders were changed."
+        message: SchneeGlassMenuText.resetFailed.resolve(locale: locale),
+        locale: locale
       )
     }
   }
 }
 
 @MainActor
-private func presentResetFailure(message: String) {
+private func presentResetFailure(message: String, locale: Locale) {
   let alert = NSAlert()
-  alert.messageText = "Couldn’t Reset Glass Positions"
+  alert.messageText = SchneeGlassMenuText.resetFailureTitle.resolve(locale: locale)
   alert.informativeText = message
   alert.alertStyle = .warning
   alert.addButton(withTitle: "OK")
@@ -288,6 +294,7 @@ private func presentResetFailure(message: String) {
 }
 
 private struct SchneeGlassBootstrapFailureView: View {
+  @Environment(\.locale) private var locale
   var body: some View {
     VStack(spacing: 14) {
       Image(systemName: "exclamationmark.triangle")
@@ -295,16 +302,14 @@ private struct SchneeGlassBootstrapFailureView: View {
         .foregroundStyle(.secondary)
         .accessibilityHidden(true)
 
-      Text("SchneeGlass couldn't start")
+      Text(SchneeGlassMenuText.startupFailed.resolve(locale: locale))
         .font(.title3.weight(.semibold))
 
-      Text(
-        "The application support location could not be prepared. No folders or files were changed."
-      )
-      .font(.callout)
-      .foregroundStyle(.secondary)
-      .multilineTextAlignment(.center)
-      .frame(maxWidth: 420)
+      Text(SchneeGlassMenuText.startupFailedDetail.resolve(locale: locale))
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: 420)
     }
     .frame(minWidth: 520, minHeight: 360)
     .padding(24)
