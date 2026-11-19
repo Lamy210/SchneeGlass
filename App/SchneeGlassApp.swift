@@ -427,10 +427,8 @@ private struct SchneeGlassSettingsView: View {
       }
 
       Section(SchneeGlassCopyRecoveryText.pendingRecovery.resolve(locale: locale)) {
-        Text(
-          SchneeGlassCopyRecoveryText.pendingRecoveryDetail.resolve(locale: locale)
-        )
-        .foregroundStyle(.secondary)
+        Text(SchneeGlassCopyRecoveryText.pendingRecoveryDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
 
         if pendingCopyRecoveryModel.isLoading {
           ProgressView(SchneeGlassCopyRecoveryText.inspectingPending.resolve(locale: locale))
@@ -444,9 +442,11 @@ private struct SchneeGlassSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                   Text(item.record.finalFilename)
                     .font(.body.weight(.medium))
-                  Text(item.glassTitle ?? SchneeGlassCopyRecoveryText.unknownGlass.resolve(locale: locale))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                  Text(
+                    item.glassTitle ?? SchneeGlassCopyRecoveryText.unknownGlass.resolve(locale: locale)
+                  )
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -559,10 +559,8 @@ private struct SchneeGlassSettingsView: View {
       }
 
       Section(SchneeGlassCopyRecoveryText.safety.resolve(locale: locale)) {
-        Text(
-          SchneeGlassCopyRecoveryText.safetyDetail.resolve(locale: locale)
-        )
-        .foregroundStyle(.secondary)
+        Text(SchneeGlassCopyRecoveryText.safetyDetail.resolve(locale: locale))
+          .foregroundStyle(.secondary)
       }
     }
     .formStyle(.grouped)
@@ -710,7 +708,8 @@ private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) 
 @MainActor
 private func confirmPendingCopyMetadataDiscard(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = SchneeGlassCopyRecoveryText.discardMetadataTitle.resolve(locale: locale)
+  confirmation.messageText = SchneeGlassCopyRecoveryText.discardMetadataTitle.resolve(
+    locale: locale)
   confirmation.informativeText = SchneeGlassCopyRecoveryText.discardConfirmation(
     filename: filename, locale: locale)
   confirmation.alertStyle = .informational
@@ -723,7 +722,8 @@ private func confirmPendingCopyMetadataDiscard(filename: String, locale: Locale)
 @MainActor
 private func confirmOwnedStagingRemoval(filename: String, locale: Locale) -> Bool {
   let confirmation = NSAlert()
-  confirmation.messageText = SchneeGlassCopyRecoveryText.removeIncompleteTitle.resolve(locale: locale)
+  confirmation.messageText = SchneeGlassCopyRecoveryText.removeIncompleteTitle.resolve(
+    locale: locale)
   confirmation.informativeText = SchneeGlassCopyRecoveryText.removeConfirmation(
     filename: filename, locale: locale)
   confirmation.alertStyle = .warning
