@@ -650,7 +650,7 @@ private struct GlassPreviewSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
-        Text("Loading folder…")
+        Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
       .frame(minHeight: 84)
@@ -722,6 +722,7 @@ private struct DropOverlaySurface<Content: View>: View {
 }
 
 private struct FilePreviewGrid: View {
+  @Environment(\.locale) private var locale
   let snapshot: FolderSnapshot
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
@@ -746,9 +747,12 @@ private struct FilePreviewGrid: View {
       }
 
       if snapshot.isTruncated {
-        Label("Showing the first 500 items", systemImage: "ellipsis.circle")
-          .font(SchneeGlassTypography.supporting)
-          .foregroundStyle(.secondary)
+        Label(
+          GlassLocalizedText.workspaceFirst500Items.resolve(locale: locale),
+          systemImage: "ellipsis.circle"
+        )
+        .font(SchneeGlassTypography.supporting)
+        .foregroundStyle(.secondary)
       }
     }
   }
