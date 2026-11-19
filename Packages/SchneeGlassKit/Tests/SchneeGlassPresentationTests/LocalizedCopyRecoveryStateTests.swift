@@ -52,7 +52,7 @@ func copyRecoveryUnprovenOwnershipNeverPromisesDeletion() {
       .stagingAndFinalPresent(staging: staging, final: staging))
     #expect(
       CopyRecoveryStatePresentation.description(for: both, locale: ja).contains("いずれも削除しません"))
-    #expect(
-      CopyRecoveryStatePresentation.description(for: both, locale: en).contains("not delete either"))
+    let english = CopyRecoveryStatePresentation.description(for: both, locale: en)
+    #expect(english.contains("not delete either"))
   }
 }

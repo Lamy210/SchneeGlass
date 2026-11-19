@@ -18,13 +18,19 @@ public enum CopyRecoveryStatePresentation {
       case .metadataOnly:
         key = .recoveryMetadataOnly
       case .stagingPresent(let verification):
-        key = verification.resourceIdentity == .matchesRecordedIdentity
-          ? .recoveryOwnedStaging : .recoveryUnprovenStaging
+        if verification.resourceIdentity == .matchesRecordedIdentity {
+          key = .recoveryOwnedStaging
+        } else {
+          key = .recoveryUnprovenStaging
+        }
       case .finalPresent:
         key = .recoveryFinalPresent
       case .stagingAndFinalPresent(let staging, _):
-        key = staging.resourceIdentity == .matchesRecordedIdentity
-          ? .recoveryOwnedStagingAndFinal : .recoveryUnprovenStagingAndFinal
+        if staging.resourceIdentity == .matchesRecordedIdentity {
+          key = .recoveryOwnedStagingAndFinal
+        } else {
+          key = .recoveryUnprovenStagingAndFinal
+        }
       case .invalidRecord:
         key = .recoveryInvalidRecord
       case .destinationMismatch:
