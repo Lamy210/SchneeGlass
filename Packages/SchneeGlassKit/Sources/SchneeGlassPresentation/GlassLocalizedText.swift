@@ -158,6 +158,49 @@ enum GlassLocalizedText: String, CaseIterable {
   case recoveryDestinationMismatch
   case recoveryCannotInspect
   case recoveryUnexpectedFileType
+  case recoveryMessageConfigurationBusy
+  case recoveryMessageInspectFailed
+  case recoveryMessageWaitForMutation
+  case recoveryMessageNotMutation
+  case recoveryMessageActionFailed
+  case recoveryMessageWaitForReveal
+  case recoveryMessageBusyReveal
+  case recoveryMessageNotReveal
+  case recoveryMessageRevealedStaging
+  case recoveryMessageRevealedFinal
+  case recoveryMessageRevealFailed
+  case recoveryMessageWaitForReconnect
+  case recoveryMessageBusyReconnect
+  case recoveryMessageReconnected
+  case recoveryMessageReconnectReloadFailed
+  case recoveryMessageReconnectFailed
+  case recoveryMessageMutationCompleted
+  case recoveryMessageMutationReloadFailed
+  case recoveryMessageUnsupportedReveal
+  case recoveryMessageRevealRecordLoadFailed
+  case recoveryMessageRevealConfigLoadFailed
+  case recoveryMessageRecordMissing
+  case recoveryMessageRevealGlassMissing
+  case recoveryMessageRevealDestinationUnavailable
+  case recoveryMessageRevealStaleState
+  case recoveryMessageCopyInProgress
+  case recoveryMessageRecoveryInProgress
+  case recoveryMessageRecordsLoadFailed
+  case recoveryMessageConfigurationLoadFailed
+  case recoveryMessageConfigurationMissing
+  case recoveryMessageDestinationUnavailable
+  case recoveryMessageMutationFailed
+  case recoveryMessageReconnectRecordsLoadFailed
+  case recoveryMessageReconnectConfigLoadFailed
+  case recoveryMessageReconnectGlassMissing
+  case recoveryMessageSourceCreationFailed
+  case recoveryMessageIdentityUnavailable
+  case recoveryMessageIdentityMismatch
+  case recoveryMessageSelectedAccessFailed
+  case recoveryMessageStaleRecoveryState
+  case recoveryMessageCopyStarted
+  case recoveryMessageInvalidConfiguration
+  case recoveryMessageConfigurationSaveFailed
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"
