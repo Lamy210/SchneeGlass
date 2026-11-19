@@ -244,6 +244,15 @@ enum GlassLocalizedText: String, CaseIterable {
   case panelSnapGlass
   case panelWindowOptions
   case panelReconnectFolder
+  case tileOpen
+  case tileReveal
+  case tileOpenHint
+  case tileFolder
+  case tilePackage
+  case tileAlias
+  case tileSymbolicLink
+  case tileSize
+  case tileModified
 
   func resolve(locale: Locale) -> String {
     let language = locale.language.languageCode?.identifier == "ja" ? "ja" : "en"

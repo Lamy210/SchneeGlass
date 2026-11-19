@@ -1,4 +1,5 @@
 import FileDomain
+import Foundation
 import SchneeGlassDesignSystem
 import SwiftUI
 
@@ -6,13 +7,14 @@ import SwiftUI
 // or name. Keep existing double-click / context-menu behavior while adding
 // keyboard and assistive-technology activation.
 struct GlassInteractiveFileTile: View {
+  @Environment(\.locale) private var locale
   let item: GlassItem
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
   var displayMode: GlassFileDisplayMode = .grid
 
   var body: some View {
-    let presentation = GlassItemPresentation.make(for: item)
+    let presentation = GlassItemPresentation.make(for: item, locale: locale)
     let metadata = displayMode == .list ? GlassListItemMetadata.make(for: item) : nil
     tileLabel(presentation, metadata: metadata)
       .contentShape(Rectangle())
@@ -20,10 +22,10 @@ struct GlassInteractiveFileTile: View {
         onOpen(item)
       }
       .contextMenu {
-        Button("Open") {
+        Button(GlassLocalizedText.tileOpen.resolve(locale: locale)) {
           onOpen(item)
         }
-        Button("Reveal in Finder") {
+        Button(GlassLocalizedText.tileReveal.resolve(locale: locale)) {
           onReveal(item)
         }
       }
@@ -43,13 +45,13 @@ struct GlassInteractiveFileTile: View {
       }
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(presentation.accessibilityLabel)
-      .accessibilityValue(metadata?.accessibilityText ?? "")
-      .accessibilityHint("Opens the item")
+      .accessibilityValue(metadata?.accessibilityText(locale: locale) ?? "")
+      .accessibilityHint(GlassLocalizedText.tileOpenHint.resolve(locale: locale))
       .accessibilityAddTraits(.isButton)
       .accessibilityAction {
         onOpen(item)
       }
-      .accessibilityAction(named: Text("Reveal in Finder")) {
+      .accessibilityAction(named: Text(GlassLocalizedText.tileReveal.resolve(locale: locale))) {
         onReveal(item)
       }
   }

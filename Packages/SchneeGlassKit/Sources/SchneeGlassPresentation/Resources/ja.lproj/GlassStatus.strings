@@ -239,3 +239,12 @@
 "panelSnapGlass" = "Glassの位置を揃える";
 "panelWindowOptions" = "Glassウィンドウのオプション";
 "panelReconnectFolder" = "元のフォルダを再接続";
+"tileOpen" = "開く";
+"tileReveal" = "Finderに表示";
+"tileOpenHint" = "項目を開きます";
+"tileFolder" = "フォルダ、%@";
+"tilePackage" = "パッケージ、%@";
+"tileAlias" = "エイリアス、%@";
+"tileSymbolicLink" = "シンボリックリンク、%@";
+"tileSize" = "サイズ：%@";
+"tileModified" = "更新日時：%@";

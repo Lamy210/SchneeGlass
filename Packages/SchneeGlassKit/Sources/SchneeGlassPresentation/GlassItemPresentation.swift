@@ -1,13 +1,14 @@
 import FileDomain
+import Foundation
 
 struct GlassItemPresentation: Equatable {
     let systemImage: String
     let accessibilityLabel: String
 
-    static func make(for item: GlassItem) -> Self {
+    static func make(for item: GlassItem, locale: Locale = Locale(identifier: "en")) -> Self {
         Self(
             systemImage: systemImage(for: item.kind),
-            accessibilityLabel: accessibilityLabel(for: item)
+            accessibilityLabel: accessibilityLabel(for: item, locale: locale)
         )
     }
 
@@ -28,18 +29,20 @@ struct GlassItemPresentation: Equatable {
         }
     }
 
-    private static func accessibilityLabel(for item: GlassItem) -> String {
+    private static func accessibilityLabel(for item: GlassItem, locale: Locale) -> String {
+        let key: GlassLocalizedText
         switch item.kind {
         case .directory:
-            return "Folder, \(item.displayName)"
+            key = .tileFolder
         case .package:
-            return "Package, \(item.displayName)"
+            key = .tilePackage
         case .alias:
-            return "Alias, \(item.displayName)"
+            key = .tileAlias
         case .symbolicLink:
-            return "Symbolic link, \(item.displayName)"
+            key = .tileSymbolicLink
         case .regular, .unsupported:
             return item.displayName
         }
+        return String(format: key.resolve(locale: locale), locale: locale, item.displayName)
     }
 }
