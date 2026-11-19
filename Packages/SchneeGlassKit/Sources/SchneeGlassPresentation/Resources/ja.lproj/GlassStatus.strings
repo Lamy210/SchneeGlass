@@ -311,3 +311,4 @@
 "workspaceMessageCopyReasonUnexpected" = "予期しないコピーエラーが発生しました。";
 "loadingFolder" = "フォルダを読み込み中…";
 "workspaceFirst500Items" = "最初の500件を表示しています";
+"menuDuplicateTitle" = "%1$@（全%3$@件中%2$@件目）";
