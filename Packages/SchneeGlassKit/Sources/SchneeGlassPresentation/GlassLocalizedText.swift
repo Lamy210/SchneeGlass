@@ -148,7 +148,7 @@ enum GlassLocalizedText: String, CaseIterable {
 }
 
 /// Narrow app-host bridge for configuration recovery and shortcut settings.
-public enum SchneeGlassSettingsText: CaseIterable {
+public enum SchneeGlassSettingsText: CaseIterable, Equatable {
   case recovery
   case recoveryUnavailable
   case filesUnchanged

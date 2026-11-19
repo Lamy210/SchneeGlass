@@ -330,7 +330,7 @@ private struct SchneeGlassSettingsBootstrapView: View {
       Form {
         Section(SchneeGlassSettingsText.recovery.resolve(locale: locale)) {
           Text(SchneeGlassSettingsText.recoveryUnavailable.resolve(locale: locale))
-          .foregroundStyle(.secondary)
+            .foregroundStyle(.secondary)
 
           Text(SchneeGlassSettingsText.filesUnchanged.resolve(locale: locale))
             .foregroundStyle(.secondary)
@@ -364,13 +364,13 @@ private struct SchneeGlassSettingsView: View {
         }
 
         Text(SchneeGlassSettingsText.shortcutDetail.resolve(locale: locale))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
 
       Section(SchneeGlassSettingsText.configurationRecovery.resolve(locale: locale)) {
         Text(SchneeGlassSettingsText.configurationRecoveryDetail.resolve(locale: locale))
-        .foregroundStyle(.secondary)
+          .foregroundStyle(.secondary)
 
         if isLoadingBackups {
           ProgressView(SchneeGlassSettingsText.loadingBackups.resolve(locale: locale))
@@ -698,7 +698,8 @@ private func confirmConfigurationBackupRestore(createdAt: Date, locale: Locale) 
     locale: locale
   )
   confirmation.alertStyle = .warning
-  confirmation.addButton(withTitle: SchneeGlassSettingsText.confirmRestoreAction.resolve(locale: locale))
+  confirmation.addButton(
+    withTitle: SchneeGlassSettingsText.confirmRestoreAction.resolve(locale: locale))
   confirmation.addButton(withTitle: SchneeGlassSettingsText.cancel.resolve(locale: locale))
   return confirmation.runModal() == .alertFirstButtonReturn
 }
