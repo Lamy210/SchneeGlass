@@ -312,3 +312,8 @@
 "loadingFolder" = "Loading folder…";
 "workspaceFirst500Items" = "Showing the first 500 items";
 "menuDuplicateTitle" = "%1$@ (%2$@ of %3$@)";
+"folderSelectionAdd" = "Add Glass";
+"folderSelectionAddDetail" = "Choose a folder to place on your desktop as a SchneeGlass.";
+"folderSelectionReconnect" = "Reconnect";
+"folderSelectionReconnectDetail" = "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting.";
+"folderSelectionRecoveryDetail" = "Choose the original copy destination for this Glass. SchneeGlass will verify its persistent identity before reconnecting.";

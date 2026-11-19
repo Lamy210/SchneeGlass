@@ -3,7 +3,19 @@ import SchneeGlassApplication
 
 @MainActor
 public final class NativeFolderReconnectSelector: FolderSelecting {
-  public init() {}
+  private let prompt: String
+  private let message: String
+
+  public init() {
+    prompt = "Reconnect"
+    message =
+      "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting."
+  }
+
+  public init(prompt: String, message: String) {
+    self.prompt = prompt
+    self.message = message
+  }
 
   public func selectFolder() async -> URL? {
     let panel = NSOpenPanel()
@@ -12,9 +24,8 @@ public final class NativeFolderReconnectSelector: FolderSelecting {
     panel.allowsMultipleSelection = false
     panel.canCreateDirectories = false
     panel.resolvesAliases = true
-    panel.prompt = "Reconnect"
-    panel.message =
-      "Choose the original folder for this Glass. SchneeGlass will verify its persistent identity before reconnecting."
+    panel.prompt = prompt
+    panel.message = message
 
     return await awaitNativeFolderSelection(using: panel)
   }
