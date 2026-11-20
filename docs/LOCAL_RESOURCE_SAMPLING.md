@@ -1,0 +1,30 @@
+# S01 ローカル常駐リソース計測
+
+[Issue #589](https://github.com/Lamy210/SchneeGlass/issues/589)の実機測定用。アプリを変更せず、macOS標準のps/lsofを使って指定PIDだけを観測する。ネットワーク通信・sudo・新規entitlement・対象プロセスへのsignal送信は行わない。
+
+## 実行手順
+
+1. exact-main候補appを通常起動し、Activity MonitorでSchneeGlassのPIDを確認する。使い捨てfolderのみ使用する。
+2. 下記の例でローカルの一時ファイルを新規作成して計測する（30分相当、31 samples）。PIDは実際の値に置換する。
+
+```sh
+report="$(mktemp "${TMPDIR:-/tmp}/schneeglass-soak.XXXXXX")" || exit 1
+python3 Scripts/sample-process-resources.py --pid 12345 --interval 60 --samples 31 > "$report"
+```
+
+24時間相当は --samples 1441。終了コード0と予定行数（header + samples）を確認する。中断・timeout・観測不能・プロセス変更は非0終了であり、残存CSVを完全な結果として扱わない。再起動の計測は別runに分離する。
+
+## 指標
+
+- elapsed_seconds: monotonic elapsed、各観測完了時点。観測時間やsleep/wakeで実間隔にズレが生じ得る。
+- cpu_percent_ps: macOS psのCPU推定値（瞬時値/厳密な区間平均ではない、100%を超え得る）。
+- rss_kib: psのresident set size、KiB。physical footprintやリークの確定値ではない。
+- fd_count: lsofの数値descriptor fieldの個数。cwd/txt等の疑似entryは除外する。lsofが警告・失敗した場合、0を補わず停止する。
+
+PID、起動時刻、実行ファイル名を観測前後およびサンプル間で照合し、変更を拒否する。psの起動時刻は秒精度なので同秒・同コマンドでのPID再使用を完全に区別できない。観測結果の一貫性を確保するため意図的に別PIDへの自動追従は行わない。
+
+## 証跡と限界
+
+CSVへPID、実行ファイルpath、folder名、raw lsof、bookmarkは書かない。raw結果は公開repoへcommitしない。共有する場合は人がレビューした集計のみ。exact-main SHA、artifact digest、OS build/CPU、Glass数、操作開始終了、完了/中断を別途記録する。
+
+監視件数・UI latency・physical footprint・sleep/wakeの動作自体はこのツールでは測定しない。#589の別手順で実測する。観測のoverheadも区別して評価する。数値SLOは未確定。macOS実機のsmoke testと長時間試験が必要。
