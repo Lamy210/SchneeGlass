@@ -802,8 +802,14 @@ public final class SchneeGlassWorkspaceModel {
       sessionTaskTracker.invalidate(glassID)
       stateTasks[glassID]?.cancel()
       stateTasks[glassID] = nil
-      if let session = sessions.removeValue(forKey: glassID) {
-        await session.stop()
+      if let session = sessions[glassID] {
+        // Retain discovery while stop suspends: shutdown can still find this session
+        // and join the same idempotent cleanup before approving termination.
+        await WorkspaceSessionRetirement.stopAndRemove(
+          stop: { await session.stop() },
+          isCurrent: { self.sessions[glassID] === session },
+          remove: { self.sessions[glassID] = nil }
+        )
       }
       connectedFolderURLs[glassID] = nil
 
