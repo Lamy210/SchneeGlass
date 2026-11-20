@@ -192,6 +192,9 @@ jobs:
       - name: Local resource sampling fixtures
         run: python3 Scripts/test-sample-process-resources.py
 
+      - name: Local resource summary fixtures
+        run: python3 Scripts/test-summarize-process-resources.py
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
