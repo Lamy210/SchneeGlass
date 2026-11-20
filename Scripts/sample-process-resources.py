@@ -64,7 +64,7 @@ def parse_fds(output, pid):
                 descriptors.add(descriptor)
             else:
                 # lsof also reports non-descriptor entries such as cwd/txt.
-                require(re.fullmatch(r"[A-Za-z]+", value), "Invalid descriptor record")
+                require(value in {"cwd", "rtd", "txt", "mem", "mmap"}, "Invalid descriptor record")
         else:
             raise ValueError("Unexpected descriptor output")
     require(process_seen and descriptors, "Descriptor observation unavailable")
@@ -72,7 +72,13 @@ def parse_fds(output, pid):
 
 
 def read_process(pid, run=run_command):
-    return parse_ps(run([PS, "-p", str(pid), "-o", "pid=,lstart=,pcpu=,rss=,comm="]), pid)
+    # Separate -o arguments avoid BSD ps ambiguity around comma-separated
+    # custom header assignments. Wide output prevents command truncation.
+    args = [
+        PS, "-ww", "-p", str(pid), "-o", "pid=", "-o", "lstart=",
+        "-o", "pcpu=", "-o", "rss=", "-o", "comm=",
+    ]
+    return parse_ps(run(args), pid)
 
 
 def sample(pid, expected_identity=None, run=run_command):

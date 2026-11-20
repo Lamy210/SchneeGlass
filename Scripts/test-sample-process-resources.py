@@ -32,9 +32,26 @@ class ResourceSamplerTests(unittest.TestCase):
 
     def test_rejects_unavailable_or_ambiguous_fds(self):
         for value in ("", "p42\nfcwd\n", "p43\nf0\n", "p42\nf0\np42\nf1\n",
-                      "p42\nf0\nf0\n", "p42\nf0u\n", "p42\nn/private/path\n"):
+                      "p42\nf0\nf0\n", "p42\nf0u\n", "p42\nf0\nfNOFD\n", "p42\nn/private/path\n"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 PARSE_FDS(value, 42)
+
+    def test_commands_use_explicit_pid_and_no_file_name_fields(self):
+        calls = []
+        records = iter([RECORD, FDS, RECORD])
+
+        def run(args):
+            calls.append(args)
+            return next(records)
+
+        SAMPLE(42, run=run)
+        expected_ps = [
+            "/bin/ps", "-ww", "-p", "42", "-o", "pid=", "-o", "lstart=",
+            "-o", "pcpu=", "-o", "rss=", "-o", "comm=",
+        ]
+        self.assertEqual(calls, [
+            expected_ps, ["/usr/sbin/lsof", "-nP", "-a", "-p", "42", "-Fpf"], expected_ps,
+        ])
 
     def test_sample_rejects_pid_reuse_during_observation(self):
         records = iter([RECORD, FDS, RECORD.replace("09:00:00", "09:00:01")])
