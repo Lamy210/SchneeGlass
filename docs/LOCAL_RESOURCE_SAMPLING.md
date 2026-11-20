@@ -16,7 +16,7 @@ python3 Scripts/sample-process-resources.py --pid 12345 --interval 60 --samples 
 
 ## 指標
 
-- elapsed_seconds: monotonic elapsed、各観測完了時点。観測時間やsleep/wakeで実間隔にズレが生じ得る。
+- elapsed_seconds: monotonic elapsed、各観測完了時点。観測時間やsleep/wakeで実間隔にズレが生じ得る。遅延時は実際の観測開始時刻を基準に次回時刻を更新し、遅れた分の連続計測は行わない。予定サンプル数は維持するため、所要時間は延び得る。
 - cpu_percent_ps: macOS psのCPU推定値（瞬時値/厳密な区間平均ではない、100%を超え得る）。
 - rss_kib: psのresident set size、KiB。physical footprintやリークの確定値ではない。
 - fd_count: lsofの数値descriptor fieldの個数。cwd/txt等の疑似entryは除外する。lsofが警告・失敗した場合、0を補わず停止する。
@@ -27,4 +27,4 @@ PID、起動時刻、実行ファイル名を観測前後およびサンプル�
 
 CSVへPID、実行ファイルpath、folder名、raw lsof、bookmarkは書かない。raw結果は公開repoへcommitしない。共有する場合は人がレビューした集計のみ。exact-main SHA、artifact digest、OS build/CPU、Glass数、操作開始終了、完了/中断を別途記録する。
 
-監視件数・UI latency・physical footprint・sleep/wakeの動作自体はこのツールでは測定しない。#589の別手順で実測する。観測のoverheadも区別して評価する。数値SLOは未確定。macOS実機のsmoke testと長時間試験が必要。
+監視件数・UI latency・physical footprint・sleep/wakeの動作自体はこのツールでは測定しない。#589の別手順で実測する。観測のoverheadも区別して評価する。数値SLOは未確定。macOS実機のSchneeGlass smoke testと長時間試験が必要。Canonical CIには使い捨ての /bin/sleep 子プロセスを用いる実ps/lsof smoke fixtureがあり、SchneeGlass以外を拒否する本番既定動作・実コマンド形式・FD集計・同一性検証を確認する。これはアプリ実機QAやOSのスリープ復帰試験とは異なる。

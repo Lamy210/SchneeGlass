@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Synthetic tests only: do not inspect live processes or write files."""
+"""Synthetic tests and a Darwin-only native command fixture using an owned child."""
 import io
 import pathlib
 import runpy
+import subprocess
+import sys
 import unittest
 
 M = runpy.run_path(str(pathlib.Path(__file__).with_name("sample-process-resources.py")))
@@ -88,6 +90,68 @@ class ResourceSamplerTests(unittest.TestCase):
             "1,1.000,25.0,1024,4",
             "2,61.000,25.0,1024,4",
         ])
+
+    def test_collect_does_not_catch_up_after_late_wakeup(self):
+        now = [0.0]
+        starts = []
+        sleeps = []
+
+        def observe(pid, previous):
+            starts.append(now[0])
+            now[0] += 1
+            return ("start", "command"), 1.0, 512, 3
+
+        def sleep(seconds):
+            sleeps.append(seconds)
+            now[0] += seconds + (180 if len(sleeps) == 1 else 0)
+
+        COLLECT(42, 60, 4, io.StringIO(), observe=observe,
+                clock=lambda: now[0], sleep=sleep)
+        self.assertEqual(starts, [0, 240, 300, 360])
+        self.assertEqual(sleeps, [59, 59, 59])
+
+    def test_collect_does_not_catch_up_after_slow_observation(self):
+        now = [0.0]
+        starts = []
+        durations = iter([181, 1, 1])
+
+        def observe(pid, previous):
+            starts.append(now[0])
+            now[0] += next(durations)
+            return ("start", "command"), 1.0, 512, 3
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        COLLECT(42, 60, 3, io.StringIO(), observe=observe,
+                clock=lambda: now[0], sleep=sleep)
+        self.assertEqual(starts, [0, 181, 241])
+
+    @unittest.skipUnless(sys.platform == "darwin", "requires native macOS ps/lsof")
+    def test_native_macos_commands_observe_owned_child(self):
+        child = subprocess.Popen(
+            ["/bin/sleep", "90"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        try:
+            # The production CLI must still reject this non-SchneeGlass process.
+            with self.assertRaisesRegex(ValueError, "Target is not SchneeGlass"):
+                SAMPLE(child.pid)
+            identity, cpu, rss, count = SAMPLE(child.pid, expected_name="sleep")
+            self.assertGreaterEqual(cpu, 0)
+            self.assertGreater(rss, 0)
+            self.assertGreaterEqual(count, 3)
+            again, _, _, _ = SAMPLE(child.pid, identity, expected_name="sleep")
+            self.assertEqual(again, identity)
+        finally:
+            # Only the disposable child created by this test is terminated.
+            if child.poll() is None:
+                child.terminate()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait(timeout=5)
 
     def test_collect_preserves_partial_output_and_propagates_failure(self):
         output = io.StringIO()
