@@ -944,17 +944,23 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   private func deactivateAllSessions() async {
-    let activeSessions = Array(sessions.values)
+    let activeSessions = Array(sessions)
     sessionTaskTracker.invalidateAll()
     for task in stateTasks.values {
       task.cancel()
     }
     stateTasks.removeAll(keepingCapacity: false)
-    sessions.removeAll(keepingCapacity: false)
     connectedFolderURLs.removeAll(keepingCapacity: false)
 
-    for session in activeSessions {
-      await session.stop()
+    // Stop may suspend during snapshot/copy/security-scope cleanup. Keep each session
+    // discoverable until its stop has completed so a reentrant shutdown can join
+    // cleanup instead of returning while folder authority is still held.
+    for (glassID, session) in activeSessions {
+      await WorkspaceSessionRetirement.stopAndRemove(
+        stop: { await session.stop() },
+        isCurrent: { self.sessions[glassID] === session },
+        remove: { self.sessions[glassID] = nil }
+      )
     }
   }
 
