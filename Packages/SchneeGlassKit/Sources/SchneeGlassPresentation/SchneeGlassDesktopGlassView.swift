@@ -352,12 +352,13 @@ struct DesktopGlassSurface: View {
       }
 
     case .empty:
+      let presentation = DesktopGlassEmptyPresentation.make(locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(
           systemImage: "tray.and.arrow.down",
-          title: "Drop files here",
-          detail: "Files are copied. Originals stay where they are.",
+          title: presentation.title,
+          detail: presentation.detail,
           detailAlignment: .center
         )
         Spacer()

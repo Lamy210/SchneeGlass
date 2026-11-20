@@ -1,5 +1,7 @@
 "connected" = "Connected";
 "empty" = "Empty";
+"desktopEmptyDropTitle" = "Drop files here";
+"desktopEmptyDropDetail" = "Files are copied. Originals stay where they are.";
 "unavailable" = "Unavailable";
 "refreshFailed" = "Refresh failed";
 "needsAttention" = "Needs attention";
