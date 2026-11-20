@@ -32,7 +32,7 @@ def run_command(args):
     return result.stdout
 
 
-def parse_ps(output, pid):
+def parse_ps(output, pid, *, expected_name="SchneeGlass"):
     lines = output.strip().splitlines()
     require(len(lines) == 1, "Expected exactly one process")
     fields = lines[0].split(maxsplit=8)
@@ -45,7 +45,7 @@ def parse_ps(output, pid):
     cpu = float(fields[6])
     require(math.isfinite(cpu), "Invalid process CPU")
     command = fields[8]
-    require(pathlib.PurePath(command).name == "SchneeGlass", "Target is not SchneeGlass")
+    require(pathlib.PurePath(command).name == expected_name, "Target is not SchneeGlass")
     return (started, command), cpu, int(fields[7])
 
 
@@ -71,21 +71,23 @@ def parse_fds(output, pid):
     return len(descriptors)
 
 
-def read_process(pid, run=run_command):
+def read_process(pid, run=run_command, *, expected_name="SchneeGlass"):
     # Separate -o arguments avoid BSD ps ambiguity around comma-separated
     # custom header assignments. Wide output prevents command truncation.
     args = [
         PS, "-ww", "-p", str(pid), "-o", "pid=", "-o", "lstart=",
         "-o", "pcpu=", "-o", "rss=", "-o", "comm=",
     ]
-    return parse_ps(run(args), pid)
+    return parse_ps(run(args), pid, expected_name=expected_name)
 
 
-def sample(pid, expected_identity=None, run=run_command):
-    identity, _, _ = read_process(pid, run)
+def sample(pid, expected_identity=None, run=run_command, *, expected_name="SchneeGlass"):
+    # Only the controlled native-command fixture overrides this internal parameter.
+    # The CLI always samples SchneeGlass and exposes no executable-name override.
+    identity, _, _ = read_process(pid, run, expected_name=expected_name)
     require(expected_identity is None or identity == expected_identity, "Target process changed")
     count = parse_fds(run([LSOF, "-nP", "-a", "-p", str(pid), "-Fpf"]), pid)
-    after, cpu, rss = read_process(pid, run)
+    after, cpu, rss = read_process(pid, run, expected_name=expected_name)
     require(after == identity, "Target process changed during observation")
     return identity, cpu, rss, count
 
@@ -95,10 +97,16 @@ def collect(pid, interval, samples, output, observe=sample, clock=time.monotonic
     writer.writerow(["sample", "elapsed_seconds", "cpu_percent_ps", "rss_kib", "fd_count"])
     output.flush()
     begin = clock()
+    next_start = begin
     identity = None
     for index in range(samples):
         if index:
-            sleep(max(0, begin + index * interval - clock()))
+            delay = next_start - clock()
+            if delay > 0:
+                sleep(delay)
+        # Re-anchor the next deadline to the actual start, not the original
+        # schedule. Late wakeups must never produce a catch-up sampling burst.
+        next_start = clock() + interval
         identity, cpu, rss, count = observe(pid, identity)
         writer.writerow([index + 1, f"{clock() - begin:.3f}", cpu, rss, count])
         output.flush()
