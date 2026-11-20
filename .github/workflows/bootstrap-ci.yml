@@ -189,6 +189,9 @@ jobs:
       - name: Localization resource guard fixtures
         run: python3 Scripts/test-verify-localization-bundle.py
 
+      - name: Local resource sampling fixtures
+        run: python3 Scripts/test-sample-process-resources.py
+
       - name: Swift package tests
         run: swift test --package-path Packages/SchneeGlassKit
 
