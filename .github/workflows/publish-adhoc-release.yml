@@ -1,0 +1,70 @@
+name: Publish Ad-Hoc Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Exact successful candidate Actions run ID (attempt 1)
+        required: true
+        type: string
+      artifact_id:
+        description: Exact candidate Actions artifact ID
+        required: true
+        type: string
+      version:
+        description: Candidate version X.Y.Z
+        required: true
+        type: string
+      build:
+        description: Candidate build
+        required: true
+        type: string
+      source_sha:
+        description: Exact candidate/current main SHA
+        required: true
+        type: string
+      comment_id:
+        description: Owner's manually posted QA approval comment ID
+        required: true
+        type: string
+      confirm:
+        description: Type PUBLISH vX.Y.Z to authorize this exact publication
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schneeglass-ad-hoc-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Lamy210/SchneeGlass' && github.ref == 'refs/heads/main' && github.actor_id == '90091196' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Establish local exact main
+        run: git switch -C main "$GITHUB_SHA"
+      - name: Create-only owner-authorized release
+        env:
+          GH_TOKEN: ${{ secrets.SCHNEEGLASS_RELEASE_OWNER_TOKEN }}
+          GH_HOST: github.com
+          GH_PROMPT_DISABLED: '1'
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+          INPUT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD: ${{ inputs.build }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_COMMENT_ID: ${{ inputs.comment_id }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          python3 Scripts/publish-adhoc-release.py "$INPUT_RUN_ID" "$INPUT_ARTIFACT_ID" "$INPUT_VERSION" "$INPUT_BUILD" "$INPUT_SOURCE_SHA" "$INPUT_COMMENT_ID" "$INPUT_CONFIRM"
