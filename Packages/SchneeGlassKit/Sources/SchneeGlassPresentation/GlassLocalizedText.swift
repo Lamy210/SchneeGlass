@@ -5,6 +5,8 @@ import Foundation
 enum GlassLocalizedText: String, CaseIterable {
   case connected
   case empty
+  case desktopEmptyDropTitle
+  case desktopEmptyDropDetail
   case unavailable
   case refreshFailed
   case needsAttention
