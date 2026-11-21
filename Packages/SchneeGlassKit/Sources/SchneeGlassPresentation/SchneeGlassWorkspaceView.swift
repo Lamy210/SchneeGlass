@@ -663,10 +663,11 @@ private struct GlassPreviewSurface: View {
       )
 
     case .empty:
+      let presentation = DesktopGlassEmptyPresentation.make(locale: locale)
       SchneeGlassStateMessage(
         systemImage: "tray",
-        title: "Drop files here",
-        detail: "Files are copied. Originals stay where they are."
+        title: presentation.title,
+        detail: presentation.detail
       )
       .frame(maxWidth: .infinity, minHeight: 100)
 
