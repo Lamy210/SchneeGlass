@@ -158,18 +158,18 @@ func cancelledWatcherSubscriptionNeverReplacesOrLeaksActiveSibling() async throw
   let hub = FileEventHub(latency: 0.05)
   let first = try await hub.subscribe(for: FolderAccessHandle(glassID: GlassID(), url: root))
   let rejected = Task {
-      withUnsafeCurrentTask { current in
-        current?.cancel()
-      }
-      do {
-        _ = try await hub.subscribe(for: FolderAccessHandle(glassID: GlassID(), url: root))
-        return false
-      } catch is CancellationError {
-        return true
-      } catch {
-        return false
-      }
+    withUnsafeCurrentTask { current in
+      current?.cancel()
     }
+    do {
+      _ = try await hub.subscribe(for: FolderAccessHandle(glassID: GlassID(), url: root))
+      return false
+    } catch is CancellationError {
+      return true
+    } catch {
+      return false
+    }
+  }
   #expect(await rejected.value)
   #expect(await hub.activeSubscriptionCount == 1)
   await hub.stop(subscriptionID: first.id)
