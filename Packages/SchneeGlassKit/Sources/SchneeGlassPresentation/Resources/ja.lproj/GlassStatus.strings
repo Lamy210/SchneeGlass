@@ -1,5 +1,7 @@
 "connected" = "接続済み";
 "empty" = "空のフォルダ";
+"desktopEmptyDropTitle" = "ここにファイルをドロップ";
+"desktopEmptyDropDetail" = "ファイルはコピーされ、元のファイルは元の場所に残ります。";
 "unavailable" = "接続不能";
 "refreshFailed" = "更新に失敗";
 "needsAttention" = "確認が必要";

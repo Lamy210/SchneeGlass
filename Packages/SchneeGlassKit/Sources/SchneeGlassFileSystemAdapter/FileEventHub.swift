@@ -204,6 +204,11 @@ public actor FileEventHub: FileEventStreaming {
     )
   }
 
+  /// Internal lifecycle observation for regression tests. No folder paths or access tokens.
+  var activeSubscriptionCount: Int {
+    sessions.count
+  }
+
   public func stop(subscriptionID: UUID) {
     stopSession(subscriptionID: subscriptionID)
   }
