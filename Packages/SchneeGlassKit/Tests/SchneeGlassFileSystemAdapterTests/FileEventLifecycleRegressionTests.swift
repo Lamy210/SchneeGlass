@@ -140,3 +140,38 @@ func cancelledWatcherConsumerDoesNotStopSiblingOrReplacementSubscription() async
     throw error
   }
 }
+
+@Test
+func cancelledWatcherSubscriptionNeverReplacesOrLeaksActiveSibling() async throws {
+  let manager = FileManager.default
+  let root = manager.temporaryDirectory
+    .appendingPathComponent("SchneeGlass-watcher-pre-cancel-\(UUID().uuidString)", isDirectory: true)
+  try manager.createDirectory(at: root, withIntermediateDirectories: false)
+  defer {
+    do {
+      try manager.removeItem(at: root)
+    } catch {
+      Issue.record("Could not remove disposable watcher test directory")
+    }
+  }
+
+  let hub = FileEventHub(latency: 0.05)
+  let first = try await hub.subscribe(for: FolderAccessHandle(glassID: GlassID(), url: root))
+  let rejected = Task {
+      withUnsafeCurrentTask { current in
+        current?.cancel()
+      }
+      do {
+        _ = try await hub.subscribe(for: FolderAccessHandle(glassID: GlassID(), url: root))
+        return false
+      } catch is CancellationError {
+        return true
+      } catch {
+        return false
+      }
+    }
+  #expect(await rejected.value)
+  #expect(await hub.activeSubscriptionCount == 1)
+  await hub.stop(subscriptionID: first.id)
+  #expect(await hub.activeSubscriptionCount == 0)
+}

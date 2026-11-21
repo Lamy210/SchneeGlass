@@ -133,6 +133,9 @@ public actor FileEventHub: FileEventStreaming {
   }
 
   public func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
+    // A cancelled activation must not create a native monitor for a Glass that
+    // will never consume its subscription.
+    try Task.checkCancellation()
     let subscriptionID = UUID()
     let pair = AsyncStream<FileEvent>.makeStream(bufferingPolicy: .bufferingNewest(1))
     let callbackBox = FSEventCallbackBox(continuation: pair.continuation)
@@ -182,6 +185,17 @@ public actor FileEventHub: FileEventStreaming {
       FSEventStreamInvalidate(stream)
       FSEventStreamRelease(stream)
       throw FileEventHubError.streamStartFailed
+    }
+
+    // Cancellation can arrive during synchronous CoreServices setup. No actor
+    // suspension occurs here, but the calling Task can still become cancelled.
+    // Release the native stream before exposing a subscription to that caller.
+    if Task.isCancelled {
+      FSEventStreamStop(stream)
+      FSEventStreamInvalidate(stream)
+      FSEventStreamRelease(stream)
+      pair.continuation.finish()
+      throw CancellationError()
     }
 
     sessions[subscriptionID] = Session(
