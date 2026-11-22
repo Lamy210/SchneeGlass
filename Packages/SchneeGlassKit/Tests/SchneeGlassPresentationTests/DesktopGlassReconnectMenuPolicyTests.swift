@@ -49,7 +49,7 @@ func desktopReconnectMenuActionLabelIsLocalized() {
 @Test
 func desktopUnavailableReconnectCallToActionRequiresAnAuthorizedRecovery() {
   for reason in [
-    GlassContentUnavailableReason.volumeUnavailable,
+    UnavailableReason.volumeUnavailable,
     .sourceMissing,
     .replacementDetected,
   ] {
