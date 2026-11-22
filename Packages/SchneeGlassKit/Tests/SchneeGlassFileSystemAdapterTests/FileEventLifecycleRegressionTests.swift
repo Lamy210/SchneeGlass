@@ -144,8 +144,8 @@ func cancelledWatcherConsumerDoesNotStopSiblingOrReplacementSubscription() async
 @Test
 func cancelledWatcherSubscriptionNeverReplacesOrLeaksActiveSibling() async throws {
   let manager = FileManager.default
-  let root = manager.temporaryDirectory
-    .appendingPathComponent("SchneeGlass-watcher-pre-cancel-\(UUID().uuidString)", isDirectory: true)
+  let folderName = "SchneeGlass-watcher-pre-cancel-\(UUID().uuidString)"
+  let root = manager.temporaryDirectory.appendingPathComponent(folderName, isDirectory: true)
   try manager.createDirectory(at: root, withIntermediateDirectories: false)
   defer {
     do {
