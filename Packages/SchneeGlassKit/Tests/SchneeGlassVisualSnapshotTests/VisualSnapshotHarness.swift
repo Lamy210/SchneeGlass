@@ -14,6 +14,7 @@ enum VisualSnapshotHarness {
         colorScheme: ColorScheme,
         padding: CGFloat,
         marker: String,
+        perceptualPrecision: Float = 0.99,
         fileID: StaticString,
         filePath: StaticString,
         testName: String,
@@ -46,7 +47,7 @@ enum VisualSnapshotHarness {
             of: hostingView,
             as: .image(
                 precision: 0.995,
-                perceptualPrecision: 0.99,
+                perceptualPrecision: perceptualPrecision,
                 size: size
             ),
             named: "macos-26-xcode-26.6",
