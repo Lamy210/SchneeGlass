@@ -37,9 +37,9 @@ func dropRejectionPresentationPreservesWorkspaceAndDesktopCopy() {
   assertRejection(
     .unsupportedFolder,
     workspaceTitle: "Folders aren't supported yet",
-    workspaceDetail: "v0.1 accepts regular files only.",
+    workspaceDetail: "Only regular files are accepted for copying.",
     desktopTitle: "Folders aren't supported yet",
-    desktopDetail: "v0.1 copies regular files only."
+    desktopDetail: "Only regular files can be copied."
   )
   assertRejection(
     .unsupportedPackage,
