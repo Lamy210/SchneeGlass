@@ -390,8 +390,8 @@ struct DesktopGlassSurface: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-    case .unavailable:
-      let presentation = GlassUnavailablePresentation.make(locale: locale)
+    case .unavailable(let reason):
+      let presentation = GlassUnavailablePresentation.make(for: reason, locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(
