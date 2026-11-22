@@ -12,6 +12,12 @@ enum GlassLocalizedText: String, CaseIterable {
   case needsAttention
   case unavailableTitle
   case unavailableDetail
+  case unavailablePermissionDetail
+  case unavailableMissingDetail
+  case unavailableVolumeDetail
+  case unavailableBookmarkDetail
+  case unavailableReplacementDetail
+  case unavailableUnsupportedDetail
   case refreshFailedTitle
   case refreshFailedDetail
   case unexpectedTitle
