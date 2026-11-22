@@ -15,7 +15,9 @@ struct GlassInteractiveFileTile: View {
 
   var body: some View {
     let presentation = GlassItemPresentation.make(for: item, locale: locale)
-    let metadata = displayMode == .list ? GlassListItemMetadata.make(for: item) : nil
+    let metadata =
+      displayMode == .list
+      ? GlassListItemMetadata.make(for: item, locale: locale) : nil
     tileLabel(presentation, metadata: metadata)
       .contentShape(Rectangle())
       .onTapGesture(count: 2) {
