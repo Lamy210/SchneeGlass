@@ -6,6 +6,12 @@
 "refreshFailed" = "Refresh failed";
 "needsAttention" = "Needs attention";
 "unavailableTitle" = "Folder unavailable";
+"unavailablePermissionDetail" = "macOS can no longer access this folder. Reconnect the original folder to request permission again.";
+"unavailableMissingDetail" = "The original folder cannot be found. Restore it to its original location, then reconnect.";
+"unavailableVolumeDetail" = "The drive containing this folder is disconnected. Reconnect the drive before reconnecting the original folder.";
+"unavailableBookmarkDetail" = "The saved folder permission could not be restored. Reconnect the original folder to grant access again.";
+"unavailableReplacementDetail" = "A different folder is at the saved location. SchneeGlass will not use it automatically. Reconnect the original folder.";
+"unavailableUnsupportedDetail" = "This folder location is not supported. The existing Glass will remain unavailable until the original folder can be accessed safely.";
 "unavailableDetail" = "Reconnect the original folder to restore access without removing this Glass. If Reconnect is disabled, wait for the current operation to finish or restart SchneeGlass. Pending Copy Recovery in Settings is for interrupted copies.";
 "refreshFailedTitle" = "Couldn't refresh this folder";
 "refreshFailedDetail" = "SchneeGlass will retry when the folder changes.";

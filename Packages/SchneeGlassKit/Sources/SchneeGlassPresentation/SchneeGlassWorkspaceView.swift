@@ -671,8 +671,8 @@ private struct GlassPreviewSurface: View {
       )
       .frame(maxWidth: .infinity, minHeight: 100)
 
-    case .unavailable:
-      let presentation = GlassUnavailablePresentation.make(locale: locale)
+    case .unavailable(let reason):
+      let presentation = GlassUnavailablePresentation.make(for: reason, locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         SchneeGlassStateMessage(
           systemImage: "externaldrive.badge.exclamationmark",
