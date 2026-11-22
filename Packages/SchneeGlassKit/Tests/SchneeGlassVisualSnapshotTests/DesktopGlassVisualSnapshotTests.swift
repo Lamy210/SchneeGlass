@@ -43,7 +43,10 @@ struct DesktopGlassVisualSnapshotTests {
 
         assertGlassSnapshot(
             entry: makeEntry(contentState: .unavailable(.volumeUnavailable)),
-            colorScheme: .light
+            colorScheme: .light,
+            // The reference PNG is indexed while SwiftUI renders RGBA.
+            // Use the normalized pixel comparison instead of the perceptual path.
+            perceptualPrecision: 1
         )
     }
 
@@ -134,6 +137,7 @@ struct DesktopGlassVisualSnapshotTests {
     private func assertGlassSnapshot(
         entry: GlassWorkspaceEntry,
         colorScheme: ColorScheme,
+        perceptualPrecision: Float = 0.99,
         fileID: StaticString = #fileID,
         filePath: StaticString = #filePath,
         testName: String = #function,
@@ -145,6 +149,7 @@ struct DesktopGlassVisualSnapshotTests {
             colorScheme: colorScheme,
             padding: 24,
             marker: "SCHNEEGLASS_VISUAL_SNAPSHOT_RESULT",
+            perceptualPrecision: perceptualPrecision,
             fileID: fileID,
             filePath: filePath,
             testName: testName,
