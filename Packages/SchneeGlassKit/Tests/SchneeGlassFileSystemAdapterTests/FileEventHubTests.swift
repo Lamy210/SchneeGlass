@@ -32,6 +32,37 @@ func rootChangeMapsToRootChanged() {
     #expect(FileEventFlagMapper.map(flags) == .rootChanged)
 }
 
+@Test(
+    "mount and unmount notifications revalidate the watched folder",
+    arguments: [
+        FSEventStreamEventFlags(kFSEventStreamEventFlagMount),
+        FSEventStreamEventFlags(kFSEventStreamEventFlagUnmount),
+    ]
+)
+func volumeTransitionRequiresFullRescan(flags: FSEventStreamEventFlags) {
+    #expect(FileEventFlagMapper.map(flags) == .requiresFullRescan)
+}
+
+@Test(
+    "combined volume and ordinary event flags still require a rescan",
+    arguments: [
+        FSEventStreamEventFlags(kFSEventStreamEventFlagMount),
+        FSEventStreamEventFlags(kFSEventStreamEventFlagUnmount),
+    ]
+)
+func volumeTransitionOverridesOrdinaryChange(flags: FSEventStreamEventFlags) {
+    let changed = FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated)
+    #expect(FileEventFlagMapper.map(flags | changed) == .requiresFullRescan)
+}
+
+@Test("a genuine root change remains stronger than a volume transition")
+func rootChangePrecedesVolumeTransition() {
+    let flags =
+        FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged)
+        | FSEventStreamEventFlags(kFSEventStreamEventFlagUnmount)
+    #expect(FileEventFlagMapper.map(flags) == .rootChanged)
+}
+
 @Test("FSEvents callback context retain and release are balanced")
 func fileEventCallbackContextOwnershipIsBalanced() {
     let pair = AsyncStream<FileEvent>.makeStream()
