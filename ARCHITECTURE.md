@@ -519,7 +519,7 @@ FileEvent.changed
   → 通常変更。Snapshot refreshが必要
 
 FileEvent.requiresFullRescan
-  → MustScanSubDirs / KernelDropped / UserDropped
+  → MustScanSubDirs / KernelDropped / UserDropped / EventIdsWrapped / Mount / Unmount
   → Incremental assumptionを捨ててFull direct-child snapshot
 
 FileEvent.rootChanged
