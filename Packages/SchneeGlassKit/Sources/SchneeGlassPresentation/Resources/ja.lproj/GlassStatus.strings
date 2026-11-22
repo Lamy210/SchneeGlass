@@ -78,8 +78,8 @@
 "dropTooManyDetail" = "一度にコピーできるファイルは%lld件までです。複数回に分けてドロップしてください。";
 "dropCapacityDetail" = "処理中のドロップ全体で準備できるコピー元ファイルは%lld件までです。別のコピーが完了してから再試行してください。";
 "dropNoOverwrite" = "ファイルは上書きされません。";
-"dropRegularOnlyWorkspace" = "v0.1では通常のファイルのみ受け付けます。";
-"dropRegularOnlyDesktop" = "v0.1では通常のファイルのみコピーできます。";
+"dropRegularOnlyWorkspace" = "通常のファイルのみコピー用に受け付けます。";
+"dropRegularOnlyDesktop" = "通常のファイルのみコピーできます。";
 "dropItemUnchanged" = "ドロップした項目は変更されていません。";
 "dropNoCopyNeeded" = "コピーは不要です。";
 "dropUnavailableDetail" = "ドロップを終了してください。Glassに「フォルダに接続できません」と表示されている場合は、元のフォルダを再接続してください。それ以外の場合はファイル一覧を更新して再試行してください。";
