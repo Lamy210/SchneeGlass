@@ -10,7 +10,7 @@ struct GlassListItemMetadata: Equatable {
   static func make(for item: GlassItem, locale: Locale = .current) -> Self {
     let size: String?
     if item.kind == .regular, let count = item.fileSize, count >= 0 {
-      size = ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
+      size = ByteCountFormatStyle(style: .file, locale: locale).format(count)
     } else {
       size = nil
     }
