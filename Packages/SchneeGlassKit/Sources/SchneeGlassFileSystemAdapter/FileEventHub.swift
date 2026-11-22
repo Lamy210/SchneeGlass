@@ -103,6 +103,11 @@ enum FileEventFlagMapper {
       flags & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs) != 0
       || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped) != 0
       || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagUserDropped) != 0
+      // Mount/unmount notifications can change what a monitored path exposes.
+      // Do not treat all of them as a root replacement; let the snapshot reader
+      // re-check the authorized directory identity before publishing content.
+      || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagMount) != 0
+      || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagUnmount) != 0
 
     if requiresFullRescan {
       return .requiresFullRescan
