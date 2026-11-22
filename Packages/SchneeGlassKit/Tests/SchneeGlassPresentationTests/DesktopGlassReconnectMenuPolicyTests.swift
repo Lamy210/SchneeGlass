@@ -45,3 +45,33 @@ func desktopReconnectMenuActionLabelIsLocalized() {
       == "Reconnect Original Folder…"
   )
 }
+
+@Test
+func desktopUnavailableReconnectCallToActionRequiresAnAuthorizedRecovery() {
+  for reason in [
+    GlassContentUnavailableReason.volumeUnavailable,
+    .sourceMissing,
+    .replacementDetected,
+  ] {
+    let state = GlassContentState.unavailable(reason)
+    #expect(
+      DesktopGlassReconnectMenuPolicy.isEnabled(
+        for: state,
+        canReconnectSource: true
+      )
+    )
+    #expect(
+      !DesktopGlassReconnectMenuPolicy.isEnabled(
+        for: state,
+        canReconnectSource: false
+      )
+    )
+  }
+
+  #expect(
+    !DesktopGlassReconnectMenuPolicy.isEnabled(
+      for: .failed(.enumerationFailed),
+      canReconnectSource: true
+    )
+  )
+}

@@ -400,6 +400,16 @@ struct DesktopGlassSurface: View {
           detail: presentation.detail,
           detailAlignment: .center
         )
+        if DesktopGlassReconnectMenuPolicy.isEnabled(
+          for: entry.contentState,
+          canReconnectSource: canReconnectSource
+        ) {
+          Button(
+            GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
+            action: onReconnectSource
+          )
+          .buttonStyle(.borderedProminent)
+        }
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
