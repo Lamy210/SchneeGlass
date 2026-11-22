@@ -84,8 +84,8 @@
 "dropTooManyDetail" = "SchneeGlass copies up to %lld files per drop. Split this selection into smaller drops.";
 "dropCapacityDetail" = "SchneeGlass keeps up to %lld source files ready across active drops. Finish another copy and try again.";
 "dropNoOverwrite" = "Nothing will be overwritten.";
-"dropRegularOnlyWorkspace" = "v0.1 accepts regular files only.";
-"dropRegularOnlyDesktop" = "v0.1 copies regular files only.";
+"dropRegularOnlyWorkspace" = "Only regular files are accepted for copying.";
+"dropRegularOnlyDesktop" = "Only regular files can be copied.";
 "dropItemUnchanged" = "The dropped item was not changed.";
 "dropNoCopyNeeded" = "No copy is needed.";
 "dropUnavailableDetail" = "End this drop. If the Glass shows Folder unavailable, reconnect the original folder. Otherwise, refresh the files and try again.";
