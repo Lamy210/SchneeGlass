@@ -7,7 +7,7 @@ struct GlassListItemMetadata: Equatable {
   let size: String?
   let modified: String?
 
-  static func make(for item: GlassItem) -> Self {
+  static func make(for item: GlassItem, locale: Locale = .current) -> Self {
     let size: String?
     if item.kind == .regular, let count = item.fileSize, count >= 0 {
       size = ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
@@ -16,7 +16,9 @@ struct GlassListItemMetadata: Equatable {
     }
     return Self(
       size: size,
-      modified: item.modificationDate?.formatted(date: .abbreviated, time: .shortened)
+      modified: item.modificationDate?.formatted(
+        Date.FormatStyle(date: .abbreviated, time: .shortened).locale(locale)
+      )
     )
   }
 

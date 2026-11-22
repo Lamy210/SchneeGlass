@@ -87,3 +87,46 @@ private func listMetadataItem(
     isHidden: false
   )
 }
+
+@Test
+func listMetadataDateRespectsExplicitJapaneseAndEnglishLocale() {
+  let date = Date(timeIntervalSince1970: 1_700_000_000)
+  let item = listMetadataItem(kind: .regular, size: nil, date: date)
+  let japaneseLocale = Locale(identifier: "ja_JP")
+  let englishLocale = Locale(identifier: "en_US")
+
+  let japanese = GlassListItemMetadata.make(for: item, locale: japaneseLocale)
+  let english = GlassListItemMetadata.make(for: item, locale: englishLocale)
+  let expectedJapanese = date.formatted(
+    Date.FormatStyle(date: .abbreviated, time: .shortened).locale(japaneseLocale)
+  )
+  let expectedEnglish = date.formatted(
+    Date.FormatStyle(date: .abbreviated, time: .shortened).locale(englishLocale)
+  )
+
+  #expect(japanese.modified == expectedJapanese)
+  #expect(english.modified == expectedEnglish)
+  #expect(japanese.modified != english.modified)
+  #expect(japanese.displayText == expectedJapanese)
+  #expect(english.displayText == expectedEnglish)
+}
+
+@Test
+func listMetadataAccessibilityDateMatchesVisibleDateInEachLocale() {
+  let date = Date(timeIntervalSince1970: 1_700_000_000)
+  let item = listMetadataItem(kind: .regular, size: nil, date: date)
+  for locale in [Locale(identifier: "ja_JP"), Locale(identifier: "en_US")] {
+    let metadata = GlassListItemMetadata.make(for: item, locale: locale)
+    guard let dateText = metadata.modified else {
+      Issue.record("Expected observed modification date")
+      return
+    }
+    let expected = String(
+      format: GlassLocalizedText.tileModified.resolve(locale: locale),
+      locale: locale,
+      dateText
+    )
+    #expect(metadata.accessibilityText(locale: locale) == expected)
+    #expect(metadata.displayText == dateText)
+  }
+}
