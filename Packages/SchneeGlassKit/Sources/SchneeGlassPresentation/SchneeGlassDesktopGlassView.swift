@@ -46,9 +46,15 @@ public struct SchneeGlassDesktopGlassView: View {
           canRemove: model.canMutateConfiguration
             && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
           canRefresh: model.canRefreshGlass(glassID: entry.id),
+          canReconnectSource: model.canReconnectSource(glassID: entry.id),
           onRefresh: {
             Task {
               await model.refreshGlass(glassID: entry.id)
+            }
+          },
+          onReconnectSource: {
+            Task {
+              await model.reconnectGlassSource(glassID: entry.id)
             }
           },
           onOpen: model.open,
@@ -101,7 +107,9 @@ struct DesktopGlassSurface: View {
   let canChangeDisplayMode: Bool
   let canRemove: Bool
   let canRefresh: Bool
+  let canReconnectSource: Bool
   let onRefresh: () -> Void
+  let onReconnectSource: () -> Void
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
   let onRemove: () -> Void
@@ -135,7 +143,9 @@ struct DesktopGlassSurface: View {
     canChangeDisplayMode: Bool = true,
     canRemove: Bool,
     canRefresh: Bool = false,
+    canReconnectSource: Bool = false,
     onRefresh: @escaping () -> Void = {},
+    onReconnectSource: @escaping () -> Void = {},
     onOpen: @escaping (GlassItem) -> Void,
     onReveal: @escaping (GlassItem) -> Void,
     onRemove: @escaping () -> Void,
@@ -153,7 +163,9 @@ struct DesktopGlassSurface: View {
     self.canChangeDisplayMode = canChangeDisplayMode
     self.canRemove = canRemove
     self.canRefresh = canRefresh
+    self.canReconnectSource = canReconnectSource
     self.onRefresh = onRefresh
+    self.onReconnectSource = onReconnectSource
     self.onOpen = onOpen
     self.onReveal = onReveal
     self.onRemove = onRemove
@@ -238,6 +250,19 @@ struct DesktopGlassSurface: View {
       Menu {
         Button(GlassLocalizedText.refreshFiles.resolve(locale: locale), action: onRefresh)
           .disabled(!canRefresh)
+
+        if DesktopGlassReconnectMenuPolicy.isVisible(for: entry.contentState) {
+          Button(
+            GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
+            action: onReconnectSource
+          )
+          .disabled(
+            !DesktopGlassReconnectMenuPolicy.isEnabled(
+              for: entry.contentState,
+              canReconnectSource: canReconnectSource
+            )
+          )
+        }
 
         Button(
           (fileFilter.isVisible ? GlassLocalizedText.hideFileFilter : .filterFiles).resolve(
