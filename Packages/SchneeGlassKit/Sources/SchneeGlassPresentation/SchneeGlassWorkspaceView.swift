@@ -701,14 +701,19 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
+      let canRetryNow = GlassInlineRefreshPolicy.isVisible(
+        for: entry.contentState, canRefresh: canRefresh
+      )
+      let presentation = GlassContentFailurePresentation.make(
+        for: error, locale: locale, canRetryNow: canRetryNow
+      )
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         SchneeGlassStateMessage(
           systemImage: "arrow.clockwise.circle",
           title: presentation.title,
           detail: presentation.detail
         )
-        if GlassInlineRefreshPolicy.isVisible(for: entry.contentState, canRefresh: canRefresh) {
+        if canRetryNow {
           Button(
             GlassLocalizedText.refreshFiles.resolve(locale: locale),
             action: onRefresh
