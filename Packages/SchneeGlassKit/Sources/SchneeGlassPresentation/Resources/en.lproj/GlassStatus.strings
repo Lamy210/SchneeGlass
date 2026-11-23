@@ -99,6 +99,7 @@
 "dropCopyCount" = "Copy %1$lld files to %2$@";
 "workspaceTagline" = "Your folders, right where you need them.";
 "restoringStatus" = "Restoring…";
+"creatingGlass" = "Creating Glass…";
 "addGlass" = "Add Glass";
 "restoringGlasses" = "Restoring your Glasses…";
 "configurationRecoveryTitle" = "Configuration recovery required";
