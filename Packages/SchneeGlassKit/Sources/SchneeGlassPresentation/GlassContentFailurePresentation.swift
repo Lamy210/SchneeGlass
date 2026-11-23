@@ -27,7 +27,6 @@ struct GlassContentFailurePresentation: Equatable {
   }
 }
 
-\
 /// Only a live session with an authorized transient read failure offers an
 /// inline retry. Unexpected failures require the existing restart guidance.
 enum GlassInlineRefreshPolicy {
