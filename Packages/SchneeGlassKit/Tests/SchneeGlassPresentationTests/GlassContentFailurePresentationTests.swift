@@ -41,13 +41,15 @@ func unavailableFolderGuidanceDoesNotPresentPendingCopyRecoveryAsSourceReconnect
     presentation.detail.contains("Pending Copy Recovery in Settings is for interrupted copies"))
   #expect(!presentation.detail.contains("add the folder again"))
 }
- 
+
 @Test
 func inlineRefreshIsOfferedOnlyForAuthorizedTransientReadFailures() {
   #expect(
-    GlassInlineRefreshPolicy.isVisible(for: .failed(.enumerationFailed), canRefresh: true))
+    GlassInlineRefreshPolicy.isVisible(for: .failed(.enumerationFailed), canRefresh: true)
+  )
   #expect(
-    GlassInlineRefreshPolicy.isVisible(for: .failed(.metadataFailed), canRefresh: true))
+    GlassInlineRefreshPolicy.isVisible(for: .failed(.metadataFailed), canRefresh: true)
+  )
 
   for error in [GlassContentError.enumerationFailed, .metadataFailed, .unexpected] {
     #expect(!GlassInlineRefreshPolicy.isVisible(for: .failed(error), canRefresh: false))
@@ -55,7 +57,8 @@ func inlineRefreshIsOfferedOnlyForAuthorizedTransientReadFailures() {
   #expect(!GlassInlineRefreshPolicy.isVisible(for: .failed(.unexpected), canRefresh: true))
   #expect(!GlassInlineRefreshPolicy.isVisible(for: .loading, canRefresh: true))
   #expect(
-    !GlassInlineRefreshPolicy.isVisible(for: .unavailable(.sourceMissing), canRefresh: true))
+    !GlassInlineRefreshPolicy.isVisible(for: .unavailable(.sourceMissing), canRefresh: true)
+  )
 }
 
 @Test
