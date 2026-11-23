@@ -8,14 +8,17 @@ struct GlassContentFailurePresentation: Equatable {
 
   static func make(
     for error: GlassContentError,
-    locale: Locale = Locale(identifier: "en")
+    locale: Locale = Locale(identifier: "en"),
+    canRetryNow: Bool = false
   ) -> Self {
     switch error {
     case .enumerationFailed, .metadataFailed:
+      let detailKey: GlassLocalizedText =
+        canRetryNow ? .refreshFailedManualRetryDetail : .refreshFailedDetail
       return Self(
         status: GlassLocalizedText.refreshFailed.resolve(locale: locale),
         title: GlassLocalizedText.refreshFailedTitle.resolve(locale: locale),
-        detail: GlassLocalizedText.refreshFailedDetail.resolve(locale: locale)
+        detail: detailKey.resolve(locale: locale)
       )
     case .unexpected:
       return Self(

@@ -15,6 +15,7 @@
 "unavailableDetail" = "Glassを削除せずにアクセスを復旧するには、元のフォルダを再接続してください。再接続できない場合は、現在の操作が完了するまで待つか、SchneeGlassを再起動してください。設定の中断されたコピーの復旧は、コピー操作が中断された場合に使用します。";
 "refreshFailedTitle" = "フォルダの更新に失敗しました";
 "refreshFailedDetail" = "フォルダに変更があるとSchneeGlassが再試行します。";
+"refreshFailedManualRetryDetail" = "今すぐ再試行するには「ファイル一覧を更新」を選択してください。フォルダが変更されるとSchneeGlassも再試行します。";
 "unexpectedTitle" = "Glassの処理を続行できません";
 "unexpectedDetail" = "SchneeGlassを再起動して再試行してください。それでも復旧しない場合は、このGlassを削除してフォルダを再登録してください。";
 "renameGlassMenu" = "Glassの名前を変更…";
