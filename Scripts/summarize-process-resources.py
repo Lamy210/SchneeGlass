@@ -2,6 +2,7 @@
 """Summarize a completed numeric sampler CSV from stdin; no paths or raw rows in output."""
 import argparse
 import csv
+from decimal import Decimal
 import json
 import math
 import re
@@ -46,7 +47,8 @@ def parse(stream, expected):
                 "Invalid decimal metric")
         require(all(INTEGER.fullmatch(value) for value in record[3:]),
                 "Invalid integer metric")
-        elapsed, cpu = map(float, record[1:3])
+        # Preserve the CSV's full decimal precision for monotonicity and gap checks.
+        elapsed, cpu = Decimal(record[1]), float(record[2])
         rss, fd = map(int, record[3:])
         require(previous is None or elapsed >= previous, "Elapsed time decreased")
         previous = elapsed
@@ -78,17 +80,19 @@ def summarize(stream, expected, interval):
     require(type(interval) is int and 5 <= interval <= 3600, "Invalid interval")
     records = parse(stream, expected)
     elapsed = [row[0] for row in records]
-    gaps = [round(b - a, 3) for a, b in zip(elapsed, elapsed[1:])]
+    gaps = [b - a for a, b in zip(elapsed, elapsed[1:])]
     # Sample-based, non-overlapping windows, not time-weighted estimates.
     width = max(1, expected // 5) if expected >= 2 else 0
     return {
         "schema_version": 1,
         "sample_count": expected,
         "nominal_interval_seconds": interval,
-        "first_elapsed_seconds": elapsed[0],
-        "last_elapsed_seconds": elapsed[-1],
-        "observed_span_seconds": round(elapsed[-1] - elapsed[0], 3),
-        "max_observation_gap_seconds": max(gaps) if gaps else None,
+        "first_elapsed_seconds": float(elapsed[0]),
+        "last_elapsed_seconds": float(elapsed[-1]),
+        "observed_span_seconds": float(round(elapsed[-1] - elapsed[0], 3)),
+        "max_observation_gap_seconds": float(round(max(gaps), 6)) if gaps else None,
+        # Evaluate strictly against the unrounded CSV timestamps. Rounding a
+        # near-threshold gap first would silently misclassify a missed interval.
         "gaps_over_twice_nominal_interval": sum(gap > 2 * interval for gap in gaps),
         "window_sample_count": width,
         **{name: metrics([row[i] for row in records], width)

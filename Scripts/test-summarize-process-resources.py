@@ -76,6 +76,27 @@ class ResourceSummaryTests(unittest.TestCase):
         self.assertEqual(result["cpu_percent_ps"]["p95_nearest_rank"], 19)
         self.assertEqual(result["gaps_over_twice_nominal_interval"], 0)
 
+    def test_gap_threshold_is_strict_even_below_report_rounding_precision(self):
+        exact = summarize("1,0,0,512,4\n2,120.000000000000,0,512,4\n", 2)
+        self.assertEqual(exact["gaps_over_twice_nominal_interval"], 0)
+
+        just_over = summarize("1,0,0,512,4\n2,120.000000000001,0,512,4\n", 2)
+        self.assertEqual(just_over["gaps_over_twice_nominal_interval"], 1)
+        # The public diagnostic has bounded precision; the decision does not.
+        self.assertEqual(just_over["max_observation_gap_seconds"], 120.0)
+
+        visible_over = summarize("1,0,0,512,4\n2,120.0004,0,512,4\n", 2)
+        self.assertEqual(visible_over["gaps_over_twice_nominal_interval"], 1)
+        self.assertEqual(visible_over["max_observation_gap_seconds"], 120.0004)
+
+    def test_elapsed_subfloat_regression_is_rejected(self):
+        with self.assertRaises(ValueError):
+            summarize(
+                "1,100000000000.000000000002,0,512,4\n"
+                "2,100000000000.000000000001,0,512,4\n",
+                2,
+            )
+
     def test_invalid_sampling_parameters(self):
         for count, interval in ((0,60), (10001,60), (1,4), (1,3601)):
             with self.subTest(count=count, interval=interval), self.assertRaises(ValueError):
