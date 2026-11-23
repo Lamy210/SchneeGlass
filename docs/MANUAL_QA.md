@@ -91,6 +91,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] folder accessを拒否した場合、設定が半端に保存されない
 - [ ] 同じfolderを扱う場合も既存Glassを破壊しない
 - [ ] Glass title / placementが正しく表示される
+- [ ] WorkspaceおよびDesktop Glassが`.loading`の間、VoiceOverで「フォルダを読み込み中… / Loading folder…」の本文案内が1回読めることを確認する。ヘッダーの装飾的なスピナーを個別の同名読み上げ項目として列挙しない。読込完了時はReady/Emptyの状態へ移行し、説明テキストが消えることを日英・macOS 15/26で確認する（実機未確認）。
 - [ ] folderのdirect childrenだけが表示される
 - [ ] hidden itemが意図どおり非表示になる
 - [ ] 500-item上限を超えるfolderでもUIが破綻しない

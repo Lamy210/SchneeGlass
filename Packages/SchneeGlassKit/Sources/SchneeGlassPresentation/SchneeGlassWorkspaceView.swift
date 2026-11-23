@@ -647,9 +647,10 @@ private struct GlassPreviewSurface: View {
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
     } else {
+      // The loading message in the content already supplies the VoiceOver status.
       ProgressView()
         .controlSize(.small)
-        .accessibilityLabel(GlassLocalizedText.loadingFolder.resolve(locale: locale))
+        .accessibilityHidden(true)
     }
   }
 
