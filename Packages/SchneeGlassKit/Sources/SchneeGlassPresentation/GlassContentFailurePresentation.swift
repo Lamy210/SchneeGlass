@@ -13,11 +13,12 @@ struct GlassContentFailurePresentation: Equatable {
   ) -> Self {
     switch error {
     case .enumerationFailed, .metadataFailed:
+      let detailKey: GlassLocalizedText =
+        canRetryNow ? .refreshFailedManualRetryDetail : .refreshFailedDetail
       return Self(
         status: GlassLocalizedText.refreshFailed.resolve(locale: locale),
         title: GlassLocalizedText.refreshFailedTitle.resolve(locale: locale),
-        detail: (canRetryNow ? GlassLocalizedText.refreshFailedManualRetryDetail : .refreshFailedDetail)
-          .resolve(locale: locale)
+        detail: detailKey.resolve(locale: locale)
       )
     case .unexpected:
       return Self(
