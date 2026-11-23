@@ -112,3 +112,16 @@ func glassCreationAccessibleStatusUsesLocalizedProgressInsteadOfAddAction() {
     GlassLocalizedText.creatingGlass.resolve(locale: japanese)
       != GlassLocalizedText.addGlass.resolve(locale: japanese))
 }
+
+@Test
+func restorationIndicatorsRetainLocalizedStatusTextForVoiceOver() {
+  let labels: [(GlassLocalizedText, String, String)] = [
+    (.restoringStatus, "Restoring…", "復元中…"),
+    (.restoringGlasses, "Restoring your Glasses…", "Glassを復元中…"),
+  ]
+  for (key, english, japanese) in labels {
+    #expect(key.resolve(locale: Locale(identifier: "en_US")) == english)
+    #expect(key.resolve(locale: Locale(identifier: "ja_JP")) == japanese)
+    #expect(key.resolve(locale: Locale(identifier: "fr_FR")) == english)
+  }
+}
