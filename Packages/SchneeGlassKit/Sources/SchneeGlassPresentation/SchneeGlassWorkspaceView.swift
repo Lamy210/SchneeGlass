@@ -196,6 +196,7 @@ struct WorkspaceSurface: View {
         HStack(spacing: 7) {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
           Text(GlassLocalizedText.restoringStatus.resolve(locale: locale))
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
@@ -319,6 +320,7 @@ struct WorkspaceSurface: View {
       if isRestoring {
         ProgressView()
           .controlSize(.regular)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.restoringGlasses.resolve(locale: locale))
           .font(SchneeGlassTypography.body)
           .foregroundStyle(.secondary)
@@ -554,6 +556,7 @@ private struct GlassPreviewSurface: View {
       DropOverlaySurface {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(presentation.title)
           .font(SchneeGlassTypography.emphasizedBody)
       }
@@ -612,6 +615,7 @@ private struct GlassPreviewSurface: View {
       DropOverlaySurface {
         ProgressView()
           .controlSize(.regular)
+          .accessibilityHidden(true)
         Text(presentation.title)
           .font(SchneeGlassTypography.strongBody)
         if let detail = presentation.detail {
