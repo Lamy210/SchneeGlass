@@ -73,3 +73,40 @@ func inlineRefreshUsesExistingLocalizedNonDestructiveAction() {
     GlassLocalizedText.refreshFiles.resolve(locale: Locale(identifier: "fr_FR"))
       == "Refresh Files")
 }
+
+@Test
+func retryGuidanceMatchesWhetherAnInlineRetryIsActuallyOffered() {
+  let english = Locale(identifier: "en_US")
+  let japanese = Locale(identifier: "ja_JP")
+  let unsupported = Locale(identifier: "fr_FR")
+
+  for error in [GlassContentError.enumerationFailed, .metadataFailed] {
+    let withRetry = GlassContentFailurePresentation.make(
+      for: error, locale: english, canRetryNow: true
+    )
+    let withoutRetry = GlassContentFailurePresentation.make(
+      for: error, locale: english, canRetryNow: false
+    )
+
+    #expect(withRetry.detail.contains("Select Refresh Files to retry now"))
+    #expect(withRetry.detail.contains("retry when the folder changes"))
+    #expect(!withoutRetry.detail.contains("Select Refresh Files"))
+    #expect(withoutRetry.detail == "SchneeGlass will retry when the folder changes.")
+
+    let japaneseRetry = GlassContentFailurePresentation.make(
+      for: error, locale: japanese, canRetryNow: true
+    )
+    #expect(japaneseRetry.detail.contains("「ファイル一覧を更新」"))
+    #expect(japaneseRetry.detail.contains("再試行"))
+    #expect(
+      GlassContentFailurePresentation.make(
+        for: error, locale: unsupported, canRetryNow: true
+      ).detail == withRetry.detail
+    )
+  }
+
+  #expect(
+    GlassContentFailurePresentation.make(for: .unexpected, canRetryNow: true)
+      == GlassContentFailurePresentation.make(for: .unexpected)
+  )
+}
