@@ -555,6 +555,7 @@ struct DesktopGlassSurface: View {
         if showsProgress {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
         } else {
           Image(systemName: icon)
             .font(SchneeGlassTypography.largeSymbol)
