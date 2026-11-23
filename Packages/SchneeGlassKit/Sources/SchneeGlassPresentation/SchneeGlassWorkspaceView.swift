@@ -645,6 +645,7 @@ private struct GlassPreviewSurface: View {
     } else {
       ProgressView()
         .controlSize(.small)
+        .accessibilityLabel(GlassLocalizedText.loadingFolder.resolve(locale: locale))
     }
   }
 
@@ -655,6 +656,7 @@ private struct GlassPreviewSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
