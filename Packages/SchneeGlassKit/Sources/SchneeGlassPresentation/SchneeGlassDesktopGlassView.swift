@@ -315,9 +315,10 @@ struct DesktopGlassSurface: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(presentation.label)
     } else {
+      // The loading message in the content already supplies the VoiceOver status.
       ProgressView()
         .controlSize(.small)
-        .accessibilityLabel(GlassLocalizedText.loadingFolder.resolve(locale: locale))
+        .accessibilityHidden(true)
     }
   }
 
