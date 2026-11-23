@@ -317,6 +317,7 @@ struct DesktopGlassSurface: View {
     } else {
       ProgressView()
         .controlSize(.small)
+        .accessibilityLabel(GlassLocalizedText.loadingFolder.resolve(locale: locale))
     }
   }
 
