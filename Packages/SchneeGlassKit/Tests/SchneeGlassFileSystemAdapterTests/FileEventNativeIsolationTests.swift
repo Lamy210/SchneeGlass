@@ -79,3 +79,53 @@ private func firstNativeEvent(
     return event
   }
 }
+
+@Test("a native watcher can restart after stopAll without stale state")
+func nativeWatcherCanRestartAfterStopAll() async throws {
+  let manager = FileManager.default
+  let folder = manager.temporaryDirectory
+    .appendingPathComponent("SchneeGlass-watch-restart-\(UUID().uuidString)", isDirectory: true)
+  try manager.createDirectory(at: folder, withIntermediateDirectories: false)
+  defer {
+    do {
+      try manager.removeItem(at: folder)
+    } catch {
+      Issue.record("Could not remove disposable restart test folder")
+    }
+  }
+
+  let hub = FileEventHub(latency: 0.05)
+  let access = FolderAccessHandle(glassID: GlassID(), url: folder)
+  do {
+    let first = try await hub.subscribe(for: access)
+    #expect(await hub.activeSubscriptionCount == 1)
+    try await Task.sleep(for: .milliseconds(100))
+    try Data("before restart".utf8).write(to: folder.appendingPathComponent("before.txt"))
+    #expect(await firstNativeEvent(from: first.events, timeout: .seconds(5)) != nil)
+
+    await hub.stopAll()
+    await hub.stopAll()
+    #expect(await hub.activeSubscriptionCount == 0)
+
+    // A finished AsyncStream may still contain one buffered event.
+    var firstIterator = first.events.makeAsyncIterator()
+    if await firstIterator.next() != nil {
+      #expect(await firstIterator.next() == nil)
+    }
+
+    let replacement = try await hub.subscribe(for: access)
+    #expect(first.id != replacement.id)
+    #expect(await hub.activeSubscriptionCount == 1)
+    try await Task.sleep(for: .milliseconds(100))
+    try Data("after restart".utf8).write(to: folder.appendingPathComponent("after.txt"))
+    #expect(await firstNativeEvent(from: replacement.events, timeout: .seconds(5)) != nil)
+
+    await hub.stop(subscriptionID: first.id)
+    #expect(await hub.activeSubscriptionCount == 1)
+    await hub.stopAll()
+    #expect(await hub.activeSubscriptionCount == 0)
+  } catch {
+    await hub.stopAll()
+    throw error
+  }
+}
