@@ -93,3 +93,22 @@ func localizationFormatPlaceholdersRemainCompatibleAcrossLanguages() throws {
   }
   #expect(checkedFormatKeys > 0)
 }
+
+@Test
+func glassCreationAccessibleStatusUsesLocalizedProgressInsteadOfAddAction() {
+  let english = Locale(identifier: "en_US")
+  let japanese = Locale(identifier: "ja_JP")
+  let unsupported = Locale(identifier: "fr_FR")
+
+  #expect(GlassLocalizedText.creatingGlass.resolve(locale: english) == "Creating Glass…")
+  #expect(GlassLocalizedText.creatingGlass.resolve(locale: japanese) == "Glassを作成中…")
+  #expect(
+    GlassLocalizedText.creatingGlass.resolve(locale: unsupported)
+      == GlassLocalizedText.creatingGlass.resolve(locale: english))
+  #expect(
+    GlassLocalizedText.creatingGlass.resolve(locale: english)
+      != GlassLocalizedText.addGlass.resolve(locale: english))
+  #expect(
+    GlassLocalizedText.creatingGlass.resolve(locale: japanese)
+      != GlassLocalizedText.addGlass.resolve(locale: japanese))
+}
