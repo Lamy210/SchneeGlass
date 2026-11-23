@@ -99,6 +99,7 @@
 "dropCopyCount" = "%1$lld件のファイルを%2$@にコピー";
 "workspaceTagline" = "必要なフォルダを、必要な場所に。";
 "restoringStatus" = "復元中…";
+"creatingGlass" = "Glassを作成中…";
 "addGlass" = "Glassを追加";
 "restoringGlasses" = "Glassを復元中…";
 "configurationRecoveryTitle" = "設定の復旧が必要です";
