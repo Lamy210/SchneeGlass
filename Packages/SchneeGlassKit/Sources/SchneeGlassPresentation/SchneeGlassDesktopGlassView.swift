@@ -426,6 +426,13 @@ struct DesktopGlassSurface: View {
           detail: presentation.detail,
           detailAlignment: .center
         )
+        if GlassInlineRefreshPolicy.isVisible(for: entry.contentState, canRefresh: canRefresh) {
+          Button(
+            GlassLocalizedText.refreshFiles.resolve(locale: locale),
+            action: onRefresh
+          )
+          .buttonStyle(.borderedProminent)
+        }
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)

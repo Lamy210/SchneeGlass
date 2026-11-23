@@ -702,11 +702,20 @@ private struct GlassPreviewSurface: View {
 
     case .failed(let error):
       let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
-      SchneeGlassStateMessage(
-        systemImage: "arrow.clockwise.circle",
-        title: presentation.title,
-        detail: presentation.detail
-      )
+      VStack(spacing: SchneeGlassSpacing.controlGroup) {
+        SchneeGlassStateMessage(
+          systemImage: "arrow.clockwise.circle",
+          title: presentation.title,
+          detail: presentation.detail
+        )
+        if GlassInlineRefreshPolicy.isVisible(for: entry.contentState, canRefresh: canRefresh) {
+          Button(
+            GlassLocalizedText.refreshFiles.resolve(locale: locale),
+            action: onRefresh
+          )
+          .buttonStyle(.bordered)
+        }
+      }
       .frame(maxWidth: .infinity, minHeight: 100)
     }
   }

@@ -26,3 +26,17 @@ struct GlassContentFailurePresentation: Equatable {
     }
   }
 }
+
+/// Only a live session with an authorized transient read failure offers an
+/// inline retry. Unexpected failures require the existing restart guidance.
+enum GlassInlineRefreshPolicy {
+  static func isVisible(for state: GlassContentState, canRefresh: Bool) -> Bool {
+    guard canRefresh else { return false }
+    switch state {
+    case .failed(.enumerationFailed), .failed(.metadataFailed):
+      return true
+    default:
+      return false
+    }
+  }
+}
