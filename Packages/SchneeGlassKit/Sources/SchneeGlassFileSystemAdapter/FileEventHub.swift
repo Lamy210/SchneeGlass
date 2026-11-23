@@ -103,6 +103,9 @@ enum FileEventFlagMapper {
       flags & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs) != 0
       || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagKernelDropped) != 0
       || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagUserDropped) != 0
+      // Wrapped event identifiers are no longer usable for incremental
+      // assumptions. Revalidate from an authoritative directory snapshot.
+      || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagEventIdsWrapped) != 0
       // Mount/unmount notifications can change what a monitored path exposes.
       // Do not treat all of them as a root replacement; let the snapshot reader
       // re-check the authorized directory identity before publishing content.
