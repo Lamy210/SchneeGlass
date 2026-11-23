@@ -20,6 +20,7 @@ enum GlassLocalizedText: String, CaseIterable {
   case unavailableUnsupportedDetail
   case refreshFailedTitle
   case refreshFailedDetail
+  case refreshFailedManualRetryDetail
   case unexpectedTitle
   case unexpectedDetail
   case renameGlassMenu
