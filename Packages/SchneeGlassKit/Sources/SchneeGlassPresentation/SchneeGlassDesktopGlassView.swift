@@ -328,6 +328,7 @@ struct DesktopGlassSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
