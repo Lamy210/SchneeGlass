@@ -104,6 +104,7 @@ enum GlassLocalizedText: String, CaseIterable {
   case dropCopyCount
   case workspaceTagline
   case restoringStatus
+  case creatingGlass
   case addGlass
   case restoringGlasses
   case configurationRecoveryTitle
