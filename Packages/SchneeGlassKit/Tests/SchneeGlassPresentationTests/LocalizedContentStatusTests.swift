@@ -44,3 +44,16 @@ func contentPresentationPreservesEnglishForUnsupportedLocale() {
     GlassContentFailurePresentation.make(for: .unexpected, locale: french)
       == GlassContentFailurePresentation.make(for: .unexpected, locale: english))
 }
+
+@Test
+func loadingStatusAccessibilityNameUsesTheExistingLocalizedLoadingText() {
+  #expect(
+    GlassLocalizedText.loadingFolder.resolve(locale: Locale(identifier: "en_US"))
+      == "Loading folder…")
+  #expect(
+    GlassLocalizedText.loadingFolder.resolve(locale: Locale(identifier: "ja_JP"))
+      == "フォルダを読み込み中…")
+  #expect(
+    GlassLocalizedText.loadingFolder.resolve(locale: Locale(identifier: "fr_FR"))
+      == "Loading folder…")
+}
