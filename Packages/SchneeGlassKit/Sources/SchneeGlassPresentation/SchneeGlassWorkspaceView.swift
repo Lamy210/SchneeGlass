@@ -221,13 +221,18 @@ struct WorkspaceSurface: View {
         if isCreatingGlass {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
         } else {
           Label(GlassLocalizedText.addGlass.resolve(locale: locale), systemImage: "plus")
         }
       }
       .disabled(!canAddGlass)
       .keyboardShortcut("n", modifiers: .command)
-      .accessibilityLabel(GlassLocalizedText.addGlass.resolve(locale: locale))
+      .accessibilityLabel(
+        isCreatingGlass
+          ? GlassLocalizedText.creatingGlass.resolve(locale: locale)
+          : GlassLocalizedText.addGlass.resolve(locale: locale)
+      )
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
