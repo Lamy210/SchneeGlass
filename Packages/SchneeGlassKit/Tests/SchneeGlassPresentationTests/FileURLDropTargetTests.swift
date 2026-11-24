@@ -250,3 +250,43 @@ func staleOrCancelledHoverCannotAuthorizeNewDragPayload() {
   policy.resolve(signature: "second", accepted: true)
   #expect(policy.approvedSignature == nil)
 }
+
+@Test
+func inFlightRefreshCannotReuseAnEarlierPayloadSignatureApproval() {
+  let url = URL(fileURLWithPath: "/tmp/SchneeGlass-drop-revalidate.txt")
+  let signature = DropPayloadApprovalPolicy.signature(for: [url])
+  var policy = DropValidationRefreshPolicy(minimumInterval: 0.5)
+
+  #expect(
+    policy.decision(
+      for: signature,
+      now: 30,
+      validationInFlight: false
+    ) == .start(isNewSignature: true)
+  )
+  policy.resolve(signature: signature, accepted: true)
+  #expect(
+    DropPayloadApprovalPolicy.allowsCopy(
+      operation: .copy,
+      approvedSignature: policy.approvedSignature,
+      incomingURLs: [url]
+    )
+  )
+
+  #expect(
+    policy.decision(
+      for: signature,
+      now: 30.5,
+      validationInFlight: false
+    ) == .start(isNewSignature: false)
+  )
+  // Even a stale .copy icon cannot authorize a drop while a new preview
+  // is in progress: only the current successful preview may approve it.
+  #expect(
+    !DropPayloadApprovalPolicy.allowsCopy(
+      operation: .copy,
+      approvedSignature: policy.approvedSignature,
+      incomingURLs: [url]
+    )
+  )
+}
