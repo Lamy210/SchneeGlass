@@ -92,12 +92,18 @@ public final class FileURLDropDestinationView: NSView {
   public override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
     didDispatchPerform = false
     updateValidation(for: sender)
-    return currentOperation
+    return DropPayloadApprovalPolicy.copyOperation(
+      requested: currentOperation,
+      source: sender.draggingSourceOperationMask
+    )
   }
 
   public override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
     updateValidation(for: sender)
-    return currentOperation
+    return DropPayloadApprovalPolicy.copyOperation(
+      requested: currentOperation,
+      source: sender.draggingSourceOperationMask
+    )
   }
 
   public override func draggingExited(_ sender: (any NSDraggingInfo)?) {
@@ -106,7 +112,10 @@ public final class FileURLDropDestinationView: NSView {
 
   public override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
     DropPayloadApprovalPolicy.allowsCopy(
-      operation: currentOperation,
+      operation: DropPayloadApprovalPolicy.copyOperation(
+        requested: currentOperation,
+        source: sender.draggingSourceOperationMask
+      ),
       approvedSignature: validationRefreshPolicy.approvedSignature,
       incomingURLs: fileURLs(from: sender)
     )
@@ -119,7 +128,10 @@ public final class FileURLDropDestinationView: NSView {
     // Application layer will independently re-plan before any copy.
     guard
       DropPayloadApprovalPolicy.allowsCopy(
-        operation: currentOperation,
+        operation: DropPayloadApprovalPolicy.copyOperation(
+          requested: currentOperation,
+          source: sender.draggingSourceOperationMask
+        ),
         approvedSignature: validationRefreshPolicy.approvedSignature,
         incomingURLs: urls
       )
@@ -166,6 +178,15 @@ public final class FileURLDropDestinationView: NSView {
   }
 
   private func updateValidation(for sender: any NSDraggingInfo) {
+    // A source may disallow Copy, including when a modifier key changes its
+    // operation mask. Do not plan or retain an earlier Copy approval.
+    guard sender.draggingSourceOperationMask.contains(.copy) else {
+      if validationRefreshPolicy.currentSignature != nil || validationTask != nil {
+        resetValidation(notifyExit: true)
+      }
+      return
+    }
+
     let urls = fileURLs(from: sender)
     guard !urls.isEmpty else {
       resetValidation(notifyExit: false)
@@ -234,6 +255,15 @@ public final class FileURLDropDestinationView: NSView {
 }
 
 enum DropPayloadApprovalPolicy {
+  /// A Copy-only target must never advertise or dispatch a source-forbidden
+  /// operation, even when a previously approved payload still matches.
+  static func copyOperation(
+    requested: NSDragOperation,
+    source: NSDragOperation
+  ) -> NSDragOperation {
+    requested.contains(.copy) && source.contains(.copy) ? .copy : []
+  }
+
   /// URL order may change across AppKit drag callbacks, but their normalized
   /// destination-independent paths must describe the same set of inputs.
   static func signature(for urls: [URL]) -> String {
