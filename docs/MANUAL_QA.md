@@ -145,6 +145,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] folder dropを安全に拒否する
 - [ ] package / symlinkをv0.1 contractどおり拒否する
 - [ ] destination pathnameがdirectoryへのsymbolic linkの場合、copy可能としてadvertiseせず安全に拒否する
+- [ ] ドラッグ中のファイルURL一覧と、Drop確定時にPasteboardから再取得したURL一覧が不一致ならCopyを受理しない。複数ファイルの順序入れ替えは同一内容として扱い、追加・削除・置換は拒否する。アプリ層のcopy直前再プランも維持する（synthetic単体試験はあり、Pasteboard差し替えの実機操作は未検証）
 - [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
