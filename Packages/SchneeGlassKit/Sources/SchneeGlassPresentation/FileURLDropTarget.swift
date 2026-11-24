@@ -113,11 +113,13 @@ public final class FileURLDropDestinationView: NSView {
     // The drag payload may have changed since hover validation. Never
     // advertise/dispatch approval for different URLs, even though the
     // Application layer will independently re-plan before any copy.
-    guard DropPayloadApprovalPolicy.allowsCopy(
-      operation: currentOperation,
-      approvedSignature: validationRefreshPolicy.currentSignature,
-      incomingURLs: urls
-    ) else {
+    guard
+      DropPayloadApprovalPolicy.allowsCopy(
+        operation: currentOperation,
+        approvedSignature: validationRefreshPolicy.currentSignature,
+        incomingURLs: urls
+      )
+    else {
       resetValidation(notifyExit: true)
       return false
     }
@@ -173,7 +175,7 @@ public final class FileURLDropDestinationView: NSView {
       now: ProcessInfo.processInfo.systemUptime,
       validationInFlight: validationTask != nil
     )
-    guard case let .start(isNewSignature) = decision else {
+    guard case .start(let isNewSignature) = decision else {
       return
     }
 
@@ -192,7 +194,8 @@ public final class FileURLDropDestinationView: NSView {
         return
       }
 
-      let isCurrent = self.validationToken == token
+      let isCurrent =
+        self.validationToken == token
         && self.validationRefreshPolicy.currentSignature == signature
       if isCurrent {
         self.validationTask = nil
@@ -220,16 +223,16 @@ public final class FileURLDropDestinationView: NSView {
     let options: [NSPasteboard.ReadingOptionKey: Any] = [
       .urlReadingFileURLsOnly: true
     ]
-    let objects = sender.draggingPasteboard.readObjects(
-      forClasses: [NSURL.self],
-      options: options
-    ) ?? []
+    let objects =
+      sender.draggingPasteboard.readObjects(
+        forClasses: [NSURL.self],
+        options: options
+      ) ?? []
 
     return objects.compactMap { object in
       (object as? NSURL)?.absoluteURL?.standardizedFileURL
     }
   }
-
 }
 
 enum DropPayloadApprovalPolicy {
