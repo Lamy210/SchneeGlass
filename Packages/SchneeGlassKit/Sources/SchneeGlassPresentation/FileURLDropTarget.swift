@@ -101,12 +101,23 @@ public final class FileURLDropDestinationView: NSView {
     }
 
     public override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        currentOperation.contains(.copy) && !fileURLs(from: sender).isEmpty
+        DropPayloadApprovalPolicy.allowsCopy(
+            operation: currentOperation,
+            approvedSignature: validationRefreshPolicy.currentSignature,
+            incomingURLs: fileURLs(from: sender)
+        )
     }
 
     public override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let urls = fileURLs(from: sender)
-        guard currentOperation.contains(.copy), !urls.isEmpty else {
+        // The drag payload may have changed since hover validation. Never
+        // advertise/dispatch approval for different URLs, even though the
+        // Application layer will independently re-plan before any copy.
+        guard DropPayloadApprovalPolicy.allowsCopy(
+            operation: currentOperation,
+            approvedSignature: validationRefreshPolicy.currentSignature,
+            incomingURLs: urls
+        ) else {
             resetValidation(notifyExit: true)
             return false
         }
@@ -156,7 +167,7 @@ public final class FileURLDropDestinationView: NSView {
             return
         }
 
-        let signature = dragSignature(for: urls)
+        let signature = DropPayloadApprovalPolicy.signature(for: urls)
         let decision = validationRefreshPolicy.decision(
             for: signature,
             now: ProcessInfo.processInfo.systemUptime,
@@ -219,10 +230,30 @@ public final class FileURLDropDestinationView: NSView {
         }
     }
 
-    private func dragSignature(for urls: [URL]) -> String {
+}
+
+enum DropPayloadApprovalPolicy {
+    /// URL order may change across AppKit drag callbacks, but their normalized
+    /// destination-independent paths must describe the same set of inputs.
+    static func signature(for urls: [URL]) -> String {
         urls
             .map { $0.standardizedFileURL.path }
             .sorted()
             .joined(separator: "\u{0}")
+    }
+
+    static func allowsCopy(
+        operation: NSDragOperation,
+        approvedSignature: String?,
+        incomingURLs: [URL]
+    ) -> Bool {
+        guard operation.contains(.copy),
+              let approvedSignature,
+              !incomingURLs.isEmpty
+        else {
+            return false
+        }
+
+        return approvedSignature == signature(for: incomingURLs)
     }
 }
