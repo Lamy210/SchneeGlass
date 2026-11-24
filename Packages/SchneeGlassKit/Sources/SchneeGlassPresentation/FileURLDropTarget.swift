@@ -48,7 +48,11 @@ public final class FileURLDropDestinationView: NSView {
   private var validationTask: Task<Void, Never>?
   private var validationToken = UUID()
   private var validationRefreshPolicy = DropValidationRefreshPolicy()
-  private var currentOperation: NSDragOperation = []
+  // Approval is derived from the refresh policy. Starting a fresh hover
+  // validation immediately disables the old copy operation.
+  private var currentOperation: NSDragOperation {
+    validationRefreshPolicy.approvedSignature == nil ? [] : .copy
+  }
   private var didDispatchPerform = false
 
   init(
@@ -103,7 +107,7 @@ public final class FileURLDropDestinationView: NSView {
   public override func prepareForDragOperation(_ sender: any NSDraggingInfo) -> Bool {
     DropPayloadApprovalPolicy.allowsCopy(
       operation: currentOperation,
-      approvedSignature: validationRefreshPolicy.currentSignature,
+      approvedSignature: validationRefreshPolicy.approvedSignature,
       incomingURLs: fileURLs(from: sender)
     )
   }
@@ -116,7 +120,7 @@ public final class FileURLDropDestinationView: NSView {
     guard
       DropPayloadApprovalPolicy.allowsCopy(
         operation: currentOperation,
-        approvedSignature: validationRefreshPolicy.currentSignature,
+        approvedSignature: validationRefreshPolicy.approvedSignature,
         incomingURLs: urls
       )
     else {
@@ -129,7 +133,6 @@ public final class FileURLDropDestinationView: NSView {
     // is never treated as authorization.
     validationTask?.cancel()
     validationTask = nil
-    currentOperation = []
     validationRefreshPolicy.reset()
     didDispatchPerform = true
 
@@ -175,12 +178,8 @@ public final class FileURLDropDestinationView: NSView {
       now: ProcessInfo.processInfo.systemUptime,
       validationInFlight: validationTask != nil
     )
-    guard case .start(let isNewSignature) = decision else {
+    guard decision != .skip else {
       return
-    }
-
-    if isNewSignature {
-      currentOperation = []
     }
     validationTask?.cancel()
 
@@ -204,7 +203,7 @@ public final class FileURLDropDestinationView: NSView {
       guard !Task.isCancelled, isCurrent else {
         return
       }
-      self.currentOperation = accepted ? .copy : []
+      self.validationRefreshPolicy.resolve(signature: signature, accepted: accepted)
     }
   }
 
@@ -213,7 +212,6 @@ public final class FileURLDropDestinationView: NSView {
     validationTask = nil
     validationToken = UUID()
     validationRefreshPolicy.reset()
-    currentOperation = []
     if notifyExit {
       onExit()
     }

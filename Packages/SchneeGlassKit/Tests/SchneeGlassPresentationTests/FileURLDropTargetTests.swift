@@ -167,3 +167,126 @@ func approvedDragComparesStandardizedFileURLs() {
     )
   )
 }
+
+@Test
+func hoverRefreshRevokesOldCopyApprovalUntilFreshPlanSucceeds() {
+  var policy = DropValidationRefreshPolicy(minimumInterval: 0.5)
+
+  #expect(
+    policy.decision(
+      for: "same-files",
+      now: 10,
+      validationInFlight: false
+    ) == .start(isNewSignature: true)
+  )
+  #expect(policy.approvedSignature == nil)
+
+  policy.resolve(signature: "same-files", accepted: true)
+  #expect(policy.approvedSignature == "same-files")
+
+  #expect(
+    policy.decision(
+      for: "same-files",
+      now: 10.25,
+      validationInFlight: false
+    ) == .skip
+  )
+  #expect(policy.approvedSignature == "same-files")
+
+  #expect(
+    policy.decision(
+      for: "same-files",
+      now: 10.5,
+      validationInFlight: false
+    ) == .start(isNewSignature: false)
+  )
+  #expect(policy.approvedSignature == nil)
+
+  policy.resolve(signature: "same-files", accepted: false)
+  #expect(policy.approvedSignature == nil)
+
+  #expect(
+    policy.decision(
+      for: "same-files",
+      now: 11,
+      validationInFlight: false
+    ) == .start(isNewSignature: false)
+  )
+  policy.resolve(signature: "same-files", accepted: true)
+  #expect(policy.approvedSignature == "same-files")
+}
+
+@Test
+func staleOrCancelledHoverCannotAuthorizeNewDragPayload() {
+  var policy = DropValidationRefreshPolicy(minimumInterval: 0.5)
+
+  #expect(
+    policy.decision(
+      for: "first",
+      now: 20,
+      validationInFlight: false
+    ) == .start(isNewSignature: true)
+  )
+  policy.resolve(signature: "first", accepted: true)
+  #expect(policy.approvedSignature == "first")
+
+  #expect(
+    policy.decision(
+      for: "second",
+      now: 20.1,
+      validationInFlight: true
+    ) == .start(isNewSignature: true)
+  )
+  #expect(policy.approvedSignature == nil)
+
+  policy.resolve(signature: "first", accepted: true)
+  #expect(policy.approvedSignature == nil)
+  policy.resolve(signature: "second", accepted: true)
+  #expect(policy.approvedSignature == "second")
+
+  policy.reset()
+  #expect(policy.currentSignature == nil)
+  #expect(policy.approvedSignature == nil)
+  policy.resolve(signature: "second", accepted: true)
+  #expect(policy.approvedSignature == nil)
+}
+
+@Test
+func inFlightRefreshCannotReuseAnEarlierPayloadSignatureApproval() {
+  let url = URL(fileURLWithPath: "/tmp/SchneeGlass-drop-revalidate.txt")
+  let signature = DropPayloadApprovalPolicy.signature(for: [url])
+  var policy = DropValidationRefreshPolicy(minimumInterval: 0.5)
+
+  #expect(
+    policy.decision(
+      for: signature,
+      now: 30,
+      validationInFlight: false
+    ) == .start(isNewSignature: true)
+  )
+  policy.resolve(signature: signature, accepted: true)
+  #expect(
+    DropPayloadApprovalPolicy.allowsCopy(
+      operation: .copy,
+      approvedSignature: policy.approvedSignature,
+      incomingURLs: [url]
+    )
+  )
+
+  #expect(
+    policy.decision(
+      for: signature,
+      now: 30.5,
+      validationInFlight: false
+    ) == .start(isNewSignature: false)
+  )
+  // Even a stale .copy icon cannot authorize a drop while a new preview
+  // is in progress: only the current successful preview may approve it.
+  #expect(
+    !DropPayloadApprovalPolicy.allowsCopy(
+      operation: .copy,
+      approvedSignature: policy.approvedSignature,
+      incomingURLs: [url]
+    )
+  )
+}
