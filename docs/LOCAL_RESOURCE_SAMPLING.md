@@ -19,7 +19,7 @@ python3 Scripts/sample-process-resources.py --pid 12345 --interval 60 --samples 
 - elapsed_seconds: monotonic elapsed、各観測完了時点。観測時間やsleep/wakeで実間隔にズレが生じ得る。遅延時は実際の観測開始時刻を基準に次回時刻を更新し、遅れた分の連続計測は行わない。予定サンプル数は維持するため、所要時間は延び得る。
 - cpu_percent_ps: macOS psのCPU推定値（瞬時値/厳密な区間平均ではない、100%を超え得る）。
 - rss_kib: psのresident set size、KiB。physical footprintやリークの確定値ではない。
-- fd_count: lsofの数値descriptor fieldの個数。cwd/txt等の疑似entryは除外する。lsofが警告・失敗した場合、0を補わず停止する。
+- fd_count: `lsof -Fpf`の数値FDを一意に数えた値。数値FDの末尾にアクセスモード（`r`/`w`/`u`）やロック種別が付く場合も、同じ番号を二重に数えない。`cwd`/`txt`/macOSのfileport等の既知の非数値entryは除外する。不明なFD形式、FD情報エラー、重複FD、lsofの警告・失敗は0を補わず計測停止する。
 
 PID、起動時刻、実行ファイル名を観測前後およびサンプル間で照合し、変更を拒否する。psの起動時刻は秒精度なので同秒・同コマンドでのPID再使用を完全に区別できない。観測結果の一貫性を確保するため意図的に別PIDへの自動追従は行わない。
 

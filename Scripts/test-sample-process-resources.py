@@ -32,9 +32,22 @@ class ResourceSamplerTests(unittest.TestCase):
     def test_counts_only_numeric_descriptors(self):
         self.assertEqual(PARSE_FDS(FDS, 42), 3)
 
+    def test_counts_lsof_access_modes_and_locks_once_per_descriptor(self):
+        self.assertEqual(
+            PARSE_FDS(
+                "p42\nfcwd\nfctty\nffp.\nfltx\nfpd\nftwd\n"
+                "f0r\nf1w\nf2u\nf17uR\nf20-w\n",
+                42,
+            ),
+            5,
+        )
+        with self.assertRaisesRegex(ValueError, "Duplicate descriptor record"):
+            PARSE_FDS("p42\nf0\nf0u\n", 42)
+
     def test_rejects_unavailable_or_ambiguous_fds(self):
         for value in ("", "p42\nfcwd\n", "p43\nf0\n", "p42\nf0\np42\nf1\n",
-                      "p42\nf0\nf0\n", "p42\nf0u\n", "p42\nf0\nfNOFD\n", "p42\nn/private/path\n"):
+                      "p42\nf0\nf0\n", "p42\nf0-\n", "p42\nf0x\n", "p42\nf0\nfNOFD\n",
+                      "p42\nferr\n", "p42\nn/private/path\n"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 PARSE_FDS(value, 42)
 
