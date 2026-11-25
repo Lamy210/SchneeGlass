@@ -149,6 +149,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Drag元がCopyを許可しない操作マスク（Moveのみ、Linkのみ、None）を返す場合、GlassはCopyをadvertiseせず、Dropをdispatchしない。Copy許可を含む複数操作マスクではCopyだけを採用する。modifierキーで途中からCopy不可になった場合は既存hover承認を破棄し、Copy許可復帰後も再検証を要する（実機未確認）
 - [ ] 同じファイル一覧をGlassにhoverし続け、定期的なcopy可否の再検証が始まった場合は、旧`.copy`判定を新しい承認として再利用せず一時的にcopy不可とする。新しい検証で許可された場合だけcopy可能表示へ復帰し、拒否時はcopy不可を維持する。hover中の権限変更・外部file変更時も、実コピー前のアプリ層再プランを確認する（AppKit実機挙動は未検証）
 - [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
+- [ ] 同じGlassでファイルコピー実行中、重複したhover/Dropを拒否しても既存のコピー進捗・Cancel Copy操作が消えず、進行中のコピーが継続する。copy直前の非同期再プラン中も二重Dropは拒否する（この項目は実機未確認）
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
 
