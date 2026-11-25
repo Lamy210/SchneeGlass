@@ -488,7 +488,7 @@ public final class SchneeGlassWorkspaceModel {
       !isDropBusy(glassID: glassID)
     else {
       let rejection = DropPlan.reject(.destinationUnavailable)
-      updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+      showUnavailableDropFeedbackUnlessExecuting(glassID: glassID)
       return rejection
     }
 
@@ -527,7 +527,7 @@ public final class SchneeGlassWorkspaceModel {
       !isDropBusy(glassID: glassID),
       dropExecutionGate.begin(glassID)
     else {
-      updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+      showUnavailableDropFeedbackUnlessExecuting(glassID: glassID)
       presentConfigurationRecoveryRequirementIfNeeded()
       return false
     }
@@ -1025,6 +1025,21 @@ public final class SchneeGlassWorkspaceModel {
       return
     }
     glasses[index].contentState = state
+  }
+
+  /// Keep the executing Drop's feedback intact when another hover/Drop is
+  /// rejected, including the async re-plan interval before .copying appears.
+  private func showUnavailableDropFeedbackUnlessExecuting(glassID: GlassID) {
+    guard
+      let entry = glasses.first(where: { $0.id == glassID }),
+      GlassInteractionPolicy.allowsRejectedDropFeedback(
+        during: entry.interactionState,
+        hasActiveExecution: dropExecutionGate.contains(glassID)
+      )
+    else {
+      return
+    }
+    updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
   }
 
   private func updateInteraction(_ state: InteractionState, for glassID: GlassID) {
