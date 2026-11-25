@@ -1,7 +1,13 @@
 import SchneeGlassApplication
 
 enum GlassInteractionPolicy {
-  static func allowsRemoval(during state: InteractionState) -> Bool {
+  static func allowsRemoval(
+    during state: InteractionState,
+    isDropBusy: Bool = false
+  ) -> Bool {
+    // The execution reservation precedes the copying UI. A stale idle or
+    // invalid state must not offer removal while a Drop is being re-planned.
+    guard !isDropBusy else { return false }
     switch state {
     case .idle, .dropInvalid:
       return true

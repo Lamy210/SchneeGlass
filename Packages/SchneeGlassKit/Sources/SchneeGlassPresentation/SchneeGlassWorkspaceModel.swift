@@ -116,6 +116,18 @@ public final class SchneeGlassWorkspaceModel {
     canMutateConfiguration
   }
 
+  public func canRemoveGlass(glassID: GlassID) -> Bool {
+    guard canMutateConfiguration,
+      let entry = glasses.first(where: { $0.id == glassID })
+    else {
+      return false
+    }
+    return GlassInteractionPolicy.allowsRemoval(
+      during: entry.interactionState,
+      isDropBusy: isDropBusy(glassID: glassID)
+    )
+  }
+
   public var hasAuthoritativeConfigurationSnapshot: Bool {
     WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
       hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,

@@ -85,7 +85,8 @@ public struct SchneeGlassWorkspaceView: View {
         Task {
           await model.renameGlass(glassID: glassID, title: title)
         }
-      }
+      },
+      canRemove: { model.canRemoveGlass(glassID: $0) }
     )
   }
 }
@@ -116,6 +117,7 @@ struct WorkspaceSurface: View {
   var onRevealConnectedFolder: @MainActor (GlassID) -> Void = { _ in }
   var canRename: @MainActor (GlassID) -> Bool = { _ in false }
   var onRename: @MainActor (GlassID, String) -> Void = { _, _ in }
+  var canRemove: @MainActor (GlassID) -> Bool = { _ in true }
 
   @State private var isSearchVisible = false
   @State private var glassQuery = ""
@@ -277,6 +279,7 @@ struct WorkspaceSurface: View {
               entry: entry,
               canRemove: !isMutatingConfiguration
                 && !requiresConfigurationRecovery
+                && canRemove(entry.id)
                 && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
               onOpen: onOpen,
               onReveal: onReveal,
