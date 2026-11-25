@@ -18,7 +18,9 @@ jobs:
   canonical:
     name: Canonical / Xcode 26.6 / App Build / Safety Guards
     runs-on: macos-26
-    timeout-minutes: 25
+    # The full File Safety negative fixtures, ASan, and both Xcode builds can
+    # exceed 25 minutes on a loaded macOS runner. Preserve every required gate.
+    timeout-minutes: 35
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
