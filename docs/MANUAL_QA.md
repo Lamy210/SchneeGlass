@@ -151,6 +151,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
 - [ ] 同じGlassでファイルコピー実行中、重複したhover/Dropを拒否しても既存のコピー進捗・Cancel Copy操作が消えず、進行中のコピーが継続する。copy直前の非同期再プラン中も二重Dropは拒否する（この項目は実機未確認）
 - [ ] 同じGlassでDrop実行予約中（コピー本体の開始前）に削除メニューを開いても、WorkspaceとDesktopの両方で削除が無効となる。コピー完了後のidle状態では再び操作できる（実機未確認）
+- [ ] Glass削除確認をidle中に開き、確認確定前に同じGlassへhoverまたはDrop実行を開始した場合、確定済みダイアログから削除処理が到着しても最新の状態で拒否する。hover/Drop終了後は新しい削除操作ができる（実機未確認）
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
 
