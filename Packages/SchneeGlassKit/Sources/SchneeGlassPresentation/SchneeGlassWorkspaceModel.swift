@@ -337,9 +337,9 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func removeGlass(id: GlassID) async {
-    guard canMutateConfiguration,
-      !isDropBusy(glassID: id)
-    else {
+    // Re-check current interaction state at confirmation time. The removal
+    // dialog may have opened before a new hover or Drop execution began.
+    guard canRemoveGlass(glassID: id) else {
       presentConfigurationRecoveryRequirementIfNeeded()
       return
     }
