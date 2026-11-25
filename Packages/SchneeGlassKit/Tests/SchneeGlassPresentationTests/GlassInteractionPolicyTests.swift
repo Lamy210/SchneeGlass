@@ -5,6 +5,13 @@ import Testing
 @Test
 func removalAvailabilityMatchesDropInteractionHandoff() {
   #expect(GlassInteractionPolicy.allowsRemoval(during: .idle))
+  #expect(!GlassInteractionPolicy.allowsRemoval(during: .idle, isDropBusy: true))
+  #expect(!GlassInteractionPolicy.allowsRemoval(
+    during: .dropInvalid(.collision), isDropBusy: true
+  ))
+  #expect(GlassInteractionPolicy.allowsRemoval(
+    during: .dropInvalid(.collision), isDropBusy: false
+  ))
   #expect(GlassInteractionPolicy.allowsRemoval(during: .dropInvalid(.collision)))
   #expect(!GlassInteractionPolicy.allowsRemoval(during: .hovered))
   #expect(!GlassInteractionPolicy.allowsRemoval(during: .dropValid(.noOperation)))
