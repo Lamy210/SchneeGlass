@@ -71,7 +71,7 @@ for timestamp_case in utime utimes futimes lutimes futimens utimensat; do
         source_line="private let $marker = { return $timestamp_case }"
         ;;
     esac
-    printf '%s\\n' "$source_line" >> "$LOCK_SOURCE"
+    printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
     EXPECTED_MARKERS+=("$marker")
   done
 done
