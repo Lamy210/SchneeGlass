@@ -150,6 +150,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] 同じファイル一覧をGlassにhoverし続け、定期的なcopy可否の再検証が始まった場合は、旧`.copy`判定を新しい承認として再利用せず一時的にcopy不可とする。新しい検証で許可された場合だけcopy可能表示へ復帰し、拒否時はcopy不可を維持する。hover中の権限変更・外部file変更時も、実コピー前のアプリ層再プランを確認する（AppKit実機挙動は未検証）
 - [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
 - [ ] 同じGlassでファイルコピー実行中、重複したhover/Dropを拒否しても既存のコピー進捗・Cancel Copy操作が消えず、進行中のコピーが継続する。copy直前の非同期再プラン中も二重Dropは拒否する（この項目は実機未確認）
+- [ ] 同じGlassでDrop実行予約中（コピー本体の開始前）に削除メニューを開いても、WorkspaceとDesktopの両方で削除が無効となる。コピー完了後のidle状態では再び操作できる（実機未確認）
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
 
