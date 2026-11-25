@@ -43,8 +43,7 @@ public struct SchneeGlassDesktopGlassView: View {
           onDisplayModeChange: onDisplayModeChange,
           canChangeDisplayMode: model.hasAuthoritativeConfigurationSnapshot
             && !model.isMutatingConfiguration,
-          canRemove: model.canMutateConfiguration
-            && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
+          canRemove: model.canRemoveGlass(glassID: entry.id),
           canRefresh: model.canRefreshGlass(glassID: entry.id),
           canReconnectSource: model.canReconnectSource(glassID: entry.id),
           onRefresh: {
