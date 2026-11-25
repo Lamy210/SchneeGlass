@@ -18,4 +18,14 @@ enum GlassInteractionPolicy {
             return false
         }
     }
+
+    /// A rejected overlapping Drop must not replace live copy progress or its
+    /// cancellation control. The execution gate covers the re-planning window
+    /// before the UI has transitioned to .copying.
+    static func allowsRejectedDropFeedback(
+        during state: InteractionState,
+        hasActiveExecution: Bool
+    ) -> Bool {
+        !hasActiveExecution && !allowsCopyCancellation(during: state)
+    }
 }
