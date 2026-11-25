@@ -290,3 +290,78 @@ func inFlightRefreshCannotReuseAnEarlierPayloadSignatureApproval() {
     )
   )
 }
+
+@Test
+func dropOnlyOffersCopyWhenDragSourcePermitsCopy() {
+  let copyAndMove: NSDragOperation = [.copy, .move]
+
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .copy,
+      source: .copy
+    ) == .copy
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .copy,
+      source: copyAndMove
+    ) == .copy
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .copy,
+      source: .move
+    ) == []
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .copy,
+      source: .link
+    ) == []
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .copy,
+      source: []
+    ) == []
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: [],
+      source: copyAndMove
+    ) == []
+  )
+  #expect(
+    DropPayloadApprovalPolicy.copyOperation(
+      requested: .move,
+      source: copyAndMove
+    ) == []
+  )
+}
+
+@Test
+func dragSourceMaskChangeRejectsPreviouslyApprovedCopyPayload() {
+  let url = URL(fileURLWithPath: "/tmp/SchneeGlass-source-mask.txt")
+  let approved = DropPayloadApprovalPolicy.signature(for: [url])
+
+  #expect(
+    DropPayloadApprovalPolicy.allowsCopy(
+      operation: DropPayloadApprovalPolicy.copyOperation(
+        requested: .copy,
+        source: .copy
+      ),
+      approvedSignature: approved,
+      incomingURLs: [url]
+    )
+  )
+  #expect(
+    !DropPayloadApprovalPolicy.allowsCopy(
+      operation: DropPayloadApprovalPolicy.copyOperation(
+        requested: .copy,
+        source: .move
+      ),
+      approvedSignature: approved,
+      incomingURLs: [url]
+    )
+  )
+}
