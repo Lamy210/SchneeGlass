@@ -20,6 +20,7 @@ public enum DesktopGlassVisibilityMode: Hashable, Sendable {
 @MainActor
 public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
   private static let shortcutName = KeyboardShortcuts.Name("toggleGlassVisibility")
+  private static weak var activeController: SchneeGlassGlobalVisibilityShortcutController?
 
   private var isStopped = false
   private let onToggle: @MainActor @Sendable () -> Void
@@ -30,8 +31,10 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     self.onToggle = onToggle
     super.init()
 
-    // App initialization can be repeated by previews/tests. Replace an existing legacy
-    // handler instead of accumulating callbacks for the same persisted shortcut name.
+    // Previews/tests can replace this controller. Stop the old owner as well as
+    // its handler so previously queued key-up tasks cannot fire afterward.
+    Self.activeController?.stop()
+    Self.activeController = self
     KeyboardShortcuts.removeHandler(for: Self.shortcutName)
     KeyboardShortcuts.onKeyUp(for: Self.shortcutName) { [weak self] in
       Task { @MainActor [weak self] in
@@ -70,7 +73,11 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     }
     isStopped = true
     NotificationCenter.default.removeObserver(self)
-    KeyboardShortcuts.removeHandler(for: Self.shortcutName)
+    // An older controller must not remove the newer owner's handler.
+    if Self.activeController === self {
+      Self.activeController = nil
+      KeyboardShortcuts.removeHandler(for: Self.shortcutName)
+    }
   }
 
   @objc
