@@ -65,3 +65,24 @@ func queuedShortcutDeliveryDoesNotToggleAfterControllerStops() async {
   #expect(currentCounter.calls == 1)
   current.stop()
 }
+
+@Test
+@MainActor
+func pendingShortcutTaskDoesNotRetainRetiredController() async {
+  let counter = ShortcutToggleCounter()
+  var controller: SchneeGlassGlobalVisibilityShortcutController? =
+    SchneeGlassGlobalVisibilityShortcutController {
+      counter.record()
+    }
+  weak var weakController = controller
+
+  // The enqueued Task may outlive the controller; delivery must not keep the
+  // instance alive or invoke its callback after the owner has retired.
+  let pending = SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: controller!
+  )
+  controller = nil
+  #expect(weakController == nil)
+  await pending.value
+  #expect(counter.calls == 0)
+}
