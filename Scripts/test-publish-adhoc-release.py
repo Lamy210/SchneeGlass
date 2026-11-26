@@ -39,6 +39,7 @@ class FakeGitHub:
         self.fail = None
         self.upload_count = 0
         self.response_id = 123
+        self.owned_snapshots = []
 
     def record(self, event):
         self.events.append(event)
@@ -66,9 +67,11 @@ class FakeGitHub:
         return {"id": self.response_id, "tag_name": tag, "draft": True,
                 "immutable": False, "prerelease": False, "assets": []}
 
-    def owned_slot(self, identity, tag, sha):
+    def owned_slot(self, identity, tag, sha, expected, uploaded):
         self.record("owned")
         assert identity == "123"
+        assert set(uploaded).issubset(expected)
+        self.owned_snapshots.append(dict(uploaded))
 
     def upload(self, identity, name, directory, expected):
         self.record("upload:" + name)
@@ -113,6 +116,7 @@ class PublisherTests(fixture.ReleaseReaderTests):
         self.assertEqual(api.events[:5], ["authority", "prepare", "fresh", "empty", "tag"])
         self.assertEqual(api.events.count("draft"), 1)
         self.assertEqual(api.upload_count, 4)
+        self.assertEqual([len(x) for x in api.owned_snapshots], [0, 1, 2, 3, 4, 4])
         self.assertEqual(api.events.count("readback:draft"), 2)
         self.assertEqual(api.events.count("fresh"), 2)
         self.assertEqual(api.events[-4:], ["final-assets:draft", "publish", "readback:published", "final-assets:published"])
@@ -313,6 +317,69 @@ class PublisherTests(fixture.ReleaseReaderTests):
                     api.final_assets(phase, "123", fixture.TAG, expected, {"one": 6})
                 with self.assertRaisesRegex(ValueError, "incomplete captured"):
                     api.final_assets(phase, "123", fixture.TAG, expected, {})
+
+    def test_publisher_owned_slot_rejects_foreign_or_changed_assets(self):
+        api = publisher.GitHub()
+        expected = publisher.readback.local_assets(self.prepared, fixture.TAG)
+        name = sorted(expected)[0]
+        size, digest = expected[name]
+        good = {
+            "id": 201, "name": name, "size": size,
+            "digest": digest, "state": "uploaded",
+        }
+        release = {
+            "id": 123, "tag_name": fixture.TAG, "draft": True,
+            "immutable": False, "prerelease": False, "assets": [],
+        }
+        inventory = [[{"id": 123, "tag_name": fixture.TAG, "draft": True}]]
+        cases = [
+            ("empty initial draft", [], {}, True),
+            ("known first upload", [good], {name: 201}, True),
+            ("unexpected foreign asset", [good], {}, False),
+            ("known upload missing", [], {name: 201}, False),
+            ("replaced asset ID", [{**good, "id": 202}], {name: 201}, False),
+            ("unknown asset name", [{**good, "name": "foreign.zip"}], {name: 201}, False),
+            ("changed asset size", [{**good, "size": size + 1}], {name: 201}, False),
+            ("changed asset digest", [{**good, "digest": "sha256:" + "0" * 64}],
+             {name: 201}, False),
+            ("incomplete upload state", [{**good, "state": "starter"}],
+             {name: 201}, False),
+            ("missing asset metadata", [{**good, "digest": None}], {name: 201}, False),
+            ("malformed asset identity", [{**good, "id": True}], {name: 201}, False),
+        ]
+        for label, assets, uploaded, allowed in cases:
+            with self.subTest(case=label):
+                details = {**release, "assets": assets}
+                with patch.object(publisher, "gh_json",
+                                  side_effect=[inventory, details]) as query, \
+                     patch.object(publisher.reader, "resolve_tag",
+                                  return_value=fixture.SHA) as ref:
+                    if allowed:
+                        self.assertEqual(
+                            api.owned_slot("123", fixture.TAG, fixture.SHA,
+                                           expected, uploaded), details)
+                    else:
+                        with self.assertRaises(ValueError):
+                            api.owned_slot("123", fixture.TAG, fixture.SHA,
+                                           expected, uploaded)
+                    self.assertEqual(query.call_count, 2)
+                    ref.assert_called_once_with(fixture.TAG)
+
+    def test_publisher_foreign_asset_detected_before_next_upload(self):
+        api = FakeGitHub(self)
+        owned = api.owned_slot
+
+        def foreign_asset(identity, tag, sha, expected, uploaded):
+            owned(identity, tag, sha, expected, uploaded)
+            if len(uploaded) == 2:
+                raise ValueError("foreign release asset appeared")
+
+        api.owned_slot = foreign_asset
+        with self.assertRaisesRegex(ValueError, "foreign release asset appeared"):
+            self.run_publisher(api)
+        self.assertEqual(api.upload_count, 2)
+        self.assertNotIn("publish", api.events)
+        self.assertIn("stage=upload", self.failure_log)
 
     def test_publisher_owner_workflow_context_required(self):
         with patch.dict(publisher.os.environ, {}, clear=True):
