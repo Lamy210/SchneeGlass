@@ -27,9 +27,9 @@ This document defines the SchneeGlass release baseline. Unsigned or ad-hoc test 
 
 **Failure boundary:** GitHub API writes are not transactional. A created tag/draft, partial upload, lost response or published-but-unverified Release is **not success**. Stop, retain the tag/release/asset identities and audit evidence, perform owner-controlled manual reconciliation, and never blindly retry, delete, overwrite or adopt previously created resources. No global Gatekeeper bypass or removal of quarantine is part of QA.
 
-## Historical Developer ID publication design (inactive)
+## Historical Developer ID publication status (inactive)
 
-The remainder of the signed/notarized production sections documents the retired design for audit and backwards-compatibility. **It is not the active v0.2 release checklist.**
+The following old signed/notarized status report is preserved for audit; it is **not** the current v0.2 release checklist. The shared versioning, ad-hoc candidate, integrity and non-destructive rollback rules elsewhere in this document remain applicable. Sections specifically describing Developer ID production candidate / publication workflows are historical and must not be dispatched.
 
 The production release automation is **code complete**; `v0.2.0 / build 3` is the current production candidate line.
 
@@ -174,7 +174,7 @@ The ad-hoc candidate is useful for Manual QA before Developer ID credentials are
 Production publication still requires a fresh successful `Production Release Candidate` from current `main` plus the Issue #33 governance / credential / Manual QA gates.
 
 
-## Production candidate workflow
+## Historical Developer ID production candidate workflow (inactive)
 
 `.github/workflows/production-release.yml` is the Developer ID / notarization control plane.
 
@@ -286,7 +286,7 @@ App Sandbox remains enabled even though direct Developer ID distribution does no
 
 See [`docs/adr/0006-developer-id-direct-distribution.md`](docs/adr/0006-developer-id-direct-distribution.md).
 
-## Production publication workflow
+## Historical Developer ID production publication workflow (inactive)
 
 `.github/workflows/publish-release.yml` promotes a successful signed/notarized candidate only after Manual QA.
 
@@ -402,7 +402,7 @@ Production release manifests are a strict one-archive contract. `SHA256SUMS` mus
 
 A checksum proves artifact integrity relative to the manifest; it does **not** replace Apple code signing or notarization.
 
-## Production release gates
+## Historical Developer ID production release gates (inactive)
 
 A production macOS release must not be published until all of the following are green:
 
@@ -437,7 +437,7 @@ A production macOS release must not be published until all of the following are 
 
 Private keys, certificates, passwords, API keys, and notarization credentials must never be committed to this public repository.
 
-## Credential boundary
+## Historical Developer ID credential boundary (inactive)
 
 Signing/notarization credentials come from the protected `production-release` environment. Within the signing job, the Developer ID PKCS#12 material/password and App Store Connect private key are injected only into the single build/sign/notarize step that consumes them; Checkout, Toolchain, evidence, and artifact-upload steps do not receive those credentials through workflow `env`.
 
