@@ -76,6 +76,8 @@ def validate_context(args):
         "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
         "GITHUB_WORKFLOW_REF": WORKFLOW_REF, "GITHUB_ACTOR_ID": "90091196",
         "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SHA": args.source_sha,
+        "GITHUB_JOB": "publish",
+        "SCHNEEGLASS_GOVERNANCE_ATTESTED_SHA": args.source_sha,
     }
     require(all(os.environ.get(key) == value for key, value in expected.items()),
             "publication restricted to owner-dispatched first attempt on exact main")
@@ -132,7 +134,9 @@ class GitHub:
         require(type(repo) is dict and repo.get("id") == 1359347782
                 and repo.get("full_name") == REPO, "repository identity mismatch")
         gate("verify-local-release-source.sh", REPO)
-        gate("setup-release-governance.sh", REPO, "--verify-only")
+        # Privileged canonical ruleset attestation runs only in the preceding
+        # governance job. Publication's narrower token rechecks effective rules.
+        gate("verify-current-release-governance.sh", REPO)
         setting = gh_json("GET", PREFIX + "/immutable-releases")
         require(type(setting) is dict and setting.get("enabled") is True,
                 "immutable releases not enabled")
