@@ -19,4 +19,40 @@ GitHub writes are not transactional. External mutations may race after the last 
 
 References: https://docs.github.com/en/rest/git/refs#create-a-reference ; https://docs.github.com/en/rest/releases/releases#create-a-release ; https://docs.github.com/en/rest/releases/assets#upload-a-release-asset ; https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency .
 
+
+## Owner review checklist (blocking, not a CI fixture)
+
+The code in this Draft PR **must not be merged or dispatched** until the repository owner explicitly accepts these decisions. A passing fixture is not an approval. Record the decision on the PR, without including credentials, user paths, or user data:
+
+- **Live governance:** use a clean checkout at exact live main, then run `bash Scripts/setup-release-governance.sh Lamy210/SchneeGlass --verify-only`. Verify the unique canonical ruleset, empty bypass actors, strict required Canonical / Compatibility checks from GitHub Actions App 15368, `main.protected=true` and repository-wide immutable Releases enabled. The file in `.github/rulesets/` is not proof that GitHub settings were applied.
+- **Credential review:** only provision the independently reviewed `SCHNEEGLASS_RELEASE_OWNER_TOKEN` to the intended GitHub Actions secret after identifying the exact `Lamy210/SchneeGlass` repository scope, required Actions read / Contents write / administration visibility, credential expiration/rotation/revocation plan, and proof that the chosen token actually supports each live API read/write required by the workflow. Do not use broader permission merely to bypass a failed API probe; fail closed and review the API contract.
+- **Human QA:** on an exact-main first-attempt manually dispatched ad-hoc candidate, independently record the run ID, artifact ID, source SHA, outer Actions ZIP digest and actual inner application ZIP digest. Perform real macOS 15/26 install, Gatekeeper, Sandbox/entitlements, File Safety, Recovery and upgrade checks. Only the authenticated owner may personally post the exact unedited approval comment on Issue #520, bound to the **inner ZIP digest**. A bot/fixture must never post it.
+- **Operational exclusivity:** the workflow's concurrency group serializes **only this workflow**. The owner must ensure no other publisher, human or automation changes the proposed tag or Release while this process runs.
+- **Create-only failure policy:** accept that GitHub tag creation, Draft creation, asset upload and publication cannot be rolled back atomically. Never retry blindly, delete a remotely created tag/draft/asset, overwrite an asset or adopt an existing draft from another run. First reconcile with remote state, then decide on independently reviewed remediation.
+
+### Read-only reconciliation after a partial or ambiguous result
+
+The failure log prints `stage`, `tag`, captured `release_id` (if available) and `uploaded_asset_ids` (if known). Cancellation and connection loss can occur *before* the script prints any of them. Absence of a printed ID is **not** proof that the corresponding GitHub write failed.
+
+| Failed/ambiguous stage | What may already exist | Safe operator action |
+| --- | --- | --- |
+| `create-tag` | Ref may have been created even when its response was lost | Inspect the exact Git ref and owner-only activity; **do not re-POST** the tag |
+| `create-draft` | Tag may exist with no Draft, or Draft may exist but its ID was not captured | Inspect all matching Releases, including Drafts; never discover one by tag and silently adopt it |
+| `upload` | One or more valid assets may exist; a server-side upload can succeed without a received response | Inspect the captured Draft ID and enumerate its assets/IDs/digests; do not reupload or delete |
+| `draft-readback` / `final-preflight` | A complete Draft may exist, but QA/main/history/governance may have changed | Leave the Draft untouched and document the changed prerequisite |
+| `publish` / `published-readback` | Release may already be public or may be mutable/unverified | Inspect exact Release ID, tag target and asset IDs/digests; **do not issue a second PATCH** |
+
+Use authenticated **read-only** probes with a trusted operator account. The following are inspection examples (substitute an observed tag/ID; never use samples as mutation targets):
+
+```bash
+gh api 'repos/Lamy210/SchneeGlass/git/ref/tags/vX.Y.Z'
+gh api --paginate 'repos/Lamy210/SchneeGlass/releases?per_page=100'
+gh api 'repos/Lamy210/SchneeGlass/releases/<observed-positive-release-id>'
+gh api --paginate 'repos/Lamy210/SchneeGlass/releases/<observed-positive-release-id>/assets?per_page=100'
+```
+
+A `404` for one probe does not establish that all endpoints are empty, and a failed authorization/network response is **not** evidence of absence. Annotated tags must resolve to their actual commit before comparing source identity. A Release reporting `immutable=false` must not be certified. All remediation requires explicit owner decision; an abandoned tag/Release must not be deleted or reused by this publisher.
+
+The review record should identify the observed commit, candidate run/artifact/ZIP digests, governance verification, actual QA decision, workflow run/attempt, write stage, observed tag/Release/asset IDs, and unresolved ambiguity **without disclosing the token or personal filesystem data**.
+
 Fixtures exercise the production orchestration against synthetic assets and mock GitHub. No actual token, owner QA, API write, or public release is performed in CI. Live draft/upload/post-publication semantics and permissions remain unverified. The integrated suite uses the actual preparer's output, fresh checks, real build comparator, and actual read-back against mock GitHub transport; the strict authenticated history acquisition fixture runs in the same workflow. The normalized history snapshot boundary in the fresh-check tests is synthetic. Before readiness: require the integrated suite and dependency PRs to pass, review GitHub API/timeout and workflow guards, establish governance and real owner QA.
