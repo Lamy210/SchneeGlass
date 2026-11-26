@@ -6,7 +6,30 @@
 
 This document defines the SchneeGlass release baseline. Unsigned or ad-hoc test artifacts are never public production releases.
 
-## Current state
+## Active v0.2 ad-hoc release path (ADR-0011)
+
+**Current decision: NO-GO for a public v0.2.0 Release until the gates below are verified.** The latest public download is v0.1.1. Source metadata is v0.2.0 / build 3, but it is **not** a published v0.2.0 Release. Developer ID signing, Apple notarization, `production-release` credentials, and the historical signed publication workflows are **not required and must not be dispatched** for the ad-hoc path.
+
+`Ad-Hoc Release Candidate` (`.github/workflows/adhoc-release-candidate.yml`) is a **manually dispatched, exact-main, testing-only** workflow. Its retained Actions artifact expires after 14 days and is not a public GitHub Release. The proposed `Publish Ad-Hoc Release` workflow is on **Draft PR #547, not yet merged into `main`**; do not attempt to dispatch it or substitute the historical `Publish Production Release` workflow.
+
+### Required gates and evidence
+
+| Gate | Owner / status boundary | Required evidence |
+| --- | --- | --- |
+| R02 / [#519](https://github.com/Lamy210/SchneeGlass/issues/519) | Repository administrator, not a CI workaround | From a clean exact-live-`main` checkout, `Scripts/setup-release-governance.sh Lamy210/SchneeGlass --verify-only` succeeds; canonical branch rules (including both strict GitHub Actions App 15368 checks, no bypass actors), `main.protected=true` and repository-wide Release immutability `enabled=true` are confirmed |
+| R03 / [#547](https://github.com/Lamy210/SchneeGlass/pull/547) | Maintainer review, not automatic publication | Publisher is integrated with current `main` and relevant CI/fixture checks pass; the owner approves repository-scoped credential permissions and create-only/no-retry/no-delete/partial-failure reconciliation before merging |
+| R04 / [#520](https://github.com/Lamy210/SchneeGlass/issues/520) | Human macOS QA / owner decision | After the final code merge, record exact `main` SHA, candidate run and artifact IDs, outer and inner ZIP digests, version/build, macOS 15/26 installation, Gatekeeper, real codesign/entitlements, File Safety/Recovery and v0.1.1 upgrade results |
+| Publish / [#520](https://github.com/Lamy210/SchneeGlass/issues/520) | **Explicit owner-only dispatch**, never a CI approval | A personally authored, unedited, authenticated QA comment on #520 matches the **inner app ZIP** digest; authenticated current-run/main/history/tag/governance checks succeed; publishing uses an approved scoped credential; published Release, tag and all four asset IDs/digests are read back and immutable |
+
+**Safe order:** Resolve and verify #519; review, update and safely merge #547; select and freeze exact `main` after all approved code changes; require Canonical Xcode 26.6 and macOS 15 checks for that source; generate a **fresh manual** ad-hoc candidate; download and verify its exact artifact; perform and record real QA on supported systems; only then have the owner manually post the exact approval and, after revalidation, decide whether to dispatch the newly merged publisher. If `main` changes, regenerate the candidate and repeat source-bound verification and QA; an old passing candidate cannot be silently promoted.
+
+**Read-only helpers** (not publishing authorization): [repository governance](docs/REPOSITORY_GOVERNANCE.md), [candidate provenance](docs/ADHOC_RUN_PROVENANCE.md), [authenticated QA approval](docs/ADHOC_AUTHENTICATED_OWNER_QA.md), [publication preflight](docs/ADHOC_PUBLICATION_PREFLIGHT.md), [Manual QA](docs/MANUAL_QA.md), and [public asset preparation](docs/ADHOC_PUBLIC_ASSET_PREPARATION.md). All sample IDs and digests in these documents are synthetic and **must not** be used for a real approval.
+
+**Failure boundary:** GitHub API writes are not transactional. A created tag/draft, partial upload, lost response or published-but-unverified Release is **not success**. Stop, retain the tag/release/asset identities and audit evidence, perform owner-controlled manual reconciliation, and never blindly retry, delete, overwrite or adopt previously created resources. No global Gatekeeper bypass or removal of quarantine is part of QA.
+
+## Historical Developer ID publication design (inactive)
+
+The remainder of the signed/notarized production sections documents the retired design for audit and backwards-compatibility. **It is not the active v0.2 release checklist.**
 
 The production release automation is **code complete**; `v0.2.0 / build 3` is the current production candidate line.
 
@@ -459,9 +482,11 @@ If a release is bad:
 
 User-owned files remain the source of truth. Release rollback must never require automatic destructive migration of connected folders.
 
-## Remaining v0.2 production release work
+## Historical Developer ID release checklist (inactive)
 
-The remaining work is operational, not missing release-pipeline code.
+**Do not execute this checklist for v0.2 ad-hoc distribution.** The following Issue #33 and `production-release` steps describe the retired signed/notarized path, not current release blockers; see the active #519 / #547 / #520 gates above.
+
+The remaining work for that **historical path** was operational, not missing release-pipeline code.
 
 Before any credentialed candidate is started, an administrator can run the read-only combined readiness check:
 
