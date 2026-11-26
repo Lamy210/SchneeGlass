@@ -20,8 +20,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp "$LOCK_SOURCE" "$LOCK_BACKUP"
-
 # Keep all twenty negative fixtures in one guard scan. Every API/context
 # combination gets a unique diagnostic marker, so a failed guard cannot pass
 # this fixture merely because some *other* operation was rejected.
@@ -50,7 +48,7 @@ for link_reference_case in link linkat symlink symlinkat; do
         ;;
     esac
 
-    printf '%s\\n' "$source_line" >> "$LOCK_SOURCE"
+    printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
     EXPECTED_MARKERS+=("$marker")
   done
 done
