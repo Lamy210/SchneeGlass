@@ -24,7 +24,7 @@ trap cleanup EXIT
 # combination gets a unique diagnostic marker, so a failed guard cannot pass
 # this fixture merely because some *other* operation was rejected.
 EXPECTED_MARKERS=()
-cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+cp "$LOCK_SOURCE" "$LOCK_BACKUP"
 
 FAILURES=0
 for link_reference_case in link linkat symlink symlinkat; do
