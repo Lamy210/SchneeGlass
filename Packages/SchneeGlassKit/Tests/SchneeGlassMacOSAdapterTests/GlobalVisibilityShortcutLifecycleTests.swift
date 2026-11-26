@@ -20,21 +20,25 @@ func queuedShortcutDeliveryDoesNotToggleAfterControllerStops() async {
   }
 
   // The normal main-actor delivery still calls the visibility action.
-  controller.deliverToggleIfActive()
+  await SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: controller
+  ).value
   #expect(counter.calls == 1)
 
   // Model a key-up task queued on the main actor just before shutdown.
   // Stop synchronously before giving the scheduled task its first turn.
-  let queuedKeyUp = Task { @MainActor in
-    controller.deliverToggleIfActive()
-  }
+  let queuedKeyUp = SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: controller
+  )
   controller.stop()
   await queuedKeyUp.value
 
   #expect(counter.calls == 1)
   // Stop is idempotent, and a later callback must remain inert.
   controller.stop()
-  controller.deliverToggleIfActive()
+  await SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: controller
+  ).value
   #expect(counter.calls == 1)
 
   // Replacing the registered controller also invalidates a queued event from
@@ -43,9 +47,9 @@ func queuedShortcutDeliveryDoesNotToggleAfterControllerStops() async {
   let previous = SchneeGlassGlobalVisibilityShortcutController {
     oldCounter.record()
   }
-  let pendingOldKeyUp = Task { @MainActor in
-    previous.deliverToggleIfActive()
-  }
+  let pendingOldKeyUp = SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: previous
+  )
   let currentCounter = ShortcutToggleCounter()
   let current = SchneeGlassGlobalVisibilityShortcutController {
     currentCounter.record()
@@ -55,7 +59,9 @@ func queuedShortcutDeliveryDoesNotToggleAfterControllerStops() async {
 
   // A stopped predecessor cannot suppress the active replacement.
   previous.stop()
-  current.deliverToggleIfActive()
+  await SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
+    for: current
+  ).value
   #expect(currentCounter.calls == 1)
   current.stop()
 }
