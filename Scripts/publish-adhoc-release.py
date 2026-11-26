@@ -176,7 +176,7 @@ class GitHub:
         # Return the original create response; never discover/adopt by tag.
         return release
 
-    def owned_slot(self, identity, tag, sha):
+    def owned_slot(self, identity, tag, sha, expected, uploaded):
         pages = gh_json("GET", PREFIX + "/releases?per_page=100", paginate=True)
         require(type(pages) is list and pages and all(type(p) is list for p in pages),
                 "malformed release inventory")
@@ -198,6 +198,27 @@ class GitHub:
                 and release.get("tag_name") == tag and release.get("draft") is True
                 and release.get("immutable") is False and release.get("prerelease") is False,
                 "run-owned draft state changed")
+        # Reject foreign or changed uploads before making the next mutation.
+        # A run-owned draft may contain only the assets whose creation
+        # responses this exact invocation captured and validated.
+        assets = release.get("assets")
+        require(type(assets) is list and len(assets) == len(uploaded),
+                "draft assets changed outside this publisher")
+        seen = set()
+        for asset in assets:
+            require(type(asset) is dict, "malformed run-owned draft asset")
+            name, asset_id = asset.get("name"), asset.get("id")
+            require(type(name) is str and name in uploaded and name in expected
+                    and name not in seen and type(asset_id) is int
+                    and asset_id == uploaded[name],
+                    "unknown or replaced run-owned draft asset")
+            size, digest = expected[name]
+            require(type(asset.get("size")) is int and asset["size"] == size
+                    and asset.get("digest") == digest
+                    and asset.get("state") == "uploaded",
+                    "run-owned draft asset metadata changed")
+            seen.add(name)
+        require(seen == set(uploaded), "missing run-owned draft asset")
         return release
 
     def upload(self, identity, name, directory, expected):
@@ -306,7 +327,7 @@ def execute(args, workspace, api):
                 "unexpected create-draft response")
         stage = "upload"
         for name in sorted(expected):
-            api.owned_slot(identity, tag, sha)
+            api.owned_slot(identity, tag, sha, expected, uploaded_ids)
             require(readback.local_assets(public, tag) == expected, "prepared assets changed")
             asset_id = api.upload(identity, name, public, expected[name])
             require(asset_id not in uploaded_ids.values(), "duplicate created asset ID")
@@ -315,12 +336,12 @@ def execute(args, workspace, api):
         require(api.readback("draft", public, identity, tag, sha) == args.build, "draft build mismatch")
         stage = "final-preflight"
         api.fresh_checks(args, public, workspace)
-        api.owned_slot(identity, tag, sha)
+        api.owned_slot(identity, tag, sha, expected, uploaded_ids)
         require(readback.local_assets(public, tag) == expected, "prepared assets changed")
         require(api.readback("draft", public, identity, tag, sha) == args.build, "draft build mismatch")
         # Repeat authority after the potentially long read-back, then verify the owned slot.
         api.verify_authority(args)
-        api.owned_slot(identity, tag, sha)
+        api.owned_slot(identity, tag, sha, expected, uploaded_ids)
         api.final_assets("draft", identity, tag, expected, uploaded_ids)
         stage = "publish"
         response = api.publish(identity)
