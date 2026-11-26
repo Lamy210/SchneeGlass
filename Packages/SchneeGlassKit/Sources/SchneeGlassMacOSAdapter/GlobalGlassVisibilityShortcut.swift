@@ -20,21 +20,25 @@ public enum DesktopGlassVisibilityMode: Hashable, Sendable {
 @MainActor
 public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
   private static let shortcutName = KeyboardShortcuts.Name("toggleGlassVisibility")
+  private static weak var activeController: SchneeGlassGlobalVisibilityShortcutController?
 
   private var isStopped = false
+  private let onToggle: @MainActor @Sendable () -> Void
 
   public init(
     onToggle: @escaping @MainActor @Sendable () -> Void
   ) {
+    self.onToggle = onToggle
     super.init()
 
-    // App initialization can be repeated by previews/tests. Replace an existing legacy
-    // handler instead of accumulating callbacks for the same persisted shortcut name.
+    // Previews/tests can replace this controller. Stop the old owner as well as
+    // its handler so previously queued key-up tasks cannot fire afterward.
+    Self.activeController?.stop()
+    Self.activeController = self
     KeyboardShortcuts.removeHandler(for: Self.shortcutName)
-    KeyboardShortcuts.onKeyUp(for: Self.shortcutName) {
-      Task { @MainActor in
-        onToggle()
-      }
+    KeyboardShortcuts.onKeyUp(for: Self.shortcutName) { [weak self] in
+      guard let self else { return }
+      _ = Self.enqueueKeyUp(for: self)
     }
 
     NotificationCenter.default.addObserver(
@@ -55,13 +59,34 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     return recorder
   }
 
+  // The real KeyboardShortcuts callback and the lifecycle regression tests use
+  // this same scheduling path. No strong reference survives into the Task.
+  nonisolated static func enqueueKeyUp(
+    for controller: SchneeGlassGlobalVisibilityShortcutController
+  ) -> Task<Void, Never> {
+    Task { @MainActor [weak controller] in
+      controller?.deliverToggleIfActive()
+    }
+  }
+
+  // A queued key-up Task may run after stop() removes the keyboard handler.
+  // Check state at delivery time, not only when the event was scheduled.
+  func deliverToggleIfActive() {
+    guard !isStopped else { return }
+    onToggle()
+  }
+
   public func stop() {
     guard !isStopped else {
       return
     }
     isStopped = true
     NotificationCenter.default.removeObserver(self)
-    KeyboardShortcuts.removeHandler(for: Self.shortcutName)
+    // An older controller must not remove the newer owner's handler.
+    if Self.activeController === self {
+      Self.activeController = nil
+      KeyboardShortcuts.removeHandler(for: Self.shortcutName)
+    }
   }
 
   @objc
