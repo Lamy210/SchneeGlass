@@ -36,4 +36,26 @@ func queuedShortcutDeliveryDoesNotToggleAfterControllerStops() async {
   controller.stop()
   controller.deliverToggleIfActive()
   #expect(counter.calls == 1)
+
+  // Replacing the registered controller also invalidates a queued event from
+  // the previous owner, even if its explicit stop() was never called.
+  let oldCounter = ShortcutToggleCounter()
+  let previous = SchneeGlassGlobalVisibilityShortcutController {
+    oldCounter.record()
+  }
+  let pendingOldKeyUp = Task { @MainActor in
+    previous.deliverToggleIfActive()
+  }
+  let currentCounter = ShortcutToggleCounter()
+  let current = SchneeGlassGlobalVisibilityShortcutController {
+    currentCounter.record()
+  }
+  await pendingOldKeyUp.value
+  #expect(oldCounter.calls == 0)
+
+  // A stopped predecessor cannot suppress the active replacement.
+  previous.stop()
+  current.deliverToggleIfActive()
+  #expect(currentCounter.calls == 1)
+  current.stop()
 }
