@@ -5,6 +5,7 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -180,6 +181,91 @@ class PublisherTests(fixture.ReleaseReaderTests):
             api.publish("123")
             request.assert_called_once_with("PATCH", publisher.PREFIX + "/releases/123",
                                             {"draft": False, "make_latest": "true"})
+
+    def test_publisher_upload_fixed_host_no_redirect_or_retry(self):
+        # Exercise the real upload method without opening a network connection.
+        # A 3xx response must never forward the owner credential to another host.
+        api = publisher.GitHub()
+        assets = publisher.readback.local_assets(self.prepared, fixture.TAG)
+        name = next(name for name in assets if name.endswith(".zip"))
+        expected = assets[name]
+        local_bytes = (self.prepared / name).read_bytes()
+        valid = {
+            "id": 901, "name": name, "state": "uploaded",
+            "size": expected[0], "digest": expected[1],
+        }
+
+        class StubConnection:
+            def __init__(self, status, response):
+                self.status = status
+                self.response = json.dumps(response).encode("utf-8")
+                self.requests = []
+                self.closed = False
+
+            def request(self, method, url, body, headers):
+                self.requests.append((method, url, body.read(), headers))
+
+            def getresponse(self):
+                return self
+
+            def read(self, limit):
+                return self.response[:limit]
+
+            def close(self):
+                self.closed = True
+
+        cases = [
+            ("success", 201, valid, True),
+            ("redirect", 302, valid, False),
+            ("not-created", 200, valid, False),
+            ("missing-identity", 201, {**valid, "id": 0}, False),
+            ("wrong-name", 201, {**valid, "name": "other.zip"}, False),
+            ("wrong-size", 201, {**valid, "size": expected[0] + 1}, False),
+            ("wrong-digest", 201, {**valid, "digest": "sha256:" + "0" * 64}, False),
+        ]
+        for label, status, response, allowed in cases:
+            with self.subTest(case=label):
+                connection = StubConnection(status, response)
+                with patch.object(publisher, "command", return_value="fixture-owner-token\n") as token, \
+                     patch.object(publisher.http.client, "HTTPSConnection",
+                                  return_value=connection) as transport:
+                    if allowed:
+                        self.assertEqual(api.upload("123", name, self.prepared, expected), 901)
+                    else:
+                        with self.assertRaises(ValueError):
+                            api.upload("123", name, self.prepared, expected)
+                token.assert_called_once_with(
+                    ["gh", "auth", "token", "--hostname", "github.com"],
+                    capture=True, timeout=30,
+                )
+                transport.assert_called_once_with("uploads.github.com", timeout=60)
+                self.assertEqual(len(connection.requests), 1)
+                method, url, sent, headers = connection.requests[0]
+                self.assertEqual(method, "POST")
+                self.assertEqual(
+                    url, "/" + publisher.PREFIX + "/releases/123/assets?name="
+                    + publisher.quote(name, safe=""),
+                )
+                self.assertEqual(sent, local_bytes)
+                self.assertEqual(headers["Authorization"], "Bearer fixture-owner-token")
+                self.assertEqual(headers["Content-Length"], str(expected[0]))
+                self.assertEqual(headers["Content-Type"], "application/octet-stream")
+                self.assertTrue(connection.closed)
+
+    def test_publisher_duplicate_upload_id_never_publishes(self):
+        api = FakeGitHub(self)
+        original = api.upload
+
+        def duplicated_id(*args):
+            original(*args)
+            return 201
+
+        api.upload = duplicated_id
+        with self.assertRaisesRegex(ValueError, "duplicate created asset ID"):
+            self.run_publisher(api)
+        self.assertEqual(api.upload_count, 2)
+        self.assertNotIn("publish", api.events)
+        self.assertIn("stage=upload", self.failure_log)
 
     def test_publisher_exact_main_checks(self):
         names = sorted(publisher.REQUIRED_CHECKS)
