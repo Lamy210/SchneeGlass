@@ -99,6 +99,7 @@ for marker in "${EXPECTED_MARKERS[@]}"; do
     ((FAILURES += 1))
   fi
 done
+
 if ! expect_allowed_source_line \
   'quoted ownership API presentation text' \
   'private let fileSafetyOwnershipPresentation = "chown, fchown, lchown, fchownat are POSIX ownership APIs"'; then
