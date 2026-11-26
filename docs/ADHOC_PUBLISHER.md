@@ -32,7 +32,7 @@ The code in this Draft PR **must not be merged or dispatched** until the reposit
 
 ### Read-only reconciliation after a partial or ambiguous result
 
-The failure log prints `stage`, `tag`, captured `release_id` (if available) and `uploaded_asset_ids` (if known). Cancellation and connection loss can occur *before* the script prints any of them. Absence of a printed ID is **not** proof that the corresponding GitHub write failed.
+The failure log prints `stage`, `tag`, captured `release_id` (if available), `active_asset` (the filename being checked or uploaded, otherwise `none`), and `uploaded_asset_ids` as deterministic `filename:asset_id` pairs (or `none`). These names come only from the verified four-file public asset set; no credential, filesystem path or file content is included. An interrupted `active_asset` has **unknown remote upload outcome** even when its ID was not captured. Cancellation and connection loss can occur *before* the script prints any of these fields. Absence of a printed ID is **not** proof that the corresponding GitHub write failed.
 
 | Failed/ambiguous stage | What may already exist | Safe operator action |
 | --- | --- | --- |
