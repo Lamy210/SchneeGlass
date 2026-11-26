@@ -43,12 +43,17 @@ public struct SchneeGlassDesktopGlassView: View {
           onDisplayModeChange: onDisplayModeChange,
           canChangeDisplayMode: model.hasAuthoritativeConfigurationSnapshot
             && !model.isMutatingConfiguration,
-          canRemove: model.canMutateConfiguration
-            && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
+          canRemove: model.canRemoveGlass(glassID: entry.id),
           canRefresh: model.canRefreshGlass(glassID: entry.id),
+          canReconnectSource: model.canReconnectSource(glassID: entry.id),
           onRefresh: {
             Task {
               await model.refreshGlass(glassID: entry.id)
+            }
+          },
+          onReconnectSource: {
+            Task {
+              await model.reconnectGlassSource(glassID: entry.id)
             }
           },
           onOpen: model.open,
@@ -101,7 +106,9 @@ struct DesktopGlassSurface: View {
   let canChangeDisplayMode: Bool
   let canRemove: Bool
   let canRefresh: Bool
+  let canReconnectSource: Bool
   let onRefresh: () -> Void
+  let onReconnectSource: () -> Void
   let onOpen: (GlassItem) -> Void
   let onReveal: (GlassItem) -> Void
   let onRemove: () -> Void
@@ -135,7 +142,9 @@ struct DesktopGlassSurface: View {
     canChangeDisplayMode: Bool = true,
     canRemove: Bool,
     canRefresh: Bool = false,
+    canReconnectSource: Bool = false,
     onRefresh: @escaping () -> Void = {},
+    onReconnectSource: @escaping () -> Void = {},
     onOpen: @escaping (GlassItem) -> Void,
     onReveal: @escaping (GlassItem) -> Void,
     onRemove: @escaping () -> Void,
@@ -153,7 +162,9 @@ struct DesktopGlassSurface: View {
     self.canChangeDisplayMode = canChangeDisplayMode
     self.canRemove = canRemove
     self.canRefresh = canRefresh
+    self.canReconnectSource = canReconnectSource
     self.onRefresh = onRefresh
+    self.onReconnectSource = onReconnectSource
     self.onOpen = onOpen
     self.onReveal = onReveal
     self.onRemove = onRemove
@@ -239,6 +250,19 @@ struct DesktopGlassSurface: View {
         Button(GlassLocalizedText.refreshFiles.resolve(locale: locale), action: onRefresh)
           .disabled(!canRefresh)
 
+        if DesktopGlassReconnectMenuPolicy.isVisible(for: entry.contentState) {
+          Button(
+            GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
+            action: onReconnectSource
+          )
+          .disabled(
+            !DesktopGlassReconnectMenuPolicy.isEnabled(
+              for: entry.contentState,
+              canReconnectSource: canReconnectSource
+            )
+          )
+        }
+
         Button(
           (fileFilter.isVisible ? GlassLocalizedText.hideFileFilter : .filterFiles).resolve(
             locale: locale)
@@ -290,8 +314,10 @@ struct DesktopGlassSurface: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(presentation.label)
     } else {
+      // The loading message in the content already supplies the VoiceOver status.
       ProgressView()
         .controlSize(.small)
+        .accessibilityHidden(true)
     }
   }
 
@@ -302,6 +328,7 @@ struct DesktopGlassSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
@@ -365,8 +392,8 @@ struct DesktopGlassSurface: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-    case .unavailable:
-      let presentation = GlassUnavailablePresentation.make(locale: locale)
+    case .unavailable(let reason):
+      let presentation = GlassUnavailablePresentation.make(for: reason, locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(
@@ -375,12 +402,27 @@ struct DesktopGlassSurface: View {
           detail: presentation.detail,
           detailAlignment: .center
         )
+        if DesktopGlassReconnectMenuPolicy.isEnabled(
+          for: entry.contentState,
+          canReconnectSource: canReconnectSource
+        ) {
+          Button(
+            GlassLocalizedText.reconnectOriginalFolder.resolve(locale: locale),
+            action: onReconnectSource
+          )
+          .buttonStyle(.borderedProminent)
+        }
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
+      let canRetryNow = GlassInlineRefreshPolicy.isVisible(
+        for: entry.contentState, canRefresh: canRefresh
+      )
+      let presentation = GlassContentFailurePresentation.make(
+        for: error, locale: locale, canRetryNow: canRetryNow
+      )
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         Spacer()
         SchneeGlassStateMessage(
@@ -389,6 +431,13 @@ struct DesktopGlassSurface: View {
           detail: presentation.detail,
           detailAlignment: .center
         )
+        if canRetryNow {
+          Button(
+            GlassLocalizedText.refreshFiles.resolve(locale: locale),
+            action: onRefresh
+          )
+          .buttonStyle(.borderedProminent)
+        }
         Spacer()
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -518,6 +567,7 @@ struct DesktopGlassSurface: View {
         if showsProgress {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
         } else {
           Image(systemName: icon)
             .font(SchneeGlassTypography.largeSymbol)

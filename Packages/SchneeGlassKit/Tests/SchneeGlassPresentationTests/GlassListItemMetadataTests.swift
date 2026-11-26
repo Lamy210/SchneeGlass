@@ -9,7 +9,7 @@ func listMetadataDisplaysObservedRegularFileSizeAndModificationDate() {
   let date = Date(timeIntervalSince1970: 1_700_000_000)
   let item = listMetadataItem(kind: .regular, size: 1024, date: date)
   let metadata = GlassListItemMetadata.make(for: item)
-  let size = ByteCountFormatter.string(fromByteCount: 1024, countStyle: .file)
+  let size = ByteCountFormatStyle(style: .file, locale: .current).format(1024)
   let modified = date.formatted(date: .abbreviated, time: .shortened)
   #expect(metadata.size == size)
   #expect(metadata.modified == modified)
@@ -50,7 +50,7 @@ func listMetadataDisplaysOnlySizeWithoutInventingModificationDate() {
   let metadata = GlassListItemMetadata.make(
     for: listMetadataItem(kind: .regular, size: 1024)
   )
-  let size = ByteCountFormatter.string(fromByteCount: 1024, countStyle: .file)
+  let size = ByteCountFormatStyle(style: .file, locale: .current).format(1024)
   #expect(metadata.modified == nil)
   #expect(metadata.displayText == size)
   #expect(metadata.accessibilityText == "Size: \(size)")
@@ -86,4 +86,84 @@ private func listMetadataItem(
     fileSize: size,
     isHidden: false
   )
+}
+
+@Test
+func listMetadataDateRespectsExplicitJapaneseAndEnglishLocale() {
+  let date = Date(timeIntervalSince1970: 1_700_000_000)
+  let item = listMetadataItem(kind: .regular, size: nil, date: date)
+  let japaneseLocale = Locale(identifier: "ja_JP")
+  let englishLocale = Locale(identifier: "en_US")
+
+  let japanese = GlassListItemMetadata.make(for: item, locale: japaneseLocale)
+  let english = GlassListItemMetadata.make(for: item, locale: englishLocale)
+  let expectedJapanese = date.formatted(
+    Date.FormatStyle(date: .abbreviated, time: .shortened).locale(japaneseLocale)
+  )
+  let expectedEnglish = date.formatted(
+    Date.FormatStyle(date: .abbreviated, time: .shortened).locale(englishLocale)
+  )
+
+  #expect(japanese.modified == expectedJapanese)
+  #expect(english.modified == expectedEnglish)
+  #expect(japanese.modified != english.modified)
+  #expect(japanese.displayText == expectedJapanese)
+  #expect(english.displayText == expectedEnglish)
+}
+
+@Test
+func listMetadataAccessibilityDateMatchesVisibleDateInEachLocale() {
+  let date = Date(timeIntervalSince1970: 1_700_000_000)
+  let item = listMetadataItem(kind: .regular, size: nil, date: date)
+  for locale in [Locale(identifier: "ja_JP"), Locale(identifier: "en_US")] {
+    let metadata = GlassListItemMetadata.make(for: item, locale: locale)
+    guard let dateText = metadata.modified else {
+      Issue.record("Expected observed modification date")
+      return
+    }
+    let expected = String(
+      format: GlassLocalizedText.tileModified.resolve(locale: locale),
+      locale: locale,
+      dateText
+    )
+    #expect(metadata.accessibilityText(locale: locale) == expected)
+    #expect(metadata.displayText == dateText)
+  }
+}
+
+@Test
+func listMetadataSizeUsesExplicitLocaleForNumericPart() {
+  let bytes: Int64 = 1_536_000
+  let item = listMetadataItem(kind: .regular, size: bytes)
+  let en = Locale(identifier: "en_US")
+  let ja = Locale(identifier: "ja_JP")
+  let de = Locale(identifier: "de_DE")
+
+  let english = GlassListItemMetadata.make(for: item, locale: en)
+  let japanese = GlassListItemMetadata.make(for: item, locale: ja)
+  let german = GlassListItemMetadata.make(for: item, locale: de)
+
+  #expect(english.size == ByteCountFormatStyle(style: .file, locale: en).format(bytes))
+  #expect(japanese.size == ByteCountFormatStyle(style: .file, locale: ja).format(bytes))
+  #expect(german.size == ByteCountFormatStyle(style: .file, locale: de).format(bytes))
+  #expect(english.size != german.size)
+}
+
+@Test
+func listMetadataSizeVoiceOverUsesTheSameLocalizedValueAsTheList() {
+  let item = listMetadataItem(kind: .regular, size: 1_536_000)
+  for locale in [Locale(identifier: "ja_JP"), Locale(identifier: "en_US")] {
+    let metadata = GlassListItemMetadata.make(for: item, locale: locale)
+    guard let size = metadata.size else {
+      Issue.record("Expected observed file size")
+      return
+    }
+    let expectedLabel = String(
+      format: GlassLocalizedText.tileSize.resolve(locale: locale),
+      locale: locale,
+      size
+    )
+    #expect(metadata.displayText == size)
+    #expect(metadata.accessibilityText(locale: locale) == expectedLabel)
+  }
 }

@@ -6,9 +6,16 @@
 "refreshFailed" = "Refresh failed";
 "needsAttention" = "Needs attention";
 "unavailableTitle" = "Folder unavailable";
+"unavailablePermissionDetail" = "macOS can no longer access this folder. Reconnect the original folder to request permission again.";
+"unavailableMissingDetail" = "The original folder cannot be found. Restore it to its original location, then reconnect.";
+"unavailableVolumeDetail" = "The drive containing this folder is disconnected. Reconnect the drive before reconnecting the original folder.";
+"unavailableBookmarkDetail" = "The saved folder permission could not be restored. Reconnect the original folder to grant access again.";
+"unavailableReplacementDetail" = "A different folder is at the saved location. SchneeGlass will not use it automatically. Reconnect the original folder.";
+"unavailableUnsupportedDetail" = "This folder location is not supported. The existing Glass will remain unavailable until the original folder can be accessed safely.";
 "unavailableDetail" = "Reconnect the original folder to restore access without removing this Glass. If Reconnect is disabled, wait for the current operation to finish or restart SchneeGlass. Pending Copy Recovery in Settings is for interrupted copies.";
 "refreshFailedTitle" = "Couldn't refresh this folder";
 "refreshFailedDetail" = "SchneeGlass will retry when the folder changes.";
+"refreshFailedManualRetryDetail" = "Select Refresh Files to retry now. SchneeGlass will also retry when the folder changes.";
 "unexpectedTitle" = "This Glass couldn't continue";
 "unexpectedDetail" = "Restart SchneeGlass to retry. If it still fails, remove this Glass and add the folder again.";
 "renameGlassMenu" = "Rename Glass…";
@@ -78,8 +85,8 @@
 "dropTooManyDetail" = "SchneeGlass copies up to %lld files per drop. Split this selection into smaller drops.";
 "dropCapacityDetail" = "SchneeGlass keeps up to %lld source files ready across active drops. Finish another copy and try again.";
 "dropNoOverwrite" = "Nothing will be overwritten.";
-"dropRegularOnlyWorkspace" = "v0.1 accepts regular files only.";
-"dropRegularOnlyDesktop" = "v0.1 copies regular files only.";
+"dropRegularOnlyWorkspace" = "Only regular files are accepted for copying.";
+"dropRegularOnlyDesktop" = "Only regular files can be copied.";
 "dropItemUnchanged" = "The dropped item was not changed.";
 "dropNoCopyNeeded" = "No copy is needed.";
 "dropUnavailableDetail" = "End this drop. If the Glass shows Folder unavailable, reconnect the original folder. Otherwise, refresh the files and try again.";
@@ -93,6 +100,7 @@
 "dropCopyCount" = "Copy %1$lld files to %2$@";
 "workspaceTagline" = "Your folders, right where you need them.";
 "restoringStatus" = "Restoring…";
+"creatingGlass" = "Creating Glass…";
 "addGlass" = "Add Glass";
 "restoringGlasses" = "Restoring your Glasses…";
 "configurationRecoveryTitle" = "Configuration recovery required";

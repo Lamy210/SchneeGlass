@@ -22,31 +22,6 @@ trap cleanup EXIT
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
 
-expect_forbidden_reference() {
-  local label="$1"
-  local source_line="$2"
-  local expected_fragment="$3"
-
-  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
-
-  set +e
-  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-  local status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "File Safety Guard unexpectedly allowed: $label" >&2
-    return 1
-  fi
-
-  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
-     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
-    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
-    return 1
-  fi
-}
-
 expect_allowed_source_line() {
   local label="$1"
   local source_line="$2"
@@ -66,37 +41,61 @@ expect_allowed_source_line() {
   fi
 }
 
+# Batch the rejected-reference fixtures into one guard scan. A unique marker
+# for each API/context pair is mandatory: an unrelated rejection cannot mask a
+# missed detection. Accepted prose and quoted text are still tested separately.
 FAILURES=0
+EXPECTED_MARKERS=()
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+
 for timestamp_case in utime utimes futimes lutimes futimens utimensat; do
   for reference_context in directCall assignment argument labeledArgument array return; do
+    marker="FILE_SAFETY_TIMESTAMP_${timestamp_case}_${reference_context}"
     case "$reference_context" in
       directCall)
-        source_line="private let fileSafetyTimestampReference = $timestamp_case(timestampFixture)"
+        source_line="private let $marker = $timestamp_case(timestampFixture)"
         ;;
       assignment)
-        source_line="private let fileSafetyTimestampReference = $timestamp_case"
+        source_line="private let $marker = $timestamp_case"
         ;;
       argument)
-        source_line="private let fileSafetyTimestampReference = consume($timestamp_case)"
+        source_line="private let $marker = consume($timestamp_case)"
         ;;
       labeledArgument)
-        source_line="private let fileSafetyTimestampReference = consume(callback: $timestamp_case)"
+        source_line="private let $marker = consume(callback: $timestamp_case)"
         ;;
       array)
-        source_line="private let fileSafetyTimestampReference = [$timestamp_case]"
+        source_line="private let $marker = [$timestamp_case]"
         ;;
       return)
-        source_line="private let fileSafetyTimestampReference = { return $timestamp_case }"
+        source_line="private let $marker = { return $timestamp_case }"
         ;;
     esac
-
-    if ! expect_forbidden_reference \
-      "an unreviewed POSIX $timestamp_case $reference_context timestamp mutation reference" \
-      "$source_line" \
-      "$timestamp_case"; then
-      FAILURES=$((FAILURES + 1))
-    fi
+    printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
+    EXPECTED_MARKERS+=("$marker")
   done
+done
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+batched_status=$?
+set -e
+
+if [[ "$batched_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed batched POSIX timestamp references.' >&2
+  exit 1
+fi
+
+if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"; then
+  echo 'File Safety Guard failed without source-level timestamp diagnostics.' >&2
+  exit 1
+fi
+
+for marker in "${EXPECTED_MARKERS[@]}"; do
+  if ! "$REAL_GREP" -Fq "$marker" "$OUTPUT"; then
+    echo "File Safety Guard did not report timestamp fixture: $marker" >&2
+    ((FAILURES += 1))
+  fi
 done
 
 if ! expect_allowed_source_line \

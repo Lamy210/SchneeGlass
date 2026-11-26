@@ -22,31 +22,6 @@ trap cleanup EXIT
 
 cp "$LOCK_SOURCE" "$LOCK_BACKUP"
 
-expect_forbidden_reference() {
-  local label="$1"
-  local source_line="$2"
-  local expected_fragment="$3"
-
-  cp "$LOCK_BACKUP" "$LOCK_SOURCE"
-  printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
-
-  set +e
-  bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
-  local status=$?
-  set -e
-
-  if [[ "$status" -eq 0 ]]; then
-    echo "File Safety Guard unexpectedly allowed: $label" >&2
-    return 1
-  fi
-
-  if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT" \
-     || ! "$REAL_GREP" -Fq "$expected_fragment" "$OUTPUT"; then
-    echo "File Safety Guard rejected $label without the expected diagnostic" >&2
-    return 1
-  fi
-}
-
 expect_allowed_source_line() {
   local label="$1"
   local source_line="$2"
@@ -66,34 +41,64 @@ expect_allowed_source_line() {
   fi
 }
 
+# Batch the forbidden first-class function references without skipping any
+# API/context pair. A distinct marker per case is required so a rejected
+# unrelated source line cannot hide a missing detector.
 FAILURES=0
+EXPECTED_MARKERS=()
+cp "$LOCK_BACKUP" "$LOCK_SOURCE"
+
 for permission_reference_case in chmod fchmod fchmodat; do
   for reference_context in assignment argument labeledArgument array return; do
+    marker="FILE_SAFETY_PERMISSION_${permission_reference_case}_${reference_context}"
     case "$reference_context" in
       assignment)
-        source_line="private let fileSafetyPermissionReference = $permission_reference_case"
+        source_line="private let $marker = $permission_reference_case"
         ;;
       argument)
-        source_line="private let fileSafetyPermissionReference = consume($permission_reference_case)"
+        source_line="private let $marker = consume($permission_reference_case)"
         ;;
       labeledArgument)
-        source_line="private let fileSafetyPermissionReference = consume(callback: $permission_reference_case)"
+        source_line="private let $marker = consume(callback: $permission_reference_case)"
         ;;
       array)
-        source_line="private let fileSafetyPermissionReference = [$permission_reference_case]"
+        source_line="private let $marker = [$permission_reference_case]"
         ;;
       return)
-        source_line="private let fileSafetyPermissionReference = { return $permission_reference_case }"
+        source_line="private let $marker = { return $permission_reference_case }"
         ;;
     esac
-
-    if ! expect_forbidden_reference \
-      "an unreviewed POSIX $permission_reference_case $reference_context permission function reference" \
-      "$source_line" \
-      "$permission_reference_case"; then
-      FAILURES=$((FAILURES + 1))
-    fi
+    printf '%s\n' "$source_line" >> "$LOCK_SOURCE"
+    EXPECTED_MARKERS+=("$marker")
   done
+done
+
+if [[ "${#EXPECTED_MARKERS[@]}" -ne 15 ]]; then
+  echo 'Expected exactly 15 POSIX permission reference fixtures.' >&2
+  exit 1
+fi
+
+set +e
+bash Scripts/verify-file-safety.sh >"$OUTPUT" 2>&1
+batched_status=$?
+set -e
+
+if [[ "$batched_status" -eq 0 ]]; then
+  echo 'File Safety Guard unexpectedly allowed batched POSIX permission references.' >&2
+  exit 1
+fi
+
+if ! "$REAL_GREP" -Fq 'ApplicationProcessLock.swift' "$OUTPUT"; then
+  echo 'File Safety Guard failed without source-level permission diagnostics.' >&2
+  exit 1
+fi
+
+for marker in "${EXPECTED_MARKERS[@]}"; do
+  matches=$("$REAL_GREP" -Fc "$marker" "$OUTPUT" || true)
+  if [[ "$matches" -ne 1 ]]; then
+    echo "Expected exactly one File Safety diagnostic for: $marker (found $matches)" >&2
+    ((FAILURES += 1))
+  fi
 done
 
 if ! expect_allowed_source_line \

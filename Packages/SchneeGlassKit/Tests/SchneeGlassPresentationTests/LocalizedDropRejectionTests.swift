@@ -60,3 +60,29 @@ func localizedDropRejectionPreservesLimitsAndUserSuppliedNames() {
   #expect(same.title == "既に100%_開発内にあります")
   #expect(same.detail == nil)
 }
+
+@Test
+func localizedUnsupportedFolderCopyGuidanceDoesNotReferenceOldRelease() {
+  let cases: [(GlassInteractionPresentationSurface, String, String)] = [
+    (.workspace, "Only regular files are accepted for copying.", "通常のファイルのみコピー用に受け付けます。"),
+    (.desktop, "Only regular files can be copied.", "通常のファイルのみコピーできます。"),
+  ]
+  for (surface, englishDetail, japaneseDetail) in cases {
+    let english = GlassInteractionPresentation.dropInvalid(
+      reason: .unsupportedFolder,
+      glassTitle: "Projects",
+      surface: surface,
+      locale: Locale(identifier: "en")
+    )
+    let japanese = GlassInteractionPresentation.dropInvalid(
+      reason: .unsupportedFolder,
+      glassTitle: "Projects",
+      surface: surface,
+      locale: Locale(identifier: "ja_JP")
+    )
+    #expect(english.detail == englishDetail)
+    #expect(japanese.detail == japaneseDetail)
+    #expect(english.detail?.contains("v0.1") == false)
+    #expect(japanese.detail?.contains("v0.1") == false)
+  }
+}

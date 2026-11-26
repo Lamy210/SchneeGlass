@@ -58,13 +58,21 @@ def parse_fds(output, pid):
             process_seen = True
         elif line.startswith("f") and process_seen:
             value = line[1:]
-            if re.fullmatch(r"[0-9]+", value):
-                descriptor = int(value)
+            # lsof's FD field may append an access mode (r/w/u) and a
+            # documented lock letter to a numeric descriptor. Never count
+            # a second entry for the same descriptor with another suffix.
+            numeric = re.fullmatch(r"([0-9]+)(?:[rwu](?:[NrRwWuUxX])?|-[NrRwWuUxX])?", value)
+            if numeric:
+                descriptor = int(numeric.group(1))
                 require(descriptor not in descriptors, "Duplicate descriptor record")
                 descriptors.add(descriptor)
             else:
-                # lsof also reports non-descriptor entries such as cwd/txt.
-                require(value in {"cwd", "rtd", "txt", "mem", "mmap"}, "Invalid descriptor record")
+                # Known non-descriptor entries (including macOS fileports).
+                # Unknown types and FD errors must fail closed, not count as 0.
+                require(
+                    value in {"cwd", "rtd", "txt", "mem", "mmap", "ctty", "fp.", "ltx", "pd", "twd"},
+                    "Invalid descriptor record",
+                )
         else:
             raise ValueError("Unexpected descriptor output")
     require(process_seen and descriptors, "Descriptor observation unavailable")

@@ -19,7 +19,7 @@ python3 Scripts/sample-process-resources.py --pid 12345 --interval 60 --samples 
 - elapsed_seconds: monotonic elapsed、各観測完了時点。観測時間やsleep/wakeで実間隔にズレが生じ得る。遅延時は実際の観測開始時刻を基準に次回時刻を更新し、遅れた分の連続計測は行わない。予定サンプル数は維持するため、所要時間は延び得る。
 - cpu_percent_ps: macOS psのCPU推定値（瞬時値/厳密な区間平均ではない、100%を超え得る）。
 - rss_kib: psのresident set size、KiB。physical footprintやリークの確定値ではない。
-- fd_count: lsofの数値descriptor fieldの個数。cwd/txt等の疑似entryは除外する。lsofが警告・失敗した場合、0を補わず停止する。
+- fd_count: `lsof -Fpf`の数値FDを一意に数えた値。数値FDの末尾にアクセスモード（`r`/`w`/`u`）やロック種別が付く場合も、同じ番号を二重に数えない。`cwd`/`txt`/macOSのfileport等の既知の非数値entryは除外する。不明なFD形式、FD情報エラー、重複FD、lsofの警告・失敗は0を補わず計測停止する。
 
 PID、起動時刻、実行ファイル名を観測前後およびサンプル間で照合し、変更を拒否する。psの起動時刻は秒精度なので同秒・同コマンドでのPID再使用を完全に区別できない。観測結果の一貫性を確保するため意図的に別PIDへの自動追従は行わない。
 
@@ -39,6 +39,8 @@ python3 Scripts/summarize-process-resources.py --expected-samples 31 --interval 
 
 終了したrunの行数・順序・列・有限の非負数値・elapsed単調性を厳格に検証する。不完全なCSV、余剰行、文字列混入は非0終了とし集計を出さない。行数が一致することは計測終了コードや証跡の真正性の証明ではない。
 
-出力は集計JSON。各指標のmin/median/p95（nearest rank）/max、先頭と末尾の非重複20%サンプル窓（各最低1件）のmedian差、実経過時間、隣接観測間隔の最大値、予定間隔の2倍超の間隔件数を出す。1件のみの場合は窓比較不可としてnull。p95は時間重みなしの記述統計であり、間隔超過は診断情報であってsleepの証明ではない。
+サンプラー出力と集計器の接続契約は`Scripts/test-summarize-process-resources.py`のsynthetic統合fixtureで検証する。sleep/wake相当の観測遅延（キャッチアップせず間隔超過1件を保持）と、観測中断時の部分CSVが集計器で拒否されるケースを、外部コマンドや実ユーザーデータなしで確認する。このfixtureは実macOSのsleep/wake・リソース値を測定するものではない。
+
+出力は集計JSON。各指標のmin/median/p95（nearest rank）/max、先頭と末尾の非重複20%サンプル窓（各最低1件）のmedian差、実経過時間、隣接観測間隔の最大値、予定間隔の2倍超の間隔件数を出す。1件のみの場合は窓比較不可としてnull。観測間隔のしきい値判定はCSVに記録された経過時間を十進数のまま比較し、報告用の最大間隔は小数第6位で丸める。しきい値に極めて近い場合、表示された最大間隔と超過件数が同じ精度で判断できないことがある。通常のサンプラー出力は経過時間が小数第3位まで。p95は時間重みなしの記述統計であり、間隔超過は診断情報であってsleepの証明ではない。
 
 比較時は同一OS/architecture/app SHA/window条件/Glass数/操作負荷で繰り返し測定し、条件の異なる集計を混同しない。RSS差やFD差はリークの確定、CPU上限の判定、v1.0受入の自動PASSには使わない。生CSVや個人情報を公開しない。

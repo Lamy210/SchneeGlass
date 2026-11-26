@@ -91,6 +91,7 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] folder accessを拒否した場合、設定が半端に保存されない
 - [ ] 同じfolderを扱う場合も既存Glassを破壊しない
 - [ ] Glass title / placementが正しく表示される
+- [ ] WorkspaceおよびDesktop Glassが`.loading`の間、VoiceOverで「フォルダを読み込み中… / Loading folder…」の本文案内が1回読めることを確認する。ヘッダーの装飾的なスピナーを個別の同名読み上げ項目として列挙しない。読込完了時はReady/Emptyの状態へ移行し、説明テキストが消えることを日英・macOS 15/26で確認する（実機未確認）。
 - [ ] folderのdirect childrenだけが表示される
 - [ ] hidden itemが意図どおり非表示になる
 - [ ] 500-item上限を超えるfolderでもUIが破綻しない
@@ -144,7 +145,13 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] folder dropを安全に拒否する
 - [ ] package / symlinkをv0.1 contractどおり拒否する
 - [ ] destination pathnameがdirectoryへのsymbolic linkの場合、copy可能としてadvertiseせず安全に拒否する
+- [ ] ドラッグ中のファイルURL一覧と、Drop確定時にPasteboardから再取得したURL一覧が不一致ならCopyを受理しない。複数ファイルの順序入れ替えは同一内容として扱い、追加・削除・置換は拒否する。アプリ層のcopy直前再プランも維持する（synthetic単体試験はあり、Pasteboard差し替えの実機操作は未検証）
+- [ ] Drag元がCopyを許可しない操作マスク（Moveのみ、Linkのみ、None）を返す場合、GlassはCopyをadvertiseせず、Dropをdispatchしない。Copy許可を含む複数操作マスクではCopyだけを採用する。modifierキーで途中からCopy不可になった場合は既存hover承認を破棄し、Copy許可復帰後も再検証を要する（実機未確認）
+- [ ] 同じファイル一覧をGlassにhoverし続け、定期的なcopy可否の再検証が始まった場合は、旧`.copy`判定を新しい承認として再利用せず一時的にcopy不可とする。新しい検証で許可された場合だけcopy可能表示へ復帰し、拒否時はcopy不可を維持する。hover中の権限変更・外部file変更時も、実コピー前のアプリ層再プランを確認する（AppKit実機挙動は未検証）
 - [ ] symbolic link先のphysical directoryを直接選択した場合だけ通常のdestination safety判定へ進む
+- [ ] 同じGlassでファイルコピー実行中、重複したhover/Dropを拒否しても既存のコピー進捗・Cancel Copy操作が消えず、進行中のコピーが継続する。copy直前の非同期再プラン中も二重Dropは拒否する（この項目は実機未確認）
+- [ ] 同じGlassでDrop実行予約中（コピー本体の開始前）に削除メニューを開いても、WorkspaceとDesktopの両方で削除が無効となる。コピー完了後のidle状態では再び操作できる（実機未確認）
+- [ ] Glass削除確認をidle中に開き、確認確定前に同じGlassへhoverまたはDrop実行を開始した場合、確定済みダイアログから削除処理が到着しても最新の状態で拒否する。hover/Drop終了後は新しい削除操作ができる（実機未確認）
 - [ ] 複数fileの一部が失敗した場合、成功/失敗が区別される
 - [ ] unrelated folderへfileを生成・削除しない
 

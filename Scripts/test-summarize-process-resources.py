@@ -7,6 +7,8 @@ import unittest
 
 M = runpy.run_path(str(pathlib.Path(__file__).with_name("summarize-process-resources.py")))
 SUMMARY = M["summarize"]
+SAMPLER = runpy.run_path(str(pathlib.Path(__file__).with_name("sample-process-resources.py")))
+COLLECT = SAMPLER["collect"]
 HEADER = ",".join(M["HEADER"]) + "\n"
 
 
@@ -75,6 +77,75 @@ class ResourceSummaryTests(unittest.TestCase):
         result = summarize(body, 20)
         self.assertEqual(result["cpu_percent_ps"]["p95_nearest_rank"], 19)
         self.assertEqual(result["gaps_over_twice_nominal_interval"], 0)
+
+    def test_gap_threshold_is_strict_even_below_report_rounding_precision(self):
+        exact = summarize("1,0,0,512,4\n2,120.000000000000,0,512,4\n", 2)
+        self.assertEqual(exact["gaps_over_twice_nominal_interval"], 0)
+
+        just_over = summarize("1,0,0,512,4\n2,120.000000000001,0,512,4\n", 2)
+        self.assertEqual(just_over["gaps_over_twice_nominal_interval"], 1)
+        # The public diagnostic has bounded precision; the decision does not.
+        self.assertEqual(just_over["max_observation_gap_seconds"], 120.0)
+
+        visible_over = summarize("1,0,0,512,4\n2,120.0004,0,512,4\n", 2)
+        self.assertEqual(visible_over["gaps_over_twice_nominal_interval"], 1)
+        self.assertEqual(visible_over["max_observation_gap_seconds"], 120.0004)
+
+    def test_elapsed_subfloat_regression_is_rejected(self):
+        with self.assertRaises(ValueError):
+            summarize(
+                "1,100000000000.000000000002,0,512,4\n"
+                "2,100000000000.000000000001,0,512,4\n",
+                2,
+            )
+
+    def test_sampler_csv_round_trip_preserves_sleep_gap_and_safe_metrics(self):
+        now = [0.0]
+        starts = []
+        output = io.StringIO()
+
+        def observe(pid, previous):
+            self.assertEqual(pid, 42)
+            starts.append(now[0])
+            now[0] += 0.5
+            return ("private-folder-name", "SchneeGlass"), 2.5, 1000 + len(starts), 5
+
+        def sleep(seconds):
+            # Model a late wakeup from sleep without running real timers.
+            now[0] += seconds + (180 if len(starts) == 1 else 0)
+
+        COLLECT(42, 60, 4, output, observe=observe,
+                clock=lambda: now[0], sleep=sleep)
+        csv_text = output.getvalue()
+        self.assertNotIn("private-folder-name", csv_text)
+        self.assertNotIn("SchneeGlass", csv_text)
+        self.assertEqual(starts, [0.0, 240.0, 300.0, 360.0])
+
+        result = SUMMARY(io.StringIO(csv_text), 4, 60)
+        self.assertEqual(result["sample_count"], 4)
+        self.assertEqual(result["observed_span_seconds"], 360)
+        self.assertEqual(result["max_observation_gap_seconds"], 240)
+        self.assertEqual(result["gaps_over_twice_nominal_interval"], 1)
+        self.assertEqual(result["rss_kib"]["last_minus_first_median"], 3)
+        self.assertEqual(result["fd_count"]["max"], 5)
+
+    def test_partial_sampler_csv_is_rejected_by_summary(self):
+        output = io.StringIO()
+        observations = [0]
+
+        def observe(pid, previous):
+            observations[0] += 1
+            if observations[0] == 2:
+                raise ValueError("Target process changed")
+            return ("private-folder-name", "SchneeGlass"), 1.0, 512, 4
+
+        with self.assertRaisesRegex(ValueError, "Target process changed"):
+            COLLECT(42, 60, 3, output, observe=observe,
+                    clock=lambda: 0.0, sleep=lambda _: None)
+
+        self.assertEqual(len(output.getvalue().splitlines()), 2)
+        with self.assertRaisesRegex(ValueError, "Sample count mismatch"):
+            SUMMARY(io.StringIO(output.getvalue()), 3, 60)
 
     def test_invalid_sampling_parameters(self):
         for count, interval in ((0,60), (10001,60), (1,4), (1,3601)):

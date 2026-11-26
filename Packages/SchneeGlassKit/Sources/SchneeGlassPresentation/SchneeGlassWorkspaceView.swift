@@ -85,7 +85,8 @@ public struct SchneeGlassWorkspaceView: View {
         Task {
           await model.renameGlass(glassID: glassID, title: title)
         }
-      }
+      },
+      canRemove: { model.canRemoveGlass(glassID: $0) }
     )
   }
 }
@@ -116,6 +117,7 @@ struct WorkspaceSurface: View {
   var onRevealConnectedFolder: @MainActor (GlassID) -> Void = { _ in }
   var canRename: @MainActor (GlassID) -> Bool = { _ in false }
   var onRename: @MainActor (GlassID, String) -> Void = { _, _ in }
+  var canRemove: @MainActor (GlassID) -> Bool = { _ in true }
 
   @State private var isSearchVisible = false
   @State private var glassQuery = ""
@@ -196,6 +198,7 @@ struct WorkspaceSurface: View {
         HStack(spacing: 7) {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
           Text(GlassLocalizedText.restoringStatus.resolve(locale: locale))
             .font(SchneeGlassTypography.supporting)
             .foregroundStyle(.secondary)
@@ -221,13 +224,18 @@ struct WorkspaceSurface: View {
         if isCreatingGlass {
           ProgressView()
             .controlSize(.small)
+            .accessibilityHidden(true)
         } else {
           Label(GlassLocalizedText.addGlass.resolve(locale: locale), systemImage: "plus")
         }
       }
       .disabled(!canAddGlass)
       .keyboardShortcut("n", modifiers: .command)
-      .accessibilityLabel(GlassLocalizedText.addGlass.resolve(locale: locale))
+      .accessibilityLabel(
+        isCreatingGlass
+          ? GlassLocalizedText.creatingGlass.resolve(locale: locale)
+          : GlassLocalizedText.addGlass.resolve(locale: locale)
+      )
     }
     .padding(SchneeGlassPadding.workspaceContent)
   }
@@ -271,6 +279,7 @@ struct WorkspaceSurface: View {
               entry: entry,
               canRemove: !isMutatingConfiguration
                 && !requiresConfigurationRecovery
+                && canRemove(entry.id)
                 && GlassInteractionPolicy.allowsRemoval(during: entry.interactionState),
               onOpen: onOpen,
               onReveal: onReveal,
@@ -314,6 +323,7 @@ struct WorkspaceSurface: View {
       if isRestoring {
         ProgressView()
           .controlSize(.regular)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.restoringGlasses.resolve(locale: locale))
           .font(SchneeGlassTypography.body)
           .foregroundStyle(.secondary)
@@ -549,6 +559,7 @@ private struct GlassPreviewSurface: View {
       DropOverlaySurface {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(presentation.title)
           .font(SchneeGlassTypography.emphasizedBody)
       }
@@ -607,6 +618,7 @@ private struct GlassPreviewSurface: View {
       DropOverlaySurface {
         ProgressView()
           .controlSize(.regular)
+          .accessibilityHidden(true)
         Text(presentation.title)
           .font(SchneeGlassTypography.strongBody)
         if let detail = presentation.detail {
@@ -638,8 +650,10 @@ private struct GlassPreviewSurface: View {
         .font(SchneeGlassTypography.status)
         .foregroundStyle(.secondary)
     } else {
+      // The loading message in the content already supplies the VoiceOver status.
       ProgressView()
         .controlSize(.small)
+        .accessibilityHidden(true)
     }
   }
 
@@ -650,6 +664,7 @@ private struct GlassPreviewSurface: View {
       HStack(spacing: SchneeGlassSpacing.controlGroup) {
         ProgressView()
           .controlSize(.small)
+          .accessibilityHidden(true)
         Text(GlassLocalizedText.loadingFolder.resolve(locale: locale))
           .foregroundStyle(.secondary)
       }
@@ -663,15 +678,16 @@ private struct GlassPreviewSurface: View {
       )
 
     case .empty:
+      let presentation = DesktopGlassEmptyPresentation.make(locale: locale)
       SchneeGlassStateMessage(
         systemImage: "tray",
-        title: "Drop files here",
-        detail: "Files are copied. Originals stay where they are."
+        title: presentation.title,
+        detail: presentation.detail
       )
       .frame(maxWidth: .infinity, minHeight: 100)
 
-    case .unavailable:
-      let presentation = GlassUnavailablePresentation.make(locale: locale)
+    case .unavailable(let reason):
+      let presentation = GlassUnavailablePresentation.make(for: reason, locale: locale)
       VStack(spacing: SchneeGlassSpacing.controlGroup) {
         SchneeGlassStateMessage(
           systemImage: "externaldrive.badge.exclamationmark",
@@ -689,12 +705,26 @@ private struct GlassPreviewSurface: View {
       .frame(maxWidth: .infinity, minHeight: 100)
 
     case .failed(let error):
-      let presentation = GlassContentFailurePresentation.make(for: error, locale: locale)
-      SchneeGlassStateMessage(
-        systemImage: "arrow.clockwise.circle",
-        title: presentation.title,
-        detail: presentation.detail
+      let canRetryNow = GlassInlineRefreshPolicy.isVisible(
+        for: entry.contentState, canRefresh: canRefresh
       )
+      let presentation = GlassContentFailurePresentation.make(
+        for: error, locale: locale, canRetryNow: canRetryNow
+      )
+      VStack(spacing: SchneeGlassSpacing.controlGroup) {
+        SchneeGlassStateMessage(
+          systemImage: "arrow.clockwise.circle",
+          title: presentation.title,
+          detail: presentation.detail
+        )
+        if canRetryNow {
+          Button(
+            GlassLocalizedText.refreshFiles.resolve(locale: locale),
+            action: onRefresh
+          )
+          .buttonStyle(.bordered)
+        }
+      }
       .frame(maxWidth: .infinity, minHeight: 100)
     }
   }

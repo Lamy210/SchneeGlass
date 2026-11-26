@@ -6,9 +6,16 @@
 "refreshFailed" = "更新に失敗";
 "needsAttention" = "確認が必要";
 "unavailableTitle" = "フォルダに接続できません";
+"unavailablePermissionDetail" = "macOSからこのフォルダへのアクセスが失われました。元のフォルダを再接続してアクセス許可を取得し直してください。";
+"unavailableMissingDetail" = "元のフォルダが見つかりません。元の場所に戻してから再接続してください。";
+"unavailableVolumeDetail" = "このフォルダがあるドライブが切断されています。ドライブを接続してから元のフォルダを再接続してください。";
+"unavailableBookmarkDetail" = "保存済みのフォルダアクセス権限を復元できませんでした。元のフォルダを再接続して再度アクセスを許可してください。";
+"unavailableReplacementDetail" = "保存された場所に別のフォルダがあります。安全のため自動的には接続しません。元のフォルダを再接続してください。";
+"unavailableUnsupportedDetail" = "このフォルダの保存場所には対応していません。元のフォルダへ安全にアクセスできるまで、このGlassは利用できません。";
 "unavailableDetail" = "Glassを削除せずにアクセスを復旧するには、元のフォルダを再接続してください。再接続できない場合は、現在の操作が完了するまで待つか、SchneeGlassを再起動してください。設定の中断されたコピーの復旧は、コピー操作が中断された場合に使用します。";
 "refreshFailedTitle" = "フォルダの更新に失敗しました";
 "refreshFailedDetail" = "フォルダに変更があるとSchneeGlassが再試行します。";
+"refreshFailedManualRetryDetail" = "今すぐ再試行するには「ファイル一覧を更新」を選択してください。フォルダが変更されるとSchneeGlassも再試行します。";
 "unexpectedTitle" = "Glassの処理を続行できません";
 "unexpectedDetail" = "SchneeGlassを再起動して再試行してください。それでも復旧しない場合は、このGlassを削除してフォルダを再登録してください。";
 "renameGlassMenu" = "Glassの名前を変更…";
@@ -78,8 +85,8 @@
 "dropTooManyDetail" = "一度にコピーできるファイルは%lld件までです。複数回に分けてドロップしてください。";
 "dropCapacityDetail" = "処理中のドロップ全体で準備できるコピー元ファイルは%lld件までです。別のコピーが完了してから再試行してください。";
 "dropNoOverwrite" = "ファイルは上書きされません。";
-"dropRegularOnlyWorkspace" = "v0.1では通常のファイルのみ受け付けます。";
-"dropRegularOnlyDesktop" = "v0.1では通常のファイルのみコピーできます。";
+"dropRegularOnlyWorkspace" = "通常のファイルのみコピー用に受け付けます。";
+"dropRegularOnlyDesktop" = "通常のファイルのみコピーできます。";
 "dropItemUnchanged" = "ドロップした項目は変更されていません。";
 "dropNoCopyNeeded" = "コピーは不要です。";
 "dropUnavailableDetail" = "ドロップを終了してください。Glassに「フォルダに接続できません」と表示されている場合は、元のフォルダを再接続してください。それ以外の場合はファイル一覧を更新して再試行してください。";
@@ -93,6 +100,7 @@
 "dropCopyCount" = "%1$lld件のファイルを%2$@にコピー";
 "workspaceTagline" = "必要なフォルダを、必要な場所に。";
 "restoringStatus" = "復元中…";
+"creatingGlass" = "Glassを作成中…";
 "addGlass" = "Glassを追加";
 "restoringGlasses" = "Glassを復元中…";
 "configurationRecoveryTitle" = "設定の復旧が必要です";

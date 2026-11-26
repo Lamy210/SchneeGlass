@@ -116,6 +116,18 @@ public final class SchneeGlassWorkspaceModel {
     canMutateConfiguration
   }
 
+  public func canRemoveGlass(glassID: GlassID) -> Bool {
+    guard canMutateConfiguration,
+      let entry = glasses.first(where: { $0.id == glassID })
+    else {
+      return false
+    }
+    return GlassInteractionPolicy.allowsRemoval(
+      during: entry.interactionState,
+      isDropBusy: isDropBusy(glassID: glassID)
+    )
+  }
+
   public var hasAuthoritativeConfigurationSnapshot: Bool {
     WorkspaceConfigurationAuthorityPolicy.hasAuthoritativeSnapshot(
       hasLoadedConfigurationSnapshot: hasLoadedConfigurationSnapshot,
@@ -325,9 +337,9 @@ public final class SchneeGlassWorkspaceModel {
   }
 
   public func removeGlass(id: GlassID) async {
-    guard canMutateConfiguration,
-      !isDropBusy(glassID: id)
-    else {
+    // Re-check current interaction state at confirmation time. The removal
+    // dialog may have opened before a new hover or Drop execution began.
+    guard canRemoveGlass(glassID: id) else {
       presentConfigurationRecoveryRequirementIfNeeded()
       return
     }
@@ -488,7 +500,7 @@ public final class SchneeGlassWorkspaceModel {
       !isDropBusy(glassID: glassID)
     else {
       let rejection = DropPlan.reject(.destinationUnavailable)
-      updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+      showUnavailableDropFeedbackUnlessExecuting(glassID: glassID)
       return rejection
     }
 
@@ -527,7 +539,7 @@ public final class SchneeGlassWorkspaceModel {
       !isDropBusy(glassID: glassID),
       dropExecutionGate.begin(glassID)
     else {
-      updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
+      showUnavailableDropFeedbackUnlessExecuting(glassID: glassID)
       presentConfigurationRecoveryRequirementIfNeeded()
       return false
     }
@@ -1025,6 +1037,21 @@ public final class SchneeGlassWorkspaceModel {
       return
     }
     glasses[index].contentState = state
+  }
+
+  /// Keep the executing Drop's feedback intact when another hover/Drop is
+  /// rejected, including the async re-plan interval before .copying appears.
+  private func showUnavailableDropFeedbackUnlessExecuting(glassID: GlassID) {
+    guard
+      let entry = glasses.first(where: { $0.id == glassID }),
+      GlassInteractionPolicy.allowsRejectedDropFeedback(
+        during: entry.interactionState,
+        hasActiveExecution: dropExecutionGate.contains(glassID)
+      )
+    else {
+      return
+    }
+    updateInteraction(.dropInvalid(.destinationUnavailable), for: glassID)
   }
 
   private func updateInteraction(_ state: InteractionState, for glassID: GlassID) {
