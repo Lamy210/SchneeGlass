@@ -169,6 +169,8 @@ bash Scripts/verify-release-metadata.sh
 bash Scripts/verify-production-release-preflight.sh
 ```
 
+注: 最終行の `verify-production-release-preflight.sh` は、**旧Developer ID経路のcredential-free回帰検査**として残しています。現行ad-hoc公開のgo/no-go判定や承認の代替ではありません。公開用の判定には `RELEASE.md` に記載した #519 / #547 / #520 の独立した証跡が必要です。
+
 GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibility build、Xcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact、scheduled ThreadSanitizer、Swift CodeQL v4、500-item Snapshot Performance Baselineを継続検証します。
 
 ## Documentation
