@@ -136,6 +136,31 @@ class PublisherTests(fixture.ReleaseReaderTests):
                 if event not in {"publish", "readback:published", "final-assets:published"}:
                     self.assertNotIn("publish", api.events)
 
+    def test_publisher_failure_log_binds_active_asset_to_captured_ids(self):
+        api = FakeGitHub(self)
+        api.fail = "upload:BUILD_INFO.txt"
+        with self.assertRaisesRegex(ValueError, "fixture failure"):
+            self.run_publisher(api)
+        self.assertEqual(api.upload_count, 1)
+        self.assertIn("stage=upload", self.failure_log)
+        self.assertIn("active_asset=BUILD_INFO.txt", self.failure_log)
+        self.assertIn("uploaded_asset_ids=ADHOC_RELEASE_EVIDENCE.json:201", self.failure_log)
+        self.assertNotIn("uploaded_asset_ids=201", self.failure_log)
+        self.assertNotIn("publish", api.events)
+
+    def test_publisher_failure_log_clears_active_asset_after_uploads(self):
+        api = FakeGitHub(self)
+        api.fail = "readback:draft"
+        with self.assertRaisesRegex(ValueError, "fixture failure"):
+            self.run_publisher(api)
+        self.assertEqual(api.upload_count, 4)
+        self.assertIn("stage=draft-readback", self.failure_log)
+        self.assertIn("active_asset=none", self.failure_log)
+        for name in self.assets:
+            self.assertIn("name", name)
+            self.assertIn(name["name"] + ":", self.failure_log)
+        self.assertNotIn("publish", api.events)
+
     def test_publisher_second_fresh_check_blocks_publication(self):
         api = FakeGitHub(self)
         original = api.fresh_checks
