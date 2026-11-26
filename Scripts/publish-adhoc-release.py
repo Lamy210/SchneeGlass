@@ -307,6 +307,7 @@ def execute(args, workspace, api):
     identity = None
     stage = "preflight"
     uploaded_ids = {}
+    active_asset = None
     try:
         api.verify_authority(args)
         public = api.prepare(args, workspace)
@@ -327,11 +328,13 @@ def execute(args, workspace, api):
                 "unexpected create-draft response")
         stage = "upload"
         for name in sorted(expected):
+            active_asset = name
             api.owned_slot(identity, tag, sha, expected, uploaded_ids)
             require(readback.local_assets(public, tag) == expected, "prepared assets changed")
             asset_id = api.upload(identity, name, public, expected[name])
             require(asset_id not in uploaded_ids.values(), "duplicate created asset ID")
             uploaded_ids[name] = asset_id
+            active_asset = None
         stage = "draft-readback"
         require(api.readback("draft", public, identity, tag, sha) == args.build, "draft build mismatch")
         stage = "final-preflight"
@@ -355,8 +358,9 @@ def execute(args, workspace, api):
         require(readback.local_assets(public, tag) == expected, "prepared assets changed")
         return identity
     except Exception:
+        uploaded = ','.join(f'{name}:{value}' for name, value in sorted(uploaded_ids.items()))
         print(f"Publisher stopped: stage={stage} tag={tag} release_id={identity or 'unknown'} "
-              f"uploaded_asset_ids={','.join(map(str, uploaded_ids.values())) or 'none'}. "
+              f"active_asset={active_asset or 'none'} uploaded_asset_ids={uploaded or 'none'}. "
               "No retry, deletion, overwrite or adoption; reconcile observed remote state manually.",
               file=sys.stderr)
         raise
