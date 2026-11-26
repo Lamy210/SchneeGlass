@@ -22,18 +22,20 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
   private static let shortcutName = KeyboardShortcuts.Name("toggleGlassVisibility")
 
   private var isStopped = false
+  private let onToggle: @MainActor @Sendable () -> Void
 
   public init(
     onToggle: @escaping @MainActor @Sendable () -> Void
   ) {
+    self.onToggle = onToggle
     super.init()
 
     // App initialization can be repeated by previews/tests. Replace an existing legacy
     // handler instead of accumulating callbacks for the same persisted shortcut name.
     KeyboardShortcuts.removeHandler(for: Self.shortcutName)
-    KeyboardShortcuts.onKeyUp(for: Self.shortcutName) {
-      Task { @MainActor in
-        onToggle()
+    KeyboardShortcuts.onKeyUp(for: Self.shortcutName) { [weak self] in
+      Task { @MainActor [weak self] in
+        self?.deliverToggleIfActive()
       }
     }
 
@@ -53,6 +55,13 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     let recorder = KeyboardShortcuts.RecorderCocoa(for: shortcutName)
     recorder.setAccessibilityLabel(accessibilityLabel)
     return recorder
+  }
+
+  // A queued key-up Task may run after stop() removes the keyboard handler.
+  // Check state at delivery time, not only when the event was scheduled.
+  func deliverToggleIfActive() {
+    guard !isStopped else { return }
+    onToggle()
   }
 
   public func stop() {
