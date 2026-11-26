@@ -78,11 +78,11 @@ func pendingShortcutTaskDoesNotRetainRetiredController() async {
 
   // The enqueued Task may outlive the controller; delivery must not keep the
   // instance alive or invoke its callback after the owner has retired.
-  let pending = SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(
-    for: controller!
-  )
+  let pending = controller.map {
+    SchneeGlassGlobalVisibilityShortcutController.enqueueKeyUp(for: $0)
+  }
   controller = nil
   #expect(weakController == nil)
-  await pending.value
+  await pending?.value
   #expect(counter.calls == 0)
 }
