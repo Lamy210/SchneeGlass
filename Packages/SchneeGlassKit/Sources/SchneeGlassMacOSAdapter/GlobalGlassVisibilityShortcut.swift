@@ -37,9 +37,8 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     Self.activeController = self
     KeyboardShortcuts.removeHandler(for: Self.shortcutName)
     KeyboardShortcuts.onKeyUp(for: Self.shortcutName) { [weak self] in
-      Task { @MainActor [weak self] in
-        self?.deliverToggleIfActive()
-      }
+      guard let self else { return }
+      _ = Self.enqueueKeyUp(for: self)
     }
 
     NotificationCenter.default.addObserver(
@@ -58,6 +57,16 @@ public final class SchneeGlassGlobalVisibilityShortcutController: NSObject {
     let recorder = KeyboardShortcuts.RecorderCocoa(for: shortcutName)
     recorder.setAccessibilityLabel(accessibilityLabel)
     return recorder
+  }
+
+  // The real KeyboardShortcuts callback and the lifecycle regression tests use
+  // this same scheduling path. No strong reference survives into the Task.
+  nonisolated static func enqueueKeyUp(
+    for controller: SchneeGlassGlobalVisibilityShortcutController
+  ) -> Task<Void, Never> {
+    Task { @MainActor [weak controller] in
+      controller?.deliverToggleIfActive()
+    }
   }
 
   // A queued key-up Task may run after stop() removes the keyboard handler.
