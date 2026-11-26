@@ -406,6 +406,91 @@ class PublisherTests(fixture.ReleaseReaderTests):
         self.assertNotIn("publish", api.events)
         self.assertIn("stage=upload", self.failure_log)
 
+    def test_publisher_governance_job_isolated_from_release_token(self):
+        text = (ROOT.parent / ".github/workflows/publish-adhoc-release.yml").read_text()
+        self.assertIn("\n  governance:\n", text)
+        self.assertIn("\n  publish:\n", text)
+        attestation = text.split("\n  governance:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        publication = text.split("\n  publish:\n", 1)[1]
+        self.assertIn("SCHNEEGLASS_RELEASE_GOVERNANCE_TOKEN", attestation)
+        self.assertNotIn("SCHNEEGLASS_RELEASE_OWNER_TOKEN", attestation)
+        self.assertNotIn("publish-adhoc-release.py", attestation)
+        self.assertIn("setup-release-governance.sh Lamy210/SchneeGlass --verify-only",
+                      attestation)
+        self.assertIn('test "$INPUT_SOURCE_SHA" = "$GITHUB_SHA"', attestation)
+        self.assertIn("source_sha: ${{ steps.verify.outputs.source_sha }}", attestation)
+        self.assertIn("needs: governance", publication)
+        self.assertIn("needs.governance.result == 'success'", publication)
+        self.assertIn("SCHNEEGLASS_GOVERNANCE_ATTESTED_SHA: "
+                      "${{ needs.governance.outputs.source_sha }}", publication)
+        self.assertIn("SCHNEEGLASS_RELEASE_OWNER_TOKEN", publication)
+        self.assertNotIn("SCHNEEGLASS_RELEASE_GOVERNANCE_TOKEN", publication)
+        self.assertNotIn("setup-release-governance.sh", publication)
+
+    def test_publisher_attestation_matches_exact_owner_workflow(self):
+        context = {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_REPOSITORY": publisher.REPO,
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/main",
+            "GITHUB_WORKFLOW_REF": publisher.WORKFLOW_REF,
+            "GITHUB_ACTOR_ID": "90091196",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_SHA": ARGS.source_sha,
+            "GITHUB_JOB": "publish",
+            "SCHNEEGLASS_GOVERNANCE_ATTESTED_SHA": ARGS.source_sha,
+        }
+        with patch.dict(publisher.os.environ, context, clear=True):
+            publisher.validate_context(ARGS)
+            for key in ("GITHUB_JOB", "SCHNEEGLASS_GOVERNANCE_ATTESTED_SHA",
+                        "GITHUB_SHA", "GITHUB_ACTOR_ID", "GITHUB_WORKFLOW_REF",
+                        "GITHUB_RUN_ATTEMPT"):
+                with self.subTest(missing=key):
+                    with patch.dict(publisher.os.environ, {key: ""}):
+                        with self.assertRaisesRegex(ValueError, "owner-dispatched"):
+                            publisher.validate_context(ARGS)
+            with patch.dict(publisher.os.environ,
+                            {"SCHNEEGLASS_GOVERNANCE_ATTESTED_SHA": "f" * 40}):
+                with self.assertRaisesRegex(ValueError, "owner-dispatched"):
+                    publisher.validate_context(ARGS)
+
+    def test_publisher_effective_rules_rechecked_without_admin_credential(self):
+        api = publisher.GitHub()
+        checks = [{"total_count": 2, "check_runs": [
+            {"id": i, "name": name, "head_sha": ARGS.source_sha,
+             "app": {"id": 15368}, "status": "completed", "conclusion": "success"}
+            for i, name in enumerate(sorted(publisher.REQUIRED_CHECKS), 1)
+        ]}]
+        values = [
+            {"id": 90091196, "login": "Lamy210", "type": "User"},
+            {"id": 1359347782, "full_name": publisher.REPO},
+            {"enabled": True},
+            {"name": "main", "commit": {"sha": ARGS.source_sha}},
+            checks,
+        ]
+        with patch.object(publisher, "gh_json", side_effect=values) as gh, \
+             patch.object(publisher, "gate") as gate:
+            api.verify_authority(ARGS)
+            self.assertEqual(gate.call_args_list, [
+                unittest.mock.call("verify-local-release-source.sh", publisher.REPO),
+                unittest.mock.call("verify-current-release-governance.sh", publisher.REPO),
+            ])
+            self.assertEqual(gh.call_count, 5)
+
+    def test_publisher_missing_immutable_setting_fails_closed(self):
+        api = publisher.GitHub()
+        values = [
+            {"id": 90091196, "login": "Lamy210", "type": "User"},
+            {"id": 1359347782, "full_name": publisher.REPO},
+            {"enabled": False},
+        ]
+        with patch.object(publisher, "gh_json", side_effect=values) as gh, \
+             patch.object(publisher, "gate") as gate:
+            with self.assertRaisesRegex(ValueError, "immutable releases"):
+                api.verify_authority(ARGS)
+            self.assertEqual(gh.call_count, 3)
+            self.assertEqual(gate.call_count, 2)
+
     def test_publisher_owner_workflow_context_required(self):
         with patch.dict(publisher.os.environ, {}, clear=True):
             with self.assertRaisesRegex(ValueError, "owner-dispatched"):
