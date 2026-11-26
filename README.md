@@ -14,6 +14,8 @@ SchneeGlass は、任意の実フォルダをmacOSデスクトップ上に軽量
 
 v0.2の現在の開発計画は [`docs/V0.2_DEVELOPMENT_PLAN.md`](docs/V0.2_DEVELOPMENT_PLAN.md)、Draft Release Notesは [`docs/V0.2_RELEASE_NOTES.md`](docs/V0.2_RELEASE_NOTES.md) を参照してください。
 
+**v0.2の公開判定は現時点でNO-GOです。** [#519](https://github.com/Lamy210/SchneeGlass/issues/519) のGitHub Ruleset／Release不変性、[Draft PR #547](https://github.com/Lamy210/SchneeGlass/pull/547) のad-hoc正式Publisher統合と所有者レビュー、[#520](https://github.com/Lamy210/SchneeGlass/issues/520) の新しいexact-main候補に対するmacOS実機QA・所有者承認・公開後read-backが残っています。公開用の安全な順序は[現行Release Policy](RELEASE.md#active-v02-ad-hoc-release-path-adr-0011)を参照してください。既存の`Ad-Hoc Release Candidate`は検証用Actions artifactのみを作成し、GitHub Releaseへの公開やQA承認は行いません。
+
 実装済み:
 
 - Swift 6 / macOS 15+ / App SandboxのmacOS App Target
@@ -166,6 +168,8 @@ bash Scripts/verify-file-safety.sh
 bash Scripts/verify-release-metadata.sh
 bash Scripts/verify-production-release-preflight.sh
 ```
+
+注: 最終行の `verify-production-release-preflight.sh` は、**旧Developer ID経路のcredential-free回帰検査**として残しています。現行ad-hoc公開のgo/no-go判定や承認の代替ではありません。公開用の判定には `RELEASE.md` に記載した #519 / #547 / #520 の独立した証跡が必要です。
 
 GitHub Actionsでは上記に加えて、AddressSanitizer、macOS 15 compatibility build、Xcode 26.6 Debug / Release app build、Sandbox baseline、unsigned artifact、scheduled ThreadSanitizer、Swift CodeQL v4、500-item Snapshot Performance Baselineを継続検証します。
 

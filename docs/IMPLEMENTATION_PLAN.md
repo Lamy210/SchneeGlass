@@ -2,6 +2,8 @@
 
 このドキュメントは `ARCHITECTURE.md` の設計を実装順へ落としたものです。
 
+このドキュメントは **v0.1実装・旧Developer ID配布設計の履歴**を保持する資料です。現在の配布方針は[ADR-0011](adr/0011-adhoc-distribution-without-developer-id.md)と[現行Release Policy](../RELEASE.md#active-v02-ad-hoc-release-path-adr-0011)を優先し、Developer ID / notarization / `production-release` の旧経路を実行しません。現在の未完了ゲートは[#519](https://github.com/Lamy210/SchneeGlass/issues/519)、[#547](https://github.com/Lamy210/SchneeGlass/pull/547)、[#520](https://github.com/Lamy210/SchneeGlass/issues/520)です。
+
 StatusはRepositoryの実装とmerged PRを基準に更新します。古い計画上の`NOT STARTED`を根拠に重複実装しないこと。
 
 ## Phase 0 — Architecture Baseline
@@ -313,8 +315,10 @@ v0.1 Release blockerではない追加候補:
 
 追加解析はCI時間・false positive・無料枠・既存検査との重複を評価して個別PRで導入する。既にstrict `swift-format` / ASan / TSan / CodeQL / Snapshot Performance Baselineは導入済みなので、古い計画を根拠に二重導入しないこと。
 
-### TASK-018 — Release Pipeline
-Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
+### TASK-018 — Release Pipeline (historical Developer ID design)
+Status: **HISTORICAL / INACTIVE under ADR-0011**
+
+以下の署名・公証パイプラインは当時実装された旧設計の記録です。v0.2の現行ad-hoc公開のマージ条件や起動手順ではありません。
 
 コード実装済み:
 
@@ -367,7 +371,7 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 - mutable releaseを正式Releaseとして残さないcleanup path
 - public ReleaseへZIP / `SHA256SUMS` / `RELEASE_EVIDENCE.txt`添付
 
-残るRelease blockerはコード実装ではなく運用検証:
+旧Developer ID設計に残っていた運用検証（**現在のリリースブロッカーではない**）:
 
 - `production-release` environmentへ実credentialを設定
 - repository release immutabilityを有効化
@@ -376,7 +380,7 @@ Status: **CODE COMPLETE / OPERATIONAL VALIDATION PENDING**
 - signed candidateで`docs/MANUAL_QA.md`を完走
 - current `0.2.0 / build 3` candidateをDeveloper ID signed / notarized immutable Releaseとしてpublishして検証
 
-これらはIssue #33で追跡する。実credential値をRepositoryへcommitしない。
+これらは歴史的なIssue #33で追跡していた項目です。**現行ad-hoc公開にDeveloper ID credentialや公証は不要**です。実credential値をRepositoryへcommitしない。
 
 ### TASK-019 — Documentation
 Status: **DONE for current code/document baseline / production release record pending**
@@ -406,21 +410,17 @@ Release時に残る記録:
 
 ---
 
-## Current Release Next Order
+## Current Release Next Order — ad-hoc v0.2
 
-Current project metadata is `0.2.0 / build 3`. Public v0.1.0 build 1 and v0.1.1 build 2 already exist as legacy unsigned/ad-hoc Releases.
+Current source metadata is `v0.2.0 / build 3`. The latest public release is v0.1.1 (ad-hoc, not Apple-notarized). This section supersedes the old Issue #33 / Developer ID publication sequence retained above.
 
-現時点の優先順位:
+1. **#519 (repository administrator):** Apply the checked-in sole canonical main ruleset and enable repository-wide Release immutability; from a clean checkout at exact live `main`, pass `Scripts/setup-release-governance.sh Lamy210/SchneeGlass --verify-only`. Record read-back evidence; do not claim that configured source files are proof of live settings.
+2. **#547 (maintainer + owner):** Reconcile Draft Publisher with latest `main`, validate the new HEAD with both Bootstrap jobs and publisher fixtures, review the scoped owner token's permissions and nontransactional failure recovery, then explicitly authorize merging. **Do not publish or set credentials just because the PR tests pass.**
+3. **#520 (release owner):** After final code changes, freeze exact `main`; verify both Bootstrap jobs for that SHA and generate a new manually dispatched `Ad-Hoc Release Candidate`. Keep the exact run/attempt/artifact IDs and independently checked outer/inner ZIP digests. Any further main change invalidates the candidate's exact-source binding.
+4. **#520 (real macOS QA):** On macOS 15/26, verify actual app signature/entitlements, first-launch Gatekeeper UX, core Glass operations, copy-only File Safety/Recovery, restart, and upgrade from v0.1.1 using disposable folders. Record SHA/digests/OS/results; never fabricate QA or disable Gatekeeper globally.
+5. **#520 (owner-only decision):** Personally post the exact unedited owner QA comment bound to the verified **inner ZIP digest**. Run authenticated read-only publication preflight, public history and tag/collision checks. Only after all live gates pass, provision the reviewed credential and explicitly dispatch the merged create-only ad-hoc publisher; verify the immutable published Release's tag, IDs and all four assets by read-back. If API writes partially succeed or the response is lost, stop for manual reconciliation; no automatic retries or destructive cleanup.
 
-```text
-1. Issue #33: production-release credential / governance setup
-2. 0.2.0 / build 3 Developer ID + notarized candidate
-3. Exact signed candidate Manual QA
-4. Immutable 0.2.0 GitHub Release publication
-5. Release recordをDocumentationへ反映
-```
-
-Core / Recovery / automated quality / release automation codeはcurrent baselineとして完了。以後も最優先原則は、障害時を含めuser-owned fileを自動破壊しないこと。
+No `Production Release Candidate`, `Publish Production Release`, Apple notarization or `production-release` Environment is part of the active path. The permanent non-destructive File Safety contract remains mandatory. For details, use [RELEASE.md](../RELEASE.md), [Manual QA](MANUAL_QA.md), and [Issue #520](https://github.com/Lamy210/SchneeGlass/issues/520).
 
 ---
 
