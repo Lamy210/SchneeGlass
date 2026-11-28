@@ -1,5 +1,6 @@
 import CoreServices
 import Foundation
+import OSLog
 import SchneeGlassApplication
 
 public enum FileEventHubError: Error, Hashable, Sendable {
@@ -128,16 +129,28 @@ public actor FileEventHub: FileEventStreaming {
     let continuation: AsyncStream<FileEvent>.Continuation
   }
 
-  private let callbackQueue: DispatchQueue
+  private let callbackQueue = DispatchQueue(
+    label: "dev.schneeglass.filesystem-events",
+    qos: .utility
+  )
   private let latency: TimeInterval
+  private let reportSubscriptionCount: @Sendable (Int) -> Void
   private var sessions: [UUID: Session] = [:]
 
   public init(latency: TimeInterval = FileEventHub.defaultLatency) {
     self.latency = latency
-    self.callbackQueue = DispatchQueue(
-      label: "dev.schneeglass.filesystem-events",
-      qos: .utility
-    )
+    let logger = Logger(
+      subsystem: "io.github.lamy210.schneeglass", category: "watcher-lifecycle")
+    self.reportSubscriptionCount = { count in
+      logger.notice("active_watchers=\(count, privacy: .public)")
+    }
+    logger.notice("active_watchers=0")
+  }
+
+  init(latency: TimeInterval, reportSubscriptionCount: @escaping @Sendable (Int) -> Void) {
+    self.latency = latency
+    self.reportSubscriptionCount = reportSubscriptionCount
+    reportSubscriptionCount(0)
   }
 
   public func subscribe(for access: FolderAccessHandle) async throws -> FileEventSubscription {
@@ -211,6 +224,8 @@ public actor FileEventHub: FileEventStreaming {
       continuation: pair.continuation
     )
 
+    reportSubscriptionCount(sessions.count)
+
     pair.continuation.onTermination = { [weak self] _ in
       guard let self else {
         return
@@ -254,5 +269,6 @@ public actor FileEventHub: FileEventStreaming {
     // context, rather than guessing callback lifetime from the actor's stop timing.
     FSEventStreamRelease(session.stream)
     session.continuation.finish()
+    reportSubscriptionCount(sessions.count)
   }
 }

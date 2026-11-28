@@ -28,6 +28,16 @@ Status: Proposed — 試験未実施・SLO未承認。Issue #589 と v1.0ロー�
 
 公開証跡に絶対path、実ファイル名、raw bookmark、PID、raw CSVを含めない。ローカル計測は [LOCAL_RESOURCE_SAMPLING.md](LOCAL_RESOURCE_SAMPLING.md) の既存ツールを使用する。
 
+### Watcher lifecycleのローカル診断
+
+対象候補を起動する前にmacOSのTerminalで以下を開始する。実機でログ形式と取得可否を確認する。
+
+```sh
+log stream --level default --predicate 'subsystem == "io.github.lamy210.schneeglass" AND category == "watcher-lifecycle"'
+```
+
+初期化時の0、監視登録成功後、native stop/invalidate/releaseとstream finish後の `active_watchers` 件数だけを出力する。イベント受信ごとのログや定期polling、ファイル名・path・ID・bookmarkの出力は行わない。duplicate stopは件数の変化を報告しない。監視の登録/解放数はFileEventHubが管理する登録済みセッション数であって、OS内部の実リソース全数やsecurity scope数ではない。既知の使い捨てGlassを順次開閉して件数変化と0への復帰を照合する。ログ欠落・途中起動・別プロセス混入は完全な証跡として扱わない。raw logは公開せず人が確認した集計のみを記録する。実機ログ取得は未検証。
+
 ## 3. 合否
 
 - FAIL: crash/hang、意図しないmutation、原本喪失、権限逸脱、誤ったfolder identity、復旧不能、確認された監視/アクセス解放不均衡。
