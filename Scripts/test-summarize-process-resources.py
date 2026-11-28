@@ -147,6 +147,32 @@ class ResourceSummaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Sample count mismatch"):
             SUMMARY(io.StringIO(output.getvalue()), 3, 60)
 
+    def test_minimum_observed_duration_requires_actual_span(self):
+        def checked(body, minimum):
+            return SUMMARY(io.StringIO(HEADER + body), 2, 60,
+                           minimum_observed_seconds=minimum)
+
+        # A correct row count does not imply a sufficient elapsed duration.
+        for second in ("1", "59.999999999999"):
+            with self.subTest(second=second), self.assertRaisesRegex(
+                    ValueError, "Observed duration below minimum"):
+                checked(f"1,0,0,512,4\n2,{second},0,512,4\n", 60)
+
+        # The first elapsed value is not necessarily zero.
+        with self.assertRaisesRegex(ValueError, "Observed duration below minimum"):
+            checked("1,10,0,512,4\n2,69,0,512,4\n", 60)
+        exact = checked("1,10,0,512,4\n2,70,0,512,4\n", 60)
+        self.assertEqual(exact["observed_span_seconds"], 60)
+        self.assertEqual(checked("1,10,0,512,4\n2,71,0,512,4\n", 60)
+                         ["observed_span_seconds"], 61)
+
+    def test_invalid_minimum_duration_is_rejected(self):
+        for minimum in (0, -1, True, 1.5, 1_000_000_000_000):
+            with self.subTest(minimum=minimum), self.assertRaisesRegex(
+                    ValueError, "Invalid minimum observed duration"):
+                SUMMARY(io.StringIO(HEADER + "1,0,0,512,4\n"), 1, 60,
+                        minimum_observed_seconds=minimum)
+
     def test_invalid_sampling_parameters(self):
         for count, interval in ((0,60), (10001,60), (1,4), (1,3601)):
             with self.subTest(count=count, interval=interval), self.assertRaises(ValueError):
