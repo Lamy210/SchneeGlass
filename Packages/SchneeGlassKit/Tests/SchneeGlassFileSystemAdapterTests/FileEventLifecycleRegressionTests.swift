@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SchneeGlassApplication
 import SchneeGlassDomain
 import Testing
@@ -174,4 +175,43 @@ func cancelledWatcherSubscriptionNeverReplacesOrLeaksActiveSibling() async throw
   #expect(await hub.activeSubscriptionCount == 1)
   await hub.stop(subscriptionID: first.id)
   #expect(await hub.activeSubscriptionCount == 0)
+}
+
+@Test
+func watcherLifecycleReportsOnlyCommittedSubscriptionCountChanges() async throws {
+  let manager = FileManager.default
+  let root = manager.temporaryDirectory
+    .appendingPathComponent("SchneeGlass-watcher-count-\(UUID().uuidString)", isDirectory: true)
+  try manager.createDirectory(at: root, withIntermediateDirectories: false)
+  defer {
+    do {
+      try manager.removeItem(at: root)
+    } catch {
+      Issue.record("Could not remove disposable watcher diagnostic directory")
+    }
+  }
+
+  let counts = OSAllocatedUnfairLock(initialState: [Int]())
+  let hub = FileEventHub(latency: 0.05) { count in
+    counts.withLock { $0.append(count) }
+  }
+  let access = FolderAccessHandle(glassID: GlassID(), url: root)
+  do {
+    let first = try await hub.subscribe(for: access)
+    let second = try await hub.subscribe(for: access)
+    await hub.stop(subscriptionID: first.id)
+    await hub.stop(subscriptionID: first.id)
+    await hub.stopAll()
+    await hub.stopAll()
+    #expect(await hub.activeSubscriptionCount == 0)
+    #expect(counts.withLock { $0 } == [0, 1, 2, 1, 0])
+
+    let replacement = try await hub.subscribe(for: access)
+    await hub.stop(subscriptionID: second.id)
+    await hub.stop(subscriptionID: replacement.id)
+    #expect(counts.withLock { $0 } == [0, 1, 2, 1, 0, 1, 0])
+  } catch {
+    await hub.stopAll()
+    throw error
+  }
 }
