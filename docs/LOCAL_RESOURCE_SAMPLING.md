@@ -2,6 +2,8 @@
 
 [Issue #589](https://github.com/Lamy210/SchneeGlass/issues/589)の実機測定用。アプリを変更せず、macOS標準のps/lsofを使って指定PIDだけを観測する。ネットワーク通信・sudo・新規entitlement・対象プロセスへのsignal送信は行わない。
 
+実機シナリオと合否の正本は [S01実機QA計画](S01_SOAK_QA.md)。CLIの間隔は5〜3600秒、サンプル数は1〜10000。短時間試験は5秒、長時間試験は60秒を暫定採用する。
+
 ## 実行手順
 
 1. exact-main候補appを通常起動し、Activity MonitorでSchneeGlassのPIDを確認する。使い捨てfolderのみ使用する。
@@ -12,7 +14,7 @@ report="$(mktemp "${TMPDIR:-/tmp}/schneeglass-soak.XXXXXX")" || exit 1
 python3 Scripts/sample-process-resources.py --pid 12345 --interval 60 --samples 31 > "$report"
 ```
 
-24時間相当は --samples 1441。終了コード0と予定行数（header + samples）を確認する。中断・timeout・観測不能・プロセス変更は非0終了であり、残存CSVを完全な結果として扱わない。再起動の計測は別runに分離する。
+5秒間隔30分相当は `--interval 5 --samples 361`、10分相当は `--interval 5 --samples 121`、60秒間隔8時間相当は `--interval 60 --samples 481`、24時間相当は `--interval 60 --samples 1441`。終了コード0と予定行数（header + samples）を確認する。中断・timeout・観測不能・プロセス変更は非0終了であり、残存CSVを完全な結果として扱わない。再起動の計測は別runに分離する。
 
 ## 指標
 
