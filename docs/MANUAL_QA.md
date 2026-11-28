@@ -518,6 +518,8 @@ Manual QAが完了するまで`Publish Production Release`を実行しない。
 
 ## 16. Performance / release-window diagnostics
 
+v1.0 S01の実機常駐試験は [S01実機QA計画](S01_SOAK_QA.md) の条件・証跡・合否を使用する。通常のCI性能試験と実機soakは別のゲートであり、相互に代替しない。
+
 Release windowで500-item Folder Snapshot baselineの最新結果を確認する。
 
 - [ ] `.github/workflows/snapshot-performance.yml`の直近relevant runがPASSしている
