@@ -402,6 +402,8 @@ This section applies to the currently supported **ad-hoc-signed, not Apple-notar
 - [ ] Glass 0件ではno-op
 - [ ] Recovery/config mutation中にshortcutでpanelを再生成しない
 - [ ] Hide All後のfilesystem refreshで勝手に再表示しない
+- [ ] 設定したglobal shortcutのKeyUp直後にMenu Bar QuitまたはCommand-Qを実行しても、終了開始後に古いKeyUpでGlassのShow/Hideを実行せず、終了・再起動後の表示状態に矛盾を残さない。macOS 15/26で繰り返し、実機未実施のままPASS扱いにしない
+- [ ] 開発時に同一プロセス内でshortcut controllerを再生成するPreview/fixtureでは、旧コントローラーのキュー済みKeyUpが新controllerの表示切替に混入せず、旧controllerの遅れたstopが新しいショートカット登録を解除しない。unit fixtureと実KeyboardShortcutsイベントを区別して記録する
 
 ## 11.1 Graceful application termination
 
