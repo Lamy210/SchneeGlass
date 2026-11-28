@@ -39,6 +39,8 @@ CSVへPID、実行ファイルpath、folder名、raw lsof、bookmarkは書かな
 python3 Scripts/summarize-process-resources.py --expected-samples 31 --interval 60 < "$report"
 ```
 
+24時間本試験など実観測時間の下限も要求する場合は、集計時に `--minimum-observed-seconds 86400` を追加する（8時間なら28800、30分なら1800）。先頭と末尾のelapsedの差を丸め前の値で比較し、不足なら非0終了・JSONなしとする。サンプル数が揃っていても不足はPASSとしない。観測完了時刻の揺らぎにより名目時間に達しない場合は測定条件を確認し、短い試験をそのまま承認しない。時間チェックは観測gap、計測終了状態、実機QAの証明を代替しない。
+
 終了したrunの行数・順序・列・有限の非負数値・elapsed単調性を厳格に検証する。不完全なCSV、余剰行、文字列混入は非0終了とし集計を出さない。行数が一致することは計測終了コードや証跡の真正性の証明ではない。
 
 サンプラー出力と集計器の接続契約は`Scripts/test-summarize-process-resources.py`のsynthetic統合fixtureで検証する。sleep/wake相当の観測遅延（キャッチアップせず間隔超過1件を保持）と、観測中断時の部分CSVが集計器で拒否されるケースを、外部コマンドや実ユーザーデータなしで確認する。このfixtureは実macOSのsleep/wake・リソース値を測定するものではない。

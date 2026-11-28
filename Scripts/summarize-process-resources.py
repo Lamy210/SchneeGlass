@@ -76,10 +76,17 @@ def metrics(values, width):
     return result
 
 
-def summarize(stream, expected, interval):
+def summarize(stream, expected, interval, *, minimum_observed_seconds=None):
     require(type(interval) is int and 5 <= interval <= 3600, "Invalid interval")
     records = parse(stream, expected)
     elapsed = [row[0] for row in records]
+    span = elapsed[-1] - elapsed[0]
+    if minimum_observed_seconds is not None:
+        require(type(minimum_observed_seconds) is int
+                and 1 <= minimum_observed_seconds <= 999_999_999_999,
+                "Invalid minimum observed duration")
+        # Compare the original decimal values, not the rounded diagnostic span.
+        require(span >= minimum_observed_seconds, "Observed duration below minimum")
     gaps = [b - a for a, b in zip(elapsed, elapsed[1:])]
     # Sample-based, non-overlapping windows, not time-weighted estimates.
     width = max(1, expected // 5) if expected >= 2 else 0
@@ -89,7 +96,7 @@ def summarize(stream, expected, interval):
         "nominal_interval_seconds": interval,
         "first_elapsed_seconds": float(elapsed[0]),
         "last_elapsed_seconds": float(elapsed[-1]),
-        "observed_span_seconds": float(round(elapsed[-1] - elapsed[0], 3)),
+        "observed_span_seconds": float(round(span, 3)),
         "max_observation_gap_seconds": float(round(max(gaps), 6)) if gaps else None,
         # Evaluate strictly against the unrounded CSV timestamps. Rounding a
         # near-threshold gap first would silently misclassify a missed interval.
@@ -104,9 +111,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-samples", type=int, required=True)
     parser.add_argument("--interval", type=int, required=True)
+    parser.add_argument("--minimum-observed-seconds", type=int,
+                        help="reject a completed CSV whose observed span is shorter than this")
     args = parser.parse_args()
     try:
-        result = summarize(sys.stdin, args.expected_samples, args.interval)
+        result = summarize(sys.stdin, args.expected_samples, args.interval,
+                           minimum_observed_seconds=args.minimum_observed_seconds)
         print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
     except (ValueError, OSError, csv.Error, UnicodeError):
         # Input could contain private strings; never echo the raw record.

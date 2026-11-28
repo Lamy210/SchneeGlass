@@ -3,6 +3,8 @@
 import io
 import pathlib
 import runpy
+import subprocess
+import sys
 import unittest
 
 M = runpy.run_path(str(pathlib.Path(__file__).with_name("summarize-process-resources.py")))
@@ -146,6 +148,48 @@ class ResourceSummaryTests(unittest.TestCase):
         self.assertEqual(len(output.getvalue().splitlines()), 2)
         with self.assertRaisesRegex(ValueError, "Sample count mismatch"):
             SUMMARY(io.StringIO(output.getvalue()), 3, 60)
+
+    def test_minimum_observed_duration_requires_actual_span(self):
+        def checked(body, minimum):
+            return SUMMARY(io.StringIO(HEADER + body), 2, 60,
+                           minimum_observed_seconds=minimum)
+
+        # A correct row count does not imply a sufficient elapsed duration.
+        for second in ("1", "59.999999999999"):
+            with self.subTest(second=second), self.assertRaisesRegex(
+                    ValueError, "Observed duration below minimum"):
+                checked(f"1,0,0,512,4\n2,{second},0,512,4\n", 60)
+
+        # The first elapsed value is not necessarily zero.
+        with self.assertRaisesRegex(ValueError, "Observed duration below minimum"):
+            checked("1,10,0,512,4\n2,69,0,512,4\n", 60)
+        exact = checked("1,10,0,512,4\n2,70,0,512,4\n", 60)
+        self.assertEqual(exact["observed_span_seconds"], 60)
+        self.assertEqual(checked("1,10,0,512,4\n2,71,0,512,4\n", 60)
+                         ["observed_span_seconds"], 61)
+
+    def test_minimum_duration_cli_failure_has_no_json(self):
+        script = pathlib.Path(__file__).with_name("summarize-process-resources.py")
+        args = [sys.executable, str(script), "--expected-samples", "2",
+                "--interval", "60", "--minimum-observed-seconds", "60"]
+        for second, expected_code in (("59", 1), ("60", 0)):
+            with self.subTest(second=second):
+                result = subprocess.run(
+                    args, input=HEADER + f"1,0,0,512,4\n2,{second},0,512,4\n",
+                    text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, expected_code)
+                if expected_code:
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("Resource summary failed", result.stderr)
+                else:
+                    self.assertIn('"observed_span_seconds": 60.0', result.stdout)
+
+    def test_invalid_minimum_duration_is_rejected(self):
+        for minimum in (0, -1, True, 1.5, 1_000_000_000_000):
+            with self.subTest(minimum=minimum), self.assertRaisesRegex(
+                    ValueError, "Invalid minimum observed duration"):
+                SUMMARY(io.StringIO(HEADER + "1,0,0,512,4\n"), 1, 60,
+                        minimum_observed_seconds=minimum)
 
     def test_invalid_sampling_parameters(self):
         for count, interval in ((0,60), (10001,60), (1,4), (1,3601)):
